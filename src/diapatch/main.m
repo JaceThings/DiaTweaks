@@ -89,10 +89,12 @@ static int fetch(NSString *url, int seconds, NSString *file, NSString **output) 
     return run(file ? [argv arrayByAddingObjectsFromArray:@[ @"-o", file ]] : argv, output);
 }
 
+// Extended attributes (Finder info, resource forks) aren't part of the signature, but `codesign --strict`
+// rejects them, and copies of Dia made by Finder or some installers carry them.
 static BOOL clone(NSString *from, NSString *to) {
-    if (clonefile(from.fileSystemRepresentation, to.fileSystemRepresentation, 0) == 0) return YES;
-    if (errno == EXDEV || errno == ENOTSUP) return check(@[ @"/usr/bin/ditto", from, to ]);
-    return fail(@"cannot clone %@: %s", from, strerror(errno));
+    BOOL copied = clonefile(from.fileSystemRepresentation, to.fileSystemRepresentation, 0) == 0
+        || ((errno == EXDEV || errno == ENOTSUP) ? check(@[ @"/usr/bin/ditto", from, to ]) : fail(@"cannot clone %@: %s", from, strerror(errno)));
+    return copied && check(@[ @"/usr/bin/xattr", @"-cr", to ]);
 }
 
 static int place(NSString *from, NSString *to) {
@@ -281,7 +283,7 @@ static BOOL build(NSString *source) {
     BOOL ok = removeTree(work) && makeDir(gStaged.stringByDeletingLastPathComponent) && clone(source, work)
         && addLoadCommand([contents stringByAppendingPathComponent:[@"MacOS" stringByAppendingPathComponent:executable]], dylib)
         && configureInfo(work) && removeTree([contents stringByAppendingPathComponent:@"embedded.provisionprofile"])
-        && check(@[ @"/usr/bin/xattr", @"-dr", @"com.apple.quarantine", work ]) && sign(work) && moveBundle(work, gStaged);
+        && sign(work) && moveBundle(work, gStaged);
     if (!ok) removeTree(work);
     return ok;
 }
@@ -399,7 +401,7 @@ static BOOL update(void) {
         removeTree(work);
         return say(@"cannot download Dia %@: %@", release.version, output);
     }
-    BOOL ok = check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, work ])
+    BOOL ok = check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, work ]) && check(@[ @"/usr/bin/xattr", @"-cr", work ])
         && ([buildOf(app) isEqual:release.build] || fail(@"the download holds build %@, not %@", buildOf(app), release.build))
         && verifyOfficial(app) && build(app) && makeDir(gPristine.stringByDeletingLastPathComponent) && moveBundle(app, gPristine);
     removeTree(work);
