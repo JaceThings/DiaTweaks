@@ -1,22 +1,24 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 typedef NS_ENUM(NSInteger, DPTweak) {
     DPEdgeToEdge, DPHideToolbar, DPSquareSidebarCorners, DPAnimatedCount,
-    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideDownloadsButton, DPHideRecentTabsButton, DPHidePinnedTabsBackground, DPHideWindowControls, DPHidePinnedTabBorder, DPLiquidGlassBackground, DPTweakCount
+    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideDownloadsButton, DPHideRecentTabsButton, DPHidePinnedTabsBackground, DPHideWindowControls, DPHidePinnedTabBorder, DPLiquidGlassBackground, DPLargerWindowCorners, DPTweakCount
 };
 
-static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideDownloadsButton", @"hideRecentTabsButton", @"hidePinnedTabsBackground", @"hideWindowControls", @"hidePinnedTabBorder", @"liquidGlassBackground"};
-static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO, NO, NO};
+static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideDownloadsButton", @"hideRecentTabsButton", @"hidePinnedTabsBackground", @"hideWindowControls", @"hidePinnedTabBorder", @"liquidGlassBackground", @"largerWindowCorners"};
+static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO};
 static const CGFloat DPWindowPadding = 6;
 static const CFTimeInterval DPAnimationDuration = 0.25;
+static const CGFloat DPLargerCornerRadius = 20;
 
 static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
 static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
-static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPGlassKey, DPWindowColorKey;
+static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPGlassKey, DPWindowColorKey, DPCornerRadiusKey;
 
 static NSString *DPCLI(void) {
     return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -289,6 +291,12 @@ static NSRect DPEdgeToEdgeFrame(NSView *view, NSRect frame) {
     return frame;
 }
 
+// Keeps the page concentric with the window when the window's corners grow.
+static CGFloat DPWindowCornerGrowth(NSWindow *window) {
+    NSNumber *original = window ? objc_getAssociatedObject(window, &DPCornerRadiusKey) : nil;
+    return DPOn[DPLargerWindowCorners] && original ? DPLargerCornerRadius - original.doubleValue : 0;
+}
+
 static void DPSetCornerRadius(NSView *container, CGFloat inset) {
     static ptrdiff_t offset = -1;
     if (offset < 0) {
@@ -299,10 +307,11 @@ static void DPSetCornerRadius(NSView *container, CGFloat inset) {
     CGFloat *radius = (CGFloat *)((uint8_t *)(__bridge void *)container + offset);
     NSNumber *assigned = objc_getAssociatedObject(container, &DPAssignedRadiusKey);
     CGFloat base = assigned && assigned.doubleValue == *radius ? [objc_getAssociatedObject(container, &DPBaseRadiusKey) doubleValue] : *radius;
+    CGFloat target = base + inset + DPWindowCornerGrowth(container.window);
     objc_setAssociatedObject(container, &DPBaseRadiusKey, @(base), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(container, &DPAssignedRadiusKey, @(base + inset), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (*radius == base + inset) return;
-    *radius = base + inset;
+    objc_setAssociatedObject(container, &DPAssignedRadiusKey, @(target), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (*radius == target) return;
+    *radius = target;
     container.needsLayout = YES;
 }
 
@@ -554,10 +563,33 @@ static void DPApplyGlass(NSView *frame) {
     }
 }
 
+static void DPRelayout(void);
+
+static void DPApplyCorners(NSWindow *window) {
+    SEL getter = NSSelectorFromString(@"_cornerRadius"), setter = NSSelectorFromString(@"_setCornerRadius:");
+    if (![window respondsToSelector:getter] || ![window respondsToSelector:setter]) return;
+    CGFloat radius = ((CGFloat (*)(id, SEL))objc_msgSend)(window, getter);
+    NSNumber *original = objc_getAssociatedObject(window, &DPCornerRadiusKey);
+    CGFloat target = radius;
+    if (DPOn[DPLargerWindowCorners]) {
+        if (!original) objc_setAssociatedObject(window, &DPCornerRadiusKey, @(radius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        target = DPLargerCornerRadius;
+    } else if (original) {
+        objc_setAssociatedObject(window, &DPCornerRadiusKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        target = original.doubleValue;
+    }
+    if (radius == target) return;
+    ((void (*)(id, SEL, CGFloat))objc_msgSend)(window, setter, target);
+    ((void (*)(id, SEL))objc_msgSend)(window, NSSelectorFromString(@"_updateWindowCornerMask"));
+    [window invalidateShadow];
+    dispatch_async(dispatch_get_main_queue(), ^{ DPRelayout(); });
+}
+
 static void DPWindowFrame_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(void (*)(id, SEL), self, _cmd);
     [DPBars addObject:self];
     DPApplyGlass(self);
+    DPApplyCorners(self.window);
 }
 
 #pragma mark - Animation
@@ -784,8 +816,9 @@ static const CGFloat DPPaneTitleHeight = 52;
         {DPHideWindowControls, @"macwindow", @"Hide window controls", @"Hide the close, minimize, and maximize buttons."},
         {DPHidePinnedTabBorder, @"square.dashed", @"Hide pinned tab border", @"Remove the border around the selected pinned tab."},
         {DPLiquidGlassBackground, @"sparkles", @"Liquid Glass background", @"Use Liquid Glass behind the tab bar and sidebar instead of the theme color."},
+        {DPLargerWindowCorners, @"app", @"Larger window corners", @"Round the corners of browser windows to 20 points."},
     };
-    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor, NSColor.systemCyanColor];
+    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor, NSColor.systemCyanColor, NSColor.systemMintColor];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
     NSMutableArray<NSString *> *searchTexts = [NSMutableArray new];

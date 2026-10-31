@@ -14,6 +14,7 @@ Small tweaks for the [Dia](https://www.diabrowser.com) browser, kept in place wh
 - Hide window controls
 - Hide pinned tab border
 - Liquid Glass background
+- Larger window corners
 
 Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 or later.
 
