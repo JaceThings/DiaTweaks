@@ -757,6 +757,11 @@ static const CGFloat DPPaneTitleHeight = 52;
 
 @interface DPPaneView : NSView
 @property (nonatomic, strong) NSArray<NSSwitch *> *toggles;
+@property (nonatomic, strong) NSArray<NSString *> *searchTexts;
+@property (nonatomic, strong) NSSearchField *searchField;
+@property (nonatomic, strong) NSTextField *noResults;
+@property (nonatomic, strong) NSView *tweakGroup;
+@property (nonatomic, strong) NSArray<NSView *> *hiddenWhenSearching, *tweakSection;
 @property (nonatomic, strong) NSTextField *status;
 @property (nonatomic, strong) NSButton *checkButton;
 @property (nonatomic, strong) NSButton *relaunchButton;
@@ -783,6 +788,7 @@ static const CGFloat DPPaneTitleHeight = 52;
     NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor, NSColor.systemCyanColor];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
+    NSMutableArray<NSString *> *searchTexts = [NSMutableArray new];
     for (size_t i = 0; i < sizeof rows / sizeof *rows; i++) {
         if (rows[i].tweak == DPLiquidGlassBackground && !NSClassFromString(@"NSGlassEffectView")) continue;
         NSStackView *text = [NSStackView stackViewWithViews:@[
@@ -803,8 +809,18 @@ static const CGFloat DPPaneTitleHeight = 52;
         toggle.action = @selector(toggle:);
         [toggles addObject:toggle];
         [tweakRows addObject:DPRow(leading, toggle)];
+        [searchTexts addObject:[NSString stringWithFormat:@"%@ %@%@", rows[i].title, rows[i].detail, rows[i].tweak == DPHideWindowControls ? @" traffic lights" : @""]];
     }
     _toggles = toggles;
+    _searchTexts = searchTexts;
+    _searchField = [NSSearchField new];
+    _searchField.target = self;
+    _searchField.action = @selector(search:);
+    _noResults = DPLabel(@"No Results", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
+    _noResults.hidden = YES;
+    NSTextField *interface = DPLabel(@"Interface", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor);
+    _tweakGroup = DPGroup(tweakRows);
+    _tweakSection = @[interface, _tweakGroup];
     [self updateToggles];
 
     _status = DPLabel(@"", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
@@ -814,17 +830,15 @@ static const CGFloat DPPaneTitleHeight = 52;
     _relaunchButton.hidden = YES;
     NSStackView *buttons = [NSStackView stackViewWithViews:@[_relaunchButton, _checkButton]];
     NSButton *restore = [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)];
+    NSTextField *updates = DPLabel(@"Updates", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor);
+    NSView *updatesGroup = DPGroup(@[
+        DPRow(_status, buttons),
+        DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor), restore),
+    ]);
+    NSTextField *notice = DPLabel(@"DiaPatches is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor);
+    _hiddenWhenSearching = @[updates, updatesGroup, notice];
 
-    NSStackView *content = [NSStackView stackViewWithViews:@[
-        DPLabel(@"Interface", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor),
-        DPGroup(tweakRows),
-        DPLabel(@"Updates", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor),
-        DPGroup(@[
-            DPRow(_status, buttons),
-            DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor), restore),
-        ]),
-        DPLabel(@"DiaPatches is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor),
-    ]];
+    NSStackView *content = [NSStackView stackViewWithViews:@[_searchField, interface, _tweakGroup, _noResults, updates, updatesGroup, notice]];
     content.orientation = NSUserInterfaceLayoutOrientationVertical;
     content.alignment = NSLayoutAttributeLeading;
     content.spacing = 8;
@@ -881,14 +895,35 @@ static const CGFloat DPPaneTitleHeight = 52;
         context.allowsImplicitAnimation = YES;
         for (NSSwitch *toggle in self.toggles) {
             if (toggle.tag == DPHideSidebarButton || toggle.tag == DPHideChatButton) toggle.enabled = !DPOn[DPHideToolbar];
-            if (toggle.tag != DPSquareSidebarCorners) continue;
-            NSView *row = toggle.superview;
-            NSArray *siblings = row.superview.subviews;
-            NSView *separator = siblings[[siblings indexOfObject:row] - 1];
-            row.hidden = separator.hidden = !DPOn[DPEdgeToEdge];
         }
+        [self updateVisibleRows];
         [self layoutSubtreeIfNeeded];
     }];
+}
+
+- (void)updateVisibleRows {
+    NSString *query = [self.searchField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSStringCompareOptions options = NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch;
+    __block BOOL any = NO;
+    [self.toggles enumerateObjectsUsingBlock:^(NSSwitch *toggle, NSUInteger i, BOOL *_) {
+        NSView *row = toggle.superview;
+        BOOL visible = (!query.length || [self.searchTexts[i] rangeOfString:query options:options].location != NSNotFound)
+            && (toggle.tag != DPSquareSidebarCorners || DPOn[DPEdgeToEdge]);
+        row.hidden = !visible;
+        if (i > 0) {
+            NSArray *siblings = row.superview.subviews;
+            NSView *separator = siblings[[siblings indexOfObject:row] - 1];
+            separator.hidden = !visible || !any;
+        }
+        any |= visible;
+    }];
+    for (NSView *view in self.tweakSection) view.hidden = !any;
+    for (NSView *view in self.hiddenWhenSearching) view.hidden = query.length > 0;
+    self.noResults.hidden = any;
+}
+
+- (void)search:(NSSearchField *)sender {
+    [self updateVisibleRows];
 }
 
 - (void)toggle:(NSSwitch *)sender {
