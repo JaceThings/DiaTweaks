@@ -16,15 +16,27 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 1. Install Dia into Applications, if it isn't there already.
 2. Install Apple's developer tools: `xcode-select --install`
-3. Run:
+3. Open Terminal and paste:
 
    ```sh
-   git clone https://github.com/JaceThings/DiaTweaks.git
-   cd DiaTweaks
-   ./install.sh
+   git clone https://github.com/JaceThings/DiaTweaks.git ~/DiaTweaks && ~/DiaTweaks/install.sh
    ```
 
 Dia quits and reopens. When macOS asks to access "Dia Safe Storage", enter your password and click **Always Allow**.
+
+## Update DiaTweaks
+
+Dia itself updates on its own. To get new tweaks and fixes, paste this into Terminal:
+
+```sh
+cd ~/DiaTweaks && git pull && ./install.sh
+```
+
+If that says `No such file or directory`, you cloned DiaTweaks somewhere else. This works from anywhere:
+
+```sh
+rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTweaks.git /tmp/DiaTweaks && /tmp/DiaTweaks/install.sh
+```
 
 ## How it works
 
