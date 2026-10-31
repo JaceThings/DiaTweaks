@@ -29,13 +29,9 @@ With the developer tools on, a script can also drive Dia: post the distributed n
 
 ## Documenting a patch
 
-Every tweak has a page in [`docs/tweaks`](docs/tweaks/README.md), and a new patch's PR adds its own:
+Every tweak has a page on the [wiki](https://github.com/JaceThings/DiaTweaks/wiki), titled as it is in Settings. For a new patch, fill in [`docs/tweak-page.md`](docs/tweak-page.md) in your PR description with before and after screenshots: PNG, at most 1400 pixels wide, cropped to the part of Dia the tweak changes, with none of your own tabs in them. A maintainer puts it on the wiki and links it from the sidebar before merging.
 
-- Copy `docs/tweaks/_template.md` to `docs/tweaks/<key>.md` and fill it in.
-- Add before and after screenshots as `docs/tweaks/images/<key>-before.png` and `<key>-after.png`: PNG, at most 1400 pixels wide, cropped to the part of Dia the tweak changes, with none of your own tabs in them.
-- Add a row for it to `docs/tweaks/README.md`.
-
-CI fails if a patch has no page or the index doesn't link to it. Run `scripts/check-tweak-docs` after `make` to check.
+CI fails if a patch has no wiki page or the sidebar doesn't link to it. Run `scripts/check-tweak-docs` after `make` to check.
 
 ## Testing
 

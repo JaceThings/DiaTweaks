@@ -10,7 +10,7 @@ Each tweak changes one part of how Dia looks, like the padding around pages or a
 
 Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
 
-[See all tweaks →](docs/tweaks/README.md)
+[See all tweaks →](https://github.com/JaceThings/DiaTweaks/wiki)
 
 ## Install
 
