@@ -16,36 +16,6 @@ static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
 static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPCollapsedKey, DPSearchItemKey;
 
-static NSString *DPCLI(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches/bin/diapatch"];
-}
-
-static void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSTask *task = [NSTask new];
-        task.executableURL = [NSURL fileURLWithPath:DPCLI()];
-        task.arguments = args;
-        NSPipe *pipe = [NSPipe pipe];
-        task.standardOutput = pipe;
-        task.standardError = NSFileHandle.fileHandleWithNullDevice;
-        NSString *output = nil;
-        if ([task launchAndReturnError:nil]) {
-            NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
-            [task waitUntilExit];
-            if (task.terminationStatus == 0) output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        }
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(output); });
-    });
-}
-
-static void DPHandOffAndQuit(NSString *command) {
-    NSTask *task = [NSTask new];
-    task.executableURL = [NSURL fileURLWithPath:DPCLI()];
-    task.arguments = @[command, @"--wait", @(getpid()).stringValue, @"--relaunch"];
-    if ([task launchAndReturnError:nil]) [NSApp terminate:nil];
-}
-
 static NSView *DPFindView(NSView *root, BOOL (^match)(NSView *)) {
     if (!root || match(root)) return root;
     for (NSView *sub in root.subviews) {
@@ -479,61 +449,6 @@ static void DPSetTweak(DPTweak tweak, BOOL on) {
         else DPRestoreButtons(tweak);
         DPRelayoutBars();
     }
-}
-
-#pragma mark - Updates
-
-static NSString *DPStagedPath(void) {
-    return [DPCLI().stringByDeletingLastPathComponent.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"staged/Dia.app"];
-}
-
-static void DPCheckForUpdates(void (^completion)(NSDictionary *status)) {
-    DPRunCLI(@[@"update"], ^(NSString *_) {
-        DPRunCLI(@[@"status", @"--json"], ^(NSString *output) {
-            id status = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
-            completion([status isKindOfClass:NSDictionary.class] ? status : nil);
-        });
-    });
-}
-
-@interface DPUpdateMenuTarget : NSObject
-@end
-
-@implementation DPUpdateMenuTarget
-- (void)checkForUpdates:(id)sender {
-    DPCheckForUpdates(^(NSDictionary *status) {
-        NSAlert *alert = [NSAlert new];
-        id staged = status[@"staged"];
-        if ([staged isKindOfClass:NSString.class]) {
-            alert.messageText = [NSString stringWithFormat:@"Dia %@ is ready", staged];
-            alert.informativeText = @"It will be installed with your patches when you quit Dia.";
-            [alert addButtonWithTitle:@"Relaunch Now"];
-            [alert addButtonWithTitle:@"Later"];
-            if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@"apply");
-        } else {
-            alert.messageText = status ? @"Dia is up to date" : @"Couldn’t check for updates";
-            [alert runModal];
-        }
-    });
-}
-@end
-
-static void DPInstallUpdateMenuItem(void) {
-    static DPUpdateMenuTarget *target;
-    target = target ?: [DPUpdateMenuTarget new];
-    for (NSMenuItem *item in NSApp.mainMenu.itemArray.firstObject.submenu.itemArray) {
-        if (![item.title hasPrefix:@"Check for Updates"]) continue;
-        item.target = target;
-        item.action = @selector(checkForUpdates:);
-    }
-}
-
-static void DPApplyStagedOnQuit(void) {
-    if (![NSFileManager.defaultManager fileExistsAtPath:DPStagedPath()]) return;
-    NSTask *task = [NSTask new];
-    task.executableURL = [NSURL fileURLWithPath:DPCLI()];
-    task.arguments = @[@"apply", @"--wait", @(getpid()).stringValue];
-    [task launchAndReturnError:nil];
 }
 
 #pragma mark - Settings pane
@@ -1137,12 +1052,5 @@ __attribute__((constructor)) static void DPInit(void) {
     DPHook(NSClassFromString(DPSettingsControllerClass), @selector(viewDidAppear), (IMP)DPSettings_viewDidAppear);
     DPHook(NSClassFromString(DPSettingsControllerClass), @selector(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:), (IMP)DPSettings_toolbarItem);
 
-    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    [center addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
-        DPInstallUpdateMenuItem();
-        DPRunCLI(@[@"update"], nil);
-    }];
-    [center addObserverForName:NSApplicationWillTerminateNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
-        DPApplyStagedOnQuit();
-    }];
+    DPInstallUpdates();
 }
