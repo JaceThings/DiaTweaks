@@ -130,6 +130,13 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
                                [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)]);
     [_searchText setObject:@"Check for updates version" forKey:updateRow];
     [_searchText setObject:@"Restore the original Dia without patches uninstall" forKey:restoreRow];
+    NSMutableArray<NSArray *> *groups = [NSMutableArray arrayWithArray:@[@[@"Interface", patchRows], @[@"Updates", @[updateRow, restoreRow]]]];
+    if (DPSafeMode) {
+        NSView *safeModeRow = DPRow(DPLabel(@"Patches are off because Dia quit unexpectedly twice right after opening.", 13, NSFontWeightRegular, NSColor.labelColor),
+                                    [NSButton buttonWithTitle:@"Turn Patches Back On" target:self action:@selector(leaveSafeMode:)]);
+        [_searchText setObject:@"Safe mode patches off crashed quit unexpectedly turn back on" forKey:safeModeRow];
+        [groups insertObject:@[@"Safe Mode", @[safeModeRow]] atIndex:0];
+    }
 
     _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
     _searchItem.searchField.delegate = self;
@@ -137,7 +144,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     _notice = DPLabel(@"DiaPatches is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor);
     NSMutableArray<NSView *> *views = [NSMutableArray new];
     NSMutableArray<NSArray *> *sections = [NSMutableArray new];
-    for (NSArray *section in @[@[@"Interface", patchRows], @[@"Updates", @[updateRow, restoreRow]]]) {
+    for (NSArray *section in groups) {
         NSTextField *header = DPLabel(section[0], 12, NSFontWeightSemibold, NSColor.secondaryLabelColor);
         NSView *group = DPGroup(section[1]);
         [views addObjectsFromArray:@[header, group]];
@@ -274,6 +281,11 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 }
 
 - (void)relaunchToUpdate:(id)sender {
+    DPHandOffAndQuit(@"apply");
+}
+
+- (void)leaveSafeMode:(id)sender {
+    DPLeaveSafeMode();
     DPHandOffAndQuit(@"apply");
 }
 

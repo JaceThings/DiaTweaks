@@ -49,6 +49,7 @@ rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTw
 - The add-on only rearranges Dia's own interface. Group Tabs by Domain reads the address of each open tab in the current window, not the page. It doesn't read your pages, history or passwords, and its only network use is checking Dia's update feed.
 - Nothing runs in the background. Updates are checked when Dia opens and installed when you quit it.
 - Because the app is now signed by you, macOS asks once per Dia update before Dia can read "Dia Safe Storage". Dia's built-in passkey support is off, since only The Browser Company can sign for it; signing in with a password works.
+- If Dia quits unexpectedly twice in a row right after opening, the next launch leaves the patches off. **Settings → Patches** says so and can turn them back on, and updating DiaTweaks turns them back on too. If Dia keeps crashing without them, DiaTweaks loads nothing at all until it's updated or you delete `~/Library/Application Support/DiaPatches/safe-mode.plist`.
 
 ## Uninstall
 
