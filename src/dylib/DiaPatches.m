@@ -16,7 +16,7 @@ static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
 static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
-static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey;
+static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPSearchItemKey;
 
 static NSString *DPCLI(void) {
     return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -602,11 +602,25 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
     return tile;
 }
 
-@interface DPPaneView : NSView
+static NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
+
+@interface DPFlippedView : NSView
+@end
+@implementation DPFlippedView
+- (BOOL)isFlipped { return YES; }
+@end
+
+@interface DPPaneView : NSView <NSSearchFieldDelegate>
 @property (nonatomic, strong) NSArray<NSSwitch *> *toggles;
+@property (nonatomic, strong) NSArray<NSArray *> *sections;  // header, group, rows
+@property (nonatomic, strong) NSMapTable<NSView *, NSString *> *searchText;
+@property (nonatomic, strong) NSSearchToolbarItem *searchItem;
+@property (nonatomic, strong) NSTextField *noResults, *notice;
+@property (nonatomic, weak) NSView *squareRow;
 @property (nonatomic, strong) NSTextField *status;
 @property (nonatomic, strong) NSButton *checkButton;
 @property (nonatomic, strong) NSButton *relaunchButton;
+- (void)updateRows;
 @end
 
 @implementation DPPaneView
@@ -621,6 +635,7 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
         {DPHideChatButton, @"bubble.fill", @"Hide Chat button", @"Hide the Chat button at the top right of the toolbar."},
     };
     NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor];
+    _searchText = [NSMapTable strongToStrongObjectsMapTable];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
     for (size_t i = 0; i < sizeof rows / sizeof *rows; i++) {
@@ -641,43 +656,73 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
         toggle.target = self;
         toggle.action = @selector(toggle:);
         [toggles addObject:toggle];
-        [tweakRows addObject:DPRow(leading, toggle)];
+        NSView *row = DPRow(leading, toggle);
+        [_searchText setObject:[NSString stringWithFormat:@"%@ %@", rows[i].title, rows[i].detail] forKey:row];
+        if (rows[i].tweak == DPSquareSidebarCorners) _squareRow = row;
+        [tweakRows addObject:row];
     }
     _toggles = toggles;
-    [self updateToggles];
 
     _status = DPLabel(@"", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
     _checkButton = [NSButton buttonWithTitle:@"Check for Updates" target:self action:@selector(checkForUpdates:)];
     _relaunchButton = [NSButton buttonWithTitle:@"Relaunch to Update" target:self action:@selector(relaunchToUpdate:)];
     _relaunchButton.bezelColor = NSColor.controlAccentColor;
     _relaunchButton.hidden = YES;
-    NSStackView *buttons = [NSStackView stackViewWithViews:@[_relaunchButton, _checkButton]];
-    NSButton *restore = [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)];
+    NSView *updateRow = DPRow(_status, [NSStackView stackViewWithViews:@[_relaunchButton, _checkButton]]);
+    NSView *restoreRow = DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor),
+                               [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)]);
+    [_searchText setObject:@"Check for updates version" forKey:updateRow];
+    [_searchText setObject:@"Restore the original Dia without patches uninstall" forKey:restoreRow];
 
-    NSStackView *content = [NSStackView stackViewWithViews:@[
-        DPLabel(@"Interface", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor),
-        DPGroup(tweakRows),
-        DPLabel(@"Updates", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor),
-        DPGroup(@[
-            DPRow(_status, buttons),
-            DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor), restore),
-        ]),
-        DPLabel(@"DiaPatches is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor),
-    ]];
+    _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
+    _searchItem.searchField.delegate = self;
+    _noResults = DPLabel(@"No results", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
+    _notice = DPLabel(@"DiaPatches is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor);
+    NSMutableArray<NSView *> *views = [NSMutableArray new];
+    NSMutableArray<NSArray *> *sections = [NSMutableArray new];
+    for (NSArray *section in @[@[@"Interface", tweakRows], @[@"Updates", @[updateRow, restoreRow]]]) {
+        NSTextField *header = DPLabel(section[0], 12, NSFontWeightSemibold, NSColor.secondaryLabelColor);
+        NSView *group = DPGroup(section[1]);
+        [views addObjectsFromArray:@[header, group]];
+        [sections addObject:@[header, group, section[1]]];
+    }
+    [views addObjectsFromArray:@[_noResults, _notice]];
+    _sections = sections;
+
+    NSStackView *content = [NSStackView stackViewWithViews:views];
     content.orientation = NSUserInterfaceLayoutOrientationVertical;
     content.alignment = NSLayoutAttributeLeading;
     content.spacing = 8;
     for (NSView *v in content.arrangedSubviews) [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
-    content.translatesAutoresizingMaskIntoConstraints = NO;
-    [self addSubview:content];
-    NSLayoutConstraint *fill = [content.widthAnchor constraintEqualToAnchor:self.widthAnchor constant:-48];
+
+    // Dia's Settings window doesn't grow, so the pane scrolls below the window's title.
+    DPFlippedView *document = [DPFlippedView new];
+    NSScrollView *scroll = [NSScrollView new];
+    scroll.drawsBackground = NO;
+    scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.automaticallyAdjustsContentInsets = NO;
+    scroll.documentView = document;
+    [document addSubview:content];
+    [self addSubview:scroll];
+    for (NSView *v in @[content, document, scroll]) v.translatesAutoresizingMaskIntoConstraints = NO;
+    NSLayoutConstraint *fill = [content.widthAnchor constraintEqualToAnchor:document.widthAnchor constant:-48];
     fill.priority = NSLayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
-        [content.topAnchor constraintEqualToAnchor:self.topAnchor constant:72],
-        [content.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:self.topAnchor constant:52],
+        [scroll.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [document.topAnchor constraintEqualToAnchor:scroll.contentView.topAnchor],
+        [document.leadingAnchor constraintEqualToAnchor:scroll.contentView.leadingAnchor],
+        [document.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor],
+        [content.topAnchor constraintEqualToAnchor:document.topAnchor constant:20],
+        [content.bottomAnchor constraintEqualToAnchor:document.bottomAnchor constant:-20],
+        [content.centerXAnchor constraintEqualToAnchor:document.centerXAnchor],
         [content.widthAnchor constraintLessThanOrEqualToConstant:560],
         fill,
     ]];
+    [self updateRows];
     return self;
 }
 
@@ -696,24 +741,47 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
 - (void)scrollWheel:(NSEvent *)event {}
 - (NSMenu *)menuForEvent:(NSEvent *)event { return nil; }
 
-- (void)updateToggles {
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.allowsImplicitAnimation = YES;
-        for (NSSwitch *toggle in self.toggles) {
-            if (toggle.tag == DPHideSidebarButton || toggle.tag == DPHideChatButton) toggle.enabled = !DPOn[DPHideToolbar];
-            if (toggle.tag != DPSquareSidebarCorners) continue;
-            NSView *row = toggle.superview;
-            NSArray *siblings = row.superview.subviews;
-            NSView *separator = siblings[[siblings indexOfObject:row] - 1];
-            row.hidden = separator.hidden = !DPOn[DPEdgeToEdge];
+- (BOOL)matches:(NSView *)row words:(NSArray<NSString *> *)words {
+    NSString *text = [self.searchText objectForKey:row];
+    for (NSString *word in words) if (word.length && ![text localizedStandardContainsString:word]) return NO;
+    return YES;
+}
+
+- (void)updateRows {
+    NSString *query = self.searchItem.searchField.stringValue;
+    NSArray<NSString *> *words = [query componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    BOOL searching = [query stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet].length > 0;
+    for (NSSwitch *toggle in self.toggles)
+        if (toggle.tag == DPHideSidebarButton || toggle.tag == DPHideChatButton) toggle.enabled = !DPOn[DPHideToolbar];
+    BOOL anything = NO;
+    for (NSArray *section in self.sections) {
+        BOOL any = NO;
+        for (NSView *row in section[2]) {
+            BOOL visible = (row != self.squareRow || DPOn[DPEdgeToEdge]) && [self matches:row words:words];
+            NSArray<NSView *> *arranged = ((NSStackView *)row.superview).arrangedSubviews;
+            NSUInteger index = [arranged indexOfObject:row];
+            row.hidden = !visible;
+            if (index > 0) arranged[index - 1].hidden = !visible || !any;
+            any |= visible;
         }
-        [self layoutSubtreeIfNeeded];
-    }];
+        for (NSView *view in @[section[0], section[1]]) view.hidden = !any;
+        anything |= any;
+    }
+    self.noResults.hidden = anything;
+    self.notice.hidden = searching;
+}
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+    [self updateRows];
 }
 
 - (void)toggle:(NSSwitch *)sender {
     DPSetTweak(sender.tag, sender.state == NSControlStateValueOn);
-    [self updateToggles];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.allowsImplicitAnimation = YES;
+        [self updateRows];
+        [self layoutSubtreeIfNeeded];
+    }];
 }
 
 - (void)showStatus:(NSDictionary *)status {
@@ -900,8 +968,7 @@ static NSString *const DPSettingsControllerClass = @"_TtC11Preferences38SidebarP
             return nil;
         }
         if (!me.pane.superview || [hit isDescendantOf:me.pane]) return event;
-        NSPoint inDetail = [me.detail convertPoint:event.locationInWindow fromView:nil];
-        if (NSPointInRect(inDetail, me.detail.bounds)) return nil;
+        if ([hit isDescendantOf:me.detail]) return nil;
         BOOL onDiaRow = [me.table rowAtPoint:[me.table convertPoint:event.locationInWindow fromView:nil]] >= 0;
         if (event.type == NSEventTypeLeftMouseDown && onDiaRow) [me hidePane];
         return event;
@@ -957,6 +1024,12 @@ static NSString *const DPSettingsControllerClass = @"_TtC11Preferences38SidebarP
     self.pane.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [self.detail addSubview:self.pane positioned:NSWindowAbove relativeTo:nil];
     [self.pane refresh];
+    NSToolbar *toolbar = self.window.toolbar;
+    if (toolbar && ![toolbar.items containsObject:self.pane.searchItem]) {
+        objc_setAssociatedObject(toolbar, &DPSearchItemKey, self.pane.searchItem, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [toolbar insertItemWithItemIdentifier:NSToolbarFlexibleSpaceItemIdentifier atIndex:toolbar.items.count];
+        [toolbar insertItemWithItemIdentifier:DPSearchItemIdentifier atIndex:toolbar.items.count];
+    }
 
     NSInteger selected = self.table.selectedRow;
     if (selected < 0) return;
@@ -991,11 +1064,24 @@ static NSString *const DPSettingsControllerClass = @"_TtC11Preferences38SidebarP
 
 - (void)hidePane {
     [self.pane removeFromSuperview];
+    NSToolbar *toolbar = self.window.toolbar;
+    NSUInteger index = [toolbar.items indexOfObject:self.pane.searchItem];
+    if (index != NSNotFound) {
+        [toolbar removeItemAtIndex:index];
+        if (index > 0 && [toolbar.items[index - 1].itemIdentifier isEqualToString:NSToolbarFlexibleSpaceItemIdentifier]) [toolbar removeItemAtIndex:index - 1];
+    }
+    self.pane.searchItem.searchField.stringValue = @"";
+    [self.pane updateRows];
     if ([self.title.stringValue isEqualToString:@"Patches"]) self.title.stringValue = self.originalTitle;
     if (self.table.selectedRow == self.deselectedIndex) [self.table rowViewAtRow:self.deselectedIndex makeIfNecessary:NO].selected = YES;
     self.row.selected = NO;
 }
 @end
+
+static NSToolbarItem *DPSettings_toolbarItem(id self, SEL _cmd, NSToolbar *toolbar, NSToolbarItemIdentifier identifier, BOOL willInsert) {
+    if ([identifier isEqualToString:DPSearchItemIdentifier]) return objc_getAssociatedObject(toolbar, &DPSearchItemKey);
+    return DPCallOriginal(NSToolbarItem *(*)(id, SEL, NSToolbar *, NSToolbarItemIdentifier, BOOL), self, _cmd, toolbar, identifier, willInsert);
+}
 
 static void DPSettings_viewDidAppear(NSViewController *self, SEL _cmd) {
     DPCallOriginal(void (*)(id, SEL), self, _cmd);
@@ -1025,6 +1111,7 @@ __attribute__((constructor)) static void DPInit(void) {
     DPHook(DPToolbarClass(), @selector(layout), (IMP)DPBar_layout);
     DPHook(DPToolbarClass(), @selector(hitTest:), (IMP)DPToolbar_hitTest);
     DPHook(NSClassFromString(DPSettingsControllerClass), @selector(viewDidAppear), (IMP)DPSettings_viewDidAppear);
+    DPHook(NSClassFromString(DPSettingsControllerClass), @selector(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:), (IMP)DPSettings_toolbarItem);
 
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
