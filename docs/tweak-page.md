@@ -1,15 +1,12 @@
 <!--
-Copy this file to docs/tweaks/<key>.md, using the patch's key, and add a row for it to docs/tweaks/README.md.
+Start a wiki page titled exactly as the tweak is in Settings, paste this in, and add a link to it under its section in the sidebar.
 Keep the sentences short. Delete the sections that don't apply, and these comments.
 -->
 
-# Title, as in Settings
-
 One or two sentences on what it does.
 
-<!-- Screenshots: docs/tweaks/images/<key>-before.png and docs/tweaks/images/<key>-after.png.
-     PNG, at most 1400 pixels wide, cropped to the part of Dia the tweak changes, with none of your own tabs in them.
-     Once they're in, replace each placeholder below with ![Before](images/<key>-before.png) and ![After](images/<key>-after.png). -->
+<!-- Screenshots: PNG, at most 1400 pixels wide, cropped to the part of Dia the tweak changes, with none of your own tabs in them.
+     Drag the before and after shots into the wiki editor in place of each placeholder below. -->
 
 | Before | After |
 |:---:|:---:|
@@ -27,7 +24,7 @@ diatweaks enable key
 
 <!-- Only if the patch sets .requires. -->
 
-[Other tweak](otherKey.md). Settings only shows this switch while that's on, and `diatweaks enable key` offers to turn it on too.
+[Other tweak](Other-tweak). Settings only shows this switch while that's on, and `diatweaks enable key` offers to turn it on too.
 
 ## Works with
 

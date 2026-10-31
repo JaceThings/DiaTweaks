@@ -1,25 +1,29 @@
 #!/bin/sh
-# Fails unless every patch in build/patches.json has a page in docs/tweaks and a link to it in the index. Run after make.
+# Fails unless every patch in build/patches.json has a wiki page and a link to it in the wiki's sidebar. Run after make.
 set -eu
 cd "$(dirname "$0")/.."
 manifest=build/patches.json
-index=docs/tweaks/README.md
 [ -f "$manifest" ] || { echo "$manifest is missing: run make first" >&2; exit 1; }
+wiki=$(mktemp -d)
+trap 'rm -rf "$wiki"' EXIT
+git clone -q --depth 1 https://github.com/JaceThings/DiaTweaks.wiki.git "$wiki"
 
 count=$(plutil -extract patches raw -o - "$manifest")
 failed=0
 i=0
 while [ "$i" -lt "$count" ]; do
-    key=$(plutil -extract "patches.$i.key" raw -o - "$manifest")
-    if [ ! -f "docs/tweaks/$key.md" ]; then
-        echo "docs/tweaks/$key.md is missing: copy docs/tweaks/_template.md" >&2
+    title=$(plutil -extract "patches.$i.title" raw -o - "$manifest")
+    # GitHub names a wiki page's file after its title, with spaces as hyphens.
+    page=$(echo "$title" | tr ' ' '-')
+    if [ ! -f "$wiki/$page.md" ]; then
+        echo "the wiki has no page called \"$title\": add one from docs/tweak-page.md" >&2
         failed=1
     fi
-    if ! grep -qE "\]\((\./)?$key\.md\)" "$index"; then
-        echo "$index has no link to $key.md: add a row for it" >&2
+    if ! grep -qF "]($page)" "$wiki/_Sidebar.md"; then
+        echo "the wiki sidebar has no link to $page: add it under its section" >&2
         failed=1
     fi
     i=$((i + 1))
 done
-[ "$failed" -eq 0 ] && echo "all $count tweaks have a page in docs/tweaks"
+[ "$failed" -eq 0 ] && echo "all $count tweaks have a wiki page"
 exit "$failed"
