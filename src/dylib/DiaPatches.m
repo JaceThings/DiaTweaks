@@ -1,6 +1,4 @@
-#import <AppKit/AppKit.h>
-#import <QuartzCore/QuartzCore.h>
-#import <objc/runtime.h>
+#import "DiaPatches.h"
 
 typedef NS_ENUM(NSInteger, DPTweak) {
     DPEdgeToEdge, DPHideToolbar, DPSquareSidebarCorners, DPAnimatedCount,
@@ -56,29 +54,6 @@ static NSView *DPFindView(NSView *root, BOOL (^match)(NSView *)) {
     }
     return nil;
 }
-
-#pragma mark - Hooks
-
-typedef struct { Class cls; SEL sel; IMP imp; } DPOriginal;
-static DPOriginal DPOriginals[32];
-static int DPOriginalCount;
-
-static void DPHook(Class cls, SEL sel, IMP replacement) {
-    Method method = cls ? class_getInstanceMethod(cls, sel) : NULL;
-    if (!method || method_getImplementation(method) == replacement || DPOriginalCount == 32) return;
-    IMP original = method_getImplementation(method);
-    if (!class_addMethod(cls, sel, replacement, method_getTypeEncoding(method))) method_setImplementation(method, replacement);
-    DPOriginals[DPOriginalCount++] = (DPOriginal){cls, sel, original};
-}
-
-static IMP DPOriginalIMP(id object, SEL sel) {
-    for (Class c = object_getClass(object); c; c = class_getSuperclass(c))
-        for (int i = 0; i < DPOriginalCount; i++)
-            if (DPOriginals[i].cls == c && DPOriginals[i].sel == sel) return DPOriginals[i].imp;
-    abort();
-}
-
-#define DPCallOriginal(type, object, sel, ...) ((type)DPOriginalIMP(object, sel))(object, sel, ##__VA_ARGS__)
 
 #pragma mark - Toolbar buttons
 
