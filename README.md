@@ -96,7 +96,7 @@ Passkeys. Signing in with a password still works.
 <details>
 <summary><strong>What if Dia keeps crashing?</strong></summary>
 
-After two crashes in a row, Dia opens with the tweaks off. **Settings → Patches** has a button to turn them back on.
+If Dia crashes twice in a row right after opening, it opens next time with the tweaks off. **Settings → Patches** has a button to turn them back on.
 
 </details>
 
