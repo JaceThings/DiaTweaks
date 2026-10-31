@@ -18,6 +18,7 @@ DPPatch *const DPPatches[] = {
     &DPEdgeToEdge,
     &DPSquareSidebarCorners,
     &DPHideToolbar,
+    &DPRevealToolbarOnHover,
     &DPHideSidebarButton,
     &DPHideChatButton,
     &DPHideChatsButton,
