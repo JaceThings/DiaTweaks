@@ -52,7 +52,7 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
 - (NSView *)hitTest:(NSPoint)point {
     NSView *hit = [super hitTest:point];
     BOOL control = [hit isKindOfClass:NSSwitch.class] || [hit isKindOfClass:NSButton.class];
-    return !hit || (control && ((NSControl *)hit).enabled) ? hit : self;
+    return !hit || (control && ((NSControl *)hit).enabled) || hit.toolTip ? hit : self;
 }
 - (void)mouseDown:(NSEvent *)event {}
 - (void)mouseUp:(NSEvent *)event {
