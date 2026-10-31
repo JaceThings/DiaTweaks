@@ -17,7 +17,7 @@ struct DPPatch {
     CGFloat progress;
 };
 
-extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners, DPHideToolbar, DPHideSidebarButton, DPHideChatButton, DPHideChatsButton, DPHideRecentTabsButton;
+extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners, DPHideToolbar, DPRevealToolbarOnHover, DPHideSidebarButton, DPHideChatButton, DPHideChatsButton, DPHideRecentTabsButton;
 extern DPPatch *const DPPatches[];
 extern const NSUInteger DPPatchCount;
 

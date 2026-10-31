@@ -5,6 +5,7 @@ Small tweaks for the [Dia](https://www.diabrowser.com) browser, kept in place wh
 - Edge-to-edge web content
 - Square corners by the sidebar
 - Hide toolbar
+- Reveal toolbar on hover
 - Hide sidebar button
 - Hide Chat button
 - Hide Chats button
