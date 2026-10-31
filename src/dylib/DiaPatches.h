@@ -21,6 +21,8 @@ extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners, DPHideToolbar, DPHideSideba
 extern DPPatch *const DPPatches[];
 extern const NSUInteger DPPatchCount;
 
+void DPSetPatch(DPPatch *patch, BOOL on);
+
 void DPHook(Class cls, SEL sel, IMP replacement);
 IMP DPOriginalIMP(id object, SEL sel);
 
@@ -30,6 +32,8 @@ NSView *DPFindView(NSView *root, BOOL (^match)(NSView *));
 
 void DPInstallButtons(void);
 void DPApplyButtons(DPPatch *patch);
+
+void DPInstallSettings(void);
 
 void DPInstallUpdates(void);
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output));
