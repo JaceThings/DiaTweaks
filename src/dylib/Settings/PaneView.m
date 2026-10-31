@@ -2,7 +2,7 @@
 
 NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 
-// The overview, and the page of whatever was clicked on it, which slides in over it like System Settings.
+// The overview, and the page of whatever was clicked on it, which replaces it like System Settings.
 @implementation DPPaneView {
     NSScrollView *_overviewScroll, *_pageScroll;
     DPPageView *_page;
@@ -52,17 +52,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     return scroll;
 }
 
-- (void)slideFrom:(CATransitionSubtype)side {
-    CATransition *slide = [CATransition animation];
-    slide.type = kCATransitionPush;
-    slide.subtype = side;
-    slide.duration = 0.25;
-    slide.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-    [self.layer addAnimation:slide forKey:@"slide"];
-}
-
 - (void)openPage:(DPItem)item {
-    [self slideFrom:kCATransitionFromRight];
     _page = [[DPPageView alloc] initWithItem:item];
     _pageScroll = [self scrollFor:_page];
     _overviewScroll.hidden = YES;
@@ -73,7 +63,6 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 
 - (void)goBack {
     if (!_page) return;
-    if (self.window) [self slideFrom:kCATransitionFromLeft];
     [_pageScroll removeFromSuperview];
     _pageScroll = nil;
     _page = nil;
@@ -82,7 +71,6 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 }
 
 - (void)reset {
-    [self.layer removeAnimationForKey:@"slide"];
     [_pageScroll removeFromSuperview];
     _pageScroll = nil;
     _page = nil;
