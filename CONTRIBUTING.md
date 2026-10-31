@@ -6,6 +6,7 @@ Keep it small, test it hard, show it working.
 
 - One change per PR.
 - Fill in the template: What, Why, Proof, Tested on, Checklist. Short sentences.
+- Never leave a section empty or delete it. If one doesn't apply, write `N/A` in it, and tick a checklist item that doesn't apply with `(N/A)` after it. Proof is never N/A for a change you can see in Dia.
 - Proof is required for anything visible in Dia: a screenshot for static changes, a screen recording for anything that animates. Show before and after when you change existing behaviour.
 - Try to break what you made before you open the PR, and fix what you find. Every change has to work with tabs in the sidebar and tabs at the top, and with each tweak on and off.
 - Build with `make` and run it on your own Dia with `./install.sh`.
