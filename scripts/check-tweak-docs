@@ -1,0 +1,25 @@
+#!/bin/sh
+# Fails unless every patch in build/patches.json has a page in docs/tweaks and a link to it in the index. Run after make.
+set -eu
+cd "$(dirname "$0")/.."
+manifest=build/patches.json
+index=docs/tweaks/README.md
+[ -f "$manifest" ] || { echo "$manifest is missing: run make first" >&2; exit 1; }
+
+count=$(plutil -extract patches raw -o - "$manifest")
+failed=0
+i=0
+while [ "$i" -lt "$count" ]; do
+    key=$(plutil -extract "patches.$i.key" raw -o - "$manifest")
+    if [ ! -f "docs/tweaks/$key.md" ]; then
+        echo "docs/tweaks/$key.md is missing: copy docs/tweaks/_template.md" >&2
+        failed=1
+    fi
+    if ! grep -qE "\]\((\./)?$key\.md\)" "$index"; then
+        echo "$index has no link to $key.md: add a row for it" >&2
+        failed=1
+    fi
+    i=$((i + 1))
+done
+[ "$failed" -eq 0 ] && echo "all $count tweaks have a page in docs/tweaks"
+exit "$failed"
