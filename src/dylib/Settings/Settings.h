@@ -23,8 +23,11 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 @interface DPFillView : NSView
 @end
 
+// An eye.slash beside it says when the patch is on but another one hides what it changes.
 @interface DPPatchSwitch : NSSwitch
 @property (nonatomic, readonly) DPPatch *patch;
+@property (nonatomic, readonly) NSImageView *hiddenIcon;
+- (NSView *)withHiddenIcon;
 - (instancetype)initWithPatch:(DPPatch *)patch;
 - (void)sync;
 @end
@@ -38,6 +41,7 @@ typedef struct {
 DPItem DPPatchItem(DPPatch *patch);
 void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option));
 NSString *DPWhyDisabled(DPPatch *patch);
+NSString *DPWhyHidden(DPPatch *patch);
 NSURL *DPWikiURL(DPItem item);
 
 @interface DPPreviewView : DPFillView

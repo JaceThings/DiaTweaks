@@ -62,7 +62,7 @@ static const DPItem DPGroupTabsItem = {
     if (item.patch) {
         DPPatchSwitch *toggle = [[DPPatchSwitch alloc] initWithPatch:item.patch];
         [self.notes setObject:note forKey:toggle];
-        control = toggle;
+        control = toggle.withHiddenIcon;
         DPForEachOption(item.patch, ^(DPPatch *option) { [search appendFormat:@" %@ %@", option->title, option->detail]; });
     }
     NSStackView *trailing = [NSStackView stackViewWithViews:@[control, DPSymbol(@"chevron.right", 11, NSColor.tertiaryLabelColor)]];

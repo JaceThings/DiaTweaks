@@ -11,10 +11,13 @@ void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option)) {
 
 NSString *DPWhyDisabled(DPPatch *patch) {
     if (patch->unavailable) return @"Unavailable on this Dia version.";
-    DPPatch *required = DPRequired(patch), *disabler = DPPatchNamed(patch->disabledBy);
-    if (required && !required->on) return [NSString stringWithFormat:@"Needs %@.", required->title];
-    if (disabler && disabler->on) return [NSString stringWithFormat:@"Not needed while %@ is on.", disabler->title];
-    return nil;
+    DPPatch *required = DPRequired(patch);
+    return required && !required->on ? [NSString stringWithFormat:@"Needs %@.", required->title] : nil;
+}
+
+NSString *DPWhyHidden(DPPatch *patch) {
+    DPPatch *disabler = DPPatchNamed(patch->disabledBy);
+    return patch->on && disabler && disabler->on ? [NSString stringWithFormat:@"Hidden while %@ is on", disabler->title] : nil;
 }
 
 NSURL *DPWikiURL(DPItem item) {
@@ -27,6 +30,7 @@ NSURL *DPWikiURL(DPItem item) {
 - (instancetype)initWithPatch:(DPPatch *)patch {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _patch = patch;
+    _hiddenIcon = DPSymbol(@"eye.slash", 12, NSColor.secondaryLabelColor);
     self.controlSize = NSControlSizeSmall;
     self.accessibilityLabel = patch->title;
     self.target = self;
@@ -40,8 +44,16 @@ NSURL *DPWikiURL(DPItem item) {
     [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
 }
 
+- (NSView *)withHiddenIcon {
+    NSStackView *stack = [NSStackView stackViewWithViews:@[self.hiddenIcon, self]];
+    stack.spacing = 8;
+    return stack;
+}
+
 - (void)sync {
     self.state = self.patch->on;
     self.enabled = !DPWhyDisabled(self.patch);
+    self.hiddenIcon.toolTip = DPWhyHidden(self.patch);
+    self.hiddenIcon.hidden = !self.hiddenIcon.toolTip;
 }
 @end

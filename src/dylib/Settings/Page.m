@@ -50,7 +50,7 @@
     if (!patch) return [NSStackView new];
     DPPatchSwitch *toggle = [[DPPatchSwitch alloc] initWithPatch:patch];
     [_switches addObject:toggle];
-    return toggle;
+    return toggle.withHiddenIcon;
 }
 
 - (void)sync {
