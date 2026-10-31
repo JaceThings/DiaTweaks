@@ -25,6 +25,7 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
     if (!panes.count) return @"no toolbar found";
     for (NSView *pane in panes) {
         NSView *bar = DPSubview(pane, DPDiaToolbar);
+        if (!bar && !patch->on) continue;  // Another patch moved it out of the page.
         if (!bar) return @"no toolbar found";
         if ([DPToolbarHover forPane:pane].progress > 0) continue;  // Revealed by the pointer.
         NSView *bookmarks = DPBookmarksUnder(pane, bar);

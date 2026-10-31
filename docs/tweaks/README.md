@@ -15,6 +15,7 @@ Every tweak DiaTweaks adds to Dia. Turn them on and off in **Dia â†’ Settings â†
 |---|---|
 | [Hide toolbar](hideToolbar.md) | Hides the address bar, navigation buttons and extensions |
 | [Reveal toolbar on hover](revealToolbarOnHover.md) | Shows the hidden toolbar when the pointer is at the top of the page |
+| [Toolbar in sidebar](sidebarToolbar.md) | Moves the address, navigation buttons and extensions to the top of the sidebar |
 | [Hide sidebar button](hideSidebarButton.md) | Hides the sidebar button |
 | [Hide Chat button](hideChatButton.md) | Hides the Chat button in the toolbar |
 

@@ -22,6 +22,7 @@ diatweaks enable hideToolbar
 
 - [Reveal toolbar on hover](revealToolbarOnHover.md) shows the toolbar again while the pointer is at the top of the page.
 - [Hide sidebar button](hideSidebarButton.md) and [Hide Chat button](hideChatButton.md) are greyed out in Settings while this is on, because their buttons are hidden with the toolbar.
+- [Toolbar in sidebar](sidebarToolbar.md) is greyed out in Settings while this is on, and the toolbar stays hidden in the page.
 
 ## FAQ
 
