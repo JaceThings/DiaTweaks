@@ -27,6 +27,7 @@ jobs:
       # A new tag gets a draft, so nobody is offered it until its notes are written and it's published.
       - run: |
           gh release view "$TAG" >/dev/null 2>&1 && exit 0
+          git fetch --force --tags  # checkout leaves the tag lightweight, which loses its announcement
           scripts/release-notes "$TAG" > "$RUNNER_TEMP/notes.md"
           gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
       - run: gh release upload "$TAG" build/DiaTweaks.zip --clobber
