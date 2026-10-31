@@ -1,4 +1,4 @@
-#import "DiaPatches.h"
+#import "SafeMode/SafeMode.h"
 #import <dlfcn.h>
 #import <mach-o/loader.h>
 
@@ -36,8 +36,7 @@ void DPBeginLaunch(void) {
     [DPState addEntriesFromDictionary:@{@"level": @(DPSafeMode), @"crashes": @(crashes), @"launching": @YES}];
     [DPState writeToURL:DPStateURL error:nil];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, DPSurviveSeconds * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPSurvived(); });
-    [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillTerminateNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *_) { DPSurvived(); }];
+    DPOnQuit(^{ DPSurvived(); });
 }
 
 void DPLeaveSafeMode(void) {

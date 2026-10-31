@@ -1,4 +1,4 @@
-#import "DiaPatches.h"
+#import "Updates/Updates.h"
 
 static NSString *DPCLI(void) {
     return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -43,11 +43,7 @@ void DPCheckForUpdates(void (^completion)(NSDictionary *status)) {
     });
 }
 
-@interface DPUpdateMenuTarget : NSObject
-@end
-
-@implementation DPUpdateMenuTarget
-- (void)checkForUpdates:(id)sender {
+static void DPShowUpdateAlert(void) {
     DPCheckForUpdates(^(NSDictionary *status) {
         NSAlert *alert = [NSAlert new];
         id staged = status[@"staged"];
@@ -63,17 +59,6 @@ void DPCheckForUpdates(void (^completion)(NSDictionary *status)) {
         }
     });
 }
-@end
-
-static void DPInstallUpdateMenuItem(void) {
-    static DPUpdateMenuTarget *target;
-    target = target ?: [DPUpdateMenuTarget new];
-    for (NSMenuItem *item in NSApp.mainMenu.itemArray.firstObject.submenu.itemArray) {
-        if (![item.title hasPrefix:@"Check for Updates"]) continue;
-        item.target = target;
-        item.action = @selector(checkForUpdates:);
-    }
-}
 
 static void DPApplyStagedOnQuit(void) {
     if (![NSFileManager.defaultManager fileExistsAtPath:DPStagedPath()]) return;
@@ -84,12 +69,9 @@ static void DPApplyStagedOnQuit(void) {
 }
 
 void DPInstallUpdates(void) {
-    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    [center addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
-        DPInstallUpdateMenuItem();
+    DPOnLaunch(^{
+        DPOnMenuItem(nil, @"Check for Updates", ^{ DPShowUpdateAlert(); });
         DPRunCLI(@[@"update"], nil);
-    }];
-    [center addObserverForName:NSApplicationWillTerminateNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
-        DPApplyStagedOnQuit();
-    }];
+    });
+    DPOnQuit(^{ DPApplyStagedOnQuit(); });
 }
