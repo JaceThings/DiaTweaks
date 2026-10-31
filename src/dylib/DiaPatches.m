@@ -1,14 +1,15 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 typedef NS_ENUM(NSInteger, DPTweak) {
     DPEdgeToEdge, DPHideToolbar, DPSquareSidebarCorners, DPAnimatedCount,
-    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPTweakCount
+    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPGroupTabsByDomain, DPTweakCount
 };
 
-static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton"};
-static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO};
+static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"groupTabsByDomain"};
+static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO};
 static const CGFloat DPWindowPadding = 6;
 static const CFTimeInterval DPAnimationDuration = 0.25;
 
@@ -16,7 +17,10 @@ static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
 static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
+static NSHashTable *DPTrackedContents, *DPBrowsers;
+static NSMapTable *DPBrowserByContents, *DPDelegateByBrowser;
 static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey;
+static char DPSessionKey;
 
 static NSString *DPCLI(void) {
     return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -60,12 +64,12 @@ static NSView *DPFindView(NSView *root, BOOL (^match)(NSView *)) {
 #pragma mark - Hooks
 
 typedef struct { Class cls; SEL sel; IMP imp; } DPOriginal;
-static DPOriginal DPOriginals[16];
+static DPOriginal DPOriginals[24];
 static int DPOriginalCount;
 
 static void DPHook(Class cls, SEL sel, IMP replacement) {
     Method method = cls ? class_getInstanceMethod(cls, sel) : NULL;
-    if (!method || method_getImplementation(method) == replacement || DPOriginalCount == 16) return;
+    if (!method || method_getImplementation(method) == replacement || DPOriginalCount == 24) return;
     IMP original = method_getImplementation(method);
     if (!class_addMethod(cls, sel, replacement, method_getTypeEncoding(method))) method_setImplementation(method, replacement);
     DPOriginals[DPOriginalCount++] = (DPOriginal){cls, sel, original};
@@ -451,10 +455,411 @@ static void DPAnimate(void) {
     [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
+#pragma mark - Group tabs by domain
+
+// Dia's own grouping entry point is ArcBrowserDelegate on _TtC3ADK15ChromiumBrowser. Session ids are
+// NSNumbers. Each ArcBrowser is one window. A site group is titled with the lowercase host, with one
+// leading "www." removed; other subdomains stay separate, and http and https share a group.
+// Groups whose title has a space or a capital are left alone (named, meeting and live groups, and
+// pinned tabs). A site keeps a group only while two or more of its tabs are free to join.
+
+static BOOL DPGroupInFlight, DPGroupPending;
+static int DPGroupPasses;
+static NSMutableDictionary<NSNumber *, NSString *> *DPRejected;
+static NSMutableDictionary<NSString *, NSString *> *DPAutoGroups;
+
+static id DPMsg(id object, SEL sel) {
+    id (*msg)(id, SEL) = (void *)objc_msgSend;
+    return object ? msg(object, sel) : nil;
+}
+
+static BOOL DPMsgBool(id object, SEL sel) {
+    BOOL (*msg)(id, SEL) = (void *)objc_msgSend;
+    return object ? msg(object, sel) : NO;
+}
+
+static long long DPLongID(id value) {
+    if ([value isKindOfClass:NSNumber.class]) return ((NSNumber *)value).longLongValue;
+    if ([value isKindOfClass:NSString.class]) {
+        NSScanner *scanner = [NSScanner scannerWithString:value];
+        long long number = 0;
+        if ([scanner scanLongLong:&number] && scanner.atEnd) return number;
+        return 0;
+    }
+    if ([value respondsToSelector:@selector(identifier)]) {
+        long long (*msg)(id, SEL) = (void *)objc_msgSend;
+        return msg(value, @selector(identifier));
+    }
+    return 0;
+}
+
+static NSString *DPText(id value) {
+    if ([value isKindOfClass:NSString.class]) return value;
+    if ([value isKindOfClass:NSURL.class]) return ((NSURL *)value).absoluteString;
+    if ([value isKindOfClass:NSNumber.class]) return ((NSNumber *)value).stringValue;
+    return nil;
+}
+
+static void DPLoadAutoGroups(void) {
+    id saved = [DPDefaults dictionaryForKey:@"autoDomainGroups"];
+    DPAutoGroups = [saved isKindOfClass:NSDictionary.class] ? [saved mutableCopy] : [NSMutableDictionary dictionary];
+}
+
+static void DPSaveAutoGroups(void) {
+    [DPDefaults setObject:DPAutoGroups forKey:@"autoDomainGroups"];
+}
+
+static void DPRememberAutoGroup(NSString *groupID, NSString *title) {
+    if (!groupID.length || !title.length || [DPAutoGroups[groupID] isEqualToString:title]) return;
+    DPAutoGroups[groupID] = title;
+    DPSaveAutoGroups();
+}
+
+static NSString *DPDecodeLabel(NSString *label) {
+    if (![label hasPrefix:@"xn--"]) return label;
+    NSString *decoded = [label stringByApplyingTransform:@"Any-Punycode" reverse:YES];
+    return decoded.length && ![decoded isEqualToString:label] ? decoded.lowercaseString : label;
+}
+
+// nil for new-tab, dia://, chrome://, file and other internal pages.
+static NSString *DPDomainKey(NSString *urlString) {
+    NSURL *url = [NSURL URLWithString:urlString ?: @""];
+    NSString *scheme = url.scheme.lowercaseString;
+    if (![scheme isEqualToString:@"http"] && ![scheme isEqualToString:@"https"]) return nil;
+    NSString *host = url.host.lowercaseString;
+    if (!host.length) return nil;
+    while ([host hasSuffix:@"."]) host = [host substringToIndex:host.length - 1];
+    NSMutableArray<NSString *> *labels = [host.componentsSeparatedByString:@"."].mutableCopy;
+    for (NSUInteger i = 0; i < labels.count; i++) labels[i] = DPDecodeLabel(labels[i]);
+    host = [labels componentsJoinedByString:@"."];
+    if ([host hasPrefix:@"www."] && host.length > 4) host = [host substringFromIndex:4];
+    return host.length ? host : nil;
+}
+
+// Titles we assign are lowercase hosts. A capital or a space means someone named the group.
+static BOOL DPHostTitle(NSString *title) {
+    if (!title.length) return NO;
+    if ([title rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) return NO;
+    if ([title rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@":/@\\"]].location != NSNotFound) return NO;
+    if ([title rangeOfCharacterFromSet:NSCharacterSet.uppercaseLetterCharacterSet].location != NSNotFound) return NO;
+    return [title containsString:@"."] || [title isEqualToString:@"localhost"];
+}
+
+static void DPGroupTabsNow(void);
+
+static void DPScheduleGroupTabs(void) {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ DPScheduleGroupTabs(); });
+        return;
+    }
+    if (!DPOn[DPGroupTabsByDomain]) return;
+    DPGroupPending = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!DPOn[DPGroupTabsByDomain]) { DPGroupPending = NO; return; }
+        if (DPGroupInFlight) return;
+        if (!DPGroupPending) return;
+        DPGroupPending = NO;
+        DPGroupTabsNow();
+    });
+}
+
+static void DPRememberContents(id contents, id session, id browser, id delegate) {
+    long long sid = DPLongID(session);
+    if (sid <= 0 || !contents || !browser || !delegate) return;
+    objc_setAssociatedObject(contents, &DPSessionKey, @(sid), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [DPBrowserByContents setObject:browser forKey:contents];
+    [DPDelegateByBrowser setObject:delegate forKey:browser];
+    [DPBrowsers addObject:browser];
+    [DPTrackedContents addObject:contents];
+    if (DPOn[DPGroupTabsByDomain]) DPScheduleGroupTabs();
+}
+
+static void DPBrowser_setDelegate(id self, SEL _cmd, id delegate) {
+    DPCallOriginal(void (*)(id, SEL, id), self, _cmd, delegate);
+    [DPBrowsers addObject:self];
+    if (delegate) [DPDelegateByBrowser setObject:delegate forKey:self];
+}
+
+static void DPBrowser_didRestore(id self, SEL _cmd, id browser, id contents, id session) {
+    DPCallOriginal(void (*)(id, SEL, id, id, id), self, _cmd, browser, contents, session);
+    if (!browser) return;
+    [DPBrowsers addObject:browser];
+    id delegate = [self respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)] ? self : [DPDelegateByBrowser objectForKey:browser];
+    DPRememberContents(contents, session, browser, delegate);
+}
+
+static void DPWeb_setUrl(id self, SEL _cmd, id url) {
+    DPCallOriginal(void (*)(id, SEL, id), self, _cmd, url);
+    if (DPOn[DPGroupTabsByDomain] && objc_getAssociatedObject(self, &DPSessionKey)) DPScheduleGroupTabs();
+}
+
+static void DPWeb_didNavigate(id self, SEL _cmd, id contents, id navigation) {
+    DPCallOriginal(void (*)(id, SEL, id, id), self, _cmd, contents, navigation);
+    if (DPOn[DPGroupTabsByDomain]) DPScheduleGroupTabs();
+}
+
+static BOOL DPPinned(long long sid, NSString *url, NSSet<NSNumber *> *sessions, NSSet<NSString *> *urls, NSSet<NSString *> *openURLs) {
+    if ([sessions containsObject:@(sid)]) return YES;
+    // AppleScript tab ids are not always the session id. Fall back to an exact URL that is only ever pinned.
+    return url.length && [urls containsObject:url] && ![openURLs containsObject:url];
+}
+
+static void DPCollectPinned(NSMutableSet<NSNumber *> *sessions, NSMutableSet<NSString *> *pinnedURLs, NSMutableSet<NSString *> *openURLs) {
+    id app = NSApp.delegate;
+    if (![app respondsToSelector:@selector(appleScriptWindows)]) return;
+    NSArray *windows = DPMsg(app, @selector(appleScriptWindows));
+    if (![windows isKindOfClass:NSArray.class]) return;
+    for (id window in windows) {
+        if (![window respondsToSelector:@selector(appleScriptTabs)]) continue;
+        NSArray *tabs = DPMsg(window, @selector(appleScriptTabs));
+        if (![tabs isKindOfClass:NSArray.class]) continue;
+        for (id tab in tabs) {
+            NSString *url = [tab respondsToSelector:@selector(URL)] ? DPText(DPMsg(tab, @selector(URL))) : nil;
+            BOOL pinned = [tab respondsToSelector:@selector(isPinned)] && DPMsgBool(tab, @selector(isPinned));
+            if (pinned && url.length) [pinnedURLs addObject:url];
+            else if (url.length) [openURLs addObject:url];
+            if (!pinned || ![tab respondsToSelector:@selector(tabId)]) continue;
+            long long sid = DPLongID(DPMsg(tab, @selector(tabId)));
+            if (sid > 0) [sessions addObject:@(sid)];
+        }
+    }
+}
+
+static id DPGroupProperties(NSString *title) {
+    Class cls = NSClassFromString(@"ArcTabGroupProperties");
+    id props = cls ? [cls new] : nil;
+    if ([props respondsToSelector:@selector(setTitle:)]) [props setTitle:title];
+    return props;
+}
+
+static void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger index, void (^done)(void)) {
+    if (index >= ops.count || !DPOn[DPGroupTabsByDomain]) { done(); return; }
+    NSDictionary *op = ops[index];
+    void (^next)(id) = ^(id result) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            BOOL ok = [result respondsToSelector:@selector(success)] && DPMsgBool(result, @selector(success));
+            if (ok && [op[@"op"] isEqual:@"create"]) {
+                NSString *groupID = DPText(DPMsg(result, @selector(groupId)));
+                DPRememberAutoGroup(groupID, op[@"title"]);
+                [op[@"live"] addObject:groupID ?: @""];
+            }
+            NSArray *ids = op[@"ids"], *urls = op[@"urls"];
+            for (NSUInteger i = 0; i < ids.count; i++) {
+                if (ok) [DPRejected removeObjectForKey:ids[i]];
+                else DPRejected[ids[i]] = i < urls.count ? urls[i] : @"";
+            }
+            DPRunOps(delegate, browser, ops, index + 1, done);
+        });
+    };
+    void (*create)(id, SEL, id, NSArray *, id, void (^)(id)) = (void *)objc_msgSend;
+    void (*add)(id, SEL, id, NSString *, NSArray *, void (^)(id)) = (void *)objc_msgSend;
+    void (*remove)(id, SEL, id, NSArray *, void (^)(id)) = (void *)objc_msgSend;
+    if ([op[@"op"] isEqual:@"create"]) {
+        id props = DPGroupProperties(op[@"title"]);
+        if (props) create(delegate, @selector(browser:createTabGroupWithSessionIds:properties:completion:), browser, op[@"ids"], props, next);
+        else dispatch_async(dispatch_get_main_queue(), ^{ DPRunOps(delegate, browser, ops, index + 1, done); });
+    }
+    else if ([op[@"op"] isEqual:@"add"]) add(delegate, @selector(browser:addTabsToGroupWithId:sessionIds:completion:), browser, op[@"group"], op[@"ids"], next);
+    else remove(delegate, @selector(browser:removeTabsFromGroupWithSessionIds:completion:), browser, op[@"ids"], next);
+}
+
+static NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups, NSMutableSet<NSString *> *liveGroupIDs) {
+    NSMutableDictionary<NSNumber *, NSString *> *domainOf = [NSMutableDictionary dictionary];
+    for (NSDictionary *tab in tabs) domainOf[tab[@"session"]] = tab[@"domain"];
+    NSMutableDictionary<NSNumber *, NSDictionary *> *membership = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSString *, NSDictionary *> *byID = [NSMutableDictionary dictionary];
+    for (id info in groups) {
+        if (![info respondsToSelector:@selector(groupId)]) continue;
+        NSString *groupID = DPText(DPMsg(info, @selector(groupId)));
+        NSString *title = [info respondsToSelector:@selector(title)] ? DPText(DPMsg(info, @selector(title))) : nil;
+        title = title ?: @"";
+        if (!groupID.length) continue;
+        [liveGroupIDs addObject:groupID];
+        NSString *saved = DPAutoGroups[groupID];
+        BOOL renamed = saved && ![saved isEqualToString:title];
+        if (renamed) [DPAutoGroups removeObjectForKey:groupID];
+        NSMutableArray<NSNumber *> *members = [NSMutableArray array];
+        NSArray *rawIDs = [info respondsToSelector:@selector(tabSessionIds)] ? DPMsg(info, @selector(tabSessionIds)) : nil;
+        if ([rawIDs isKindOfClass:NSArray.class]) for (id raw in rawIDs) {
+            long long sid = DPLongID(raw);
+            if (sid > 0) [members addObject:@(sid)];
+        }
+        // A lowercase title that matches every known member is a site group, even without a dot (localhost, intranet).
+        BOOL uniform = YES, known = NO;
+        for (NSNumber *sid in members) {
+            NSString *domain = domainOf[sid];
+            if (!domain) continue;
+            known = YES;
+            if (![domain isEqual:title]) uniform = NO;
+        }
+        BOOL managed = !renamed && (saved || DPHostTitle(title) || (uniform && known));
+        for (NSNumber *sid in members) membership[sid] = @{@"id": groupID, @"title": title, @"managed": @(managed)};
+        byID[groupID] = @{@"id": groupID, @"title": title, @"managed": @(managed), @"members": members};
+    }
+
+    NSMutableDictionary<NSString *, NSMutableArray<NSDictionary *> *> *pools = [NSMutableDictionary dictionary];
+    NSMutableArray<NSNumber *> *remove = [NSMutableArray array];
+    NSMutableArray<NSString *> *removeURLs = [NSMutableArray array];
+    for (NSDictionary *tab in tabs) {
+        NSNumber *sid = tab[@"session"];
+        NSDictionary *group = membership[sid];
+        BOOL managed = [group[@"managed"] boolValue];
+        BOOL home = managed && [group[@"title"] isEqual:tab[@"domain"]];
+        if (group && !managed) continue;
+        if (group && !home) { [remove addObject:sid]; [removeURLs addObject:tab[@"url"] ?: @""]; }
+        NSMutableArray *pool = pools[tab[@"domain"]] ?: (pools[tab[@"domain"]] = [NSMutableArray array]);
+        [pool addObject:tab];
+    }
+
+    NSMutableArray<NSDictionary *> *ops = [NSMutableArray array];
+    for (NSString *domain in pools) {
+        NSArray<NSDictionary *> *pool = pools[domain];
+        NSDictionary *home = nil;
+        for (NSDictionary *group in byID.allValues)
+            if ([group[@"managed"] boolValue] && [group[@"title"] isEqual:domain]) { home = group; break; }
+        if (pool.count < 2) {
+            for (NSDictionary *tab in pool) {
+                NSDictionary *group = membership[tab[@"session"]];
+                if ([group[@"title"] isEqual:domain] && [group[@"managed"] boolValue]) {
+                    [remove addObject:tab[@"session"]];
+                    [removeURLs addObject:tab[@"url"] ?: @""];
+                }
+            }
+            continue;
+        }
+        NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
+        NSMutableArray<NSString *> *urls = [NSMutableArray array];
+        for (NSDictionary *tab in pool) {
+            if ([ids containsObject:tab[@"session"]] || [home[@"members"] containsObject:tab[@"session"]]) continue;
+            [ids addObject:tab[@"session"]];
+            [urls addObject:tab[@"url"] ?: @""];
+        }
+        if (!ids.count) continue;
+        if (home) {
+            DPRememberAutoGroup(home[@"id"], domain);
+            [liveGroupIDs addObject:home[@"id"]];
+            [ops addObject:@{@"op": @"add", @"group": home[@"id"], @"ids": ids, @"urls": urls, @"live": liveGroupIDs}];
+        } else {
+            [ops addObject:@{@"op": @"create", @"title": domain, @"ids": ids, @"urls": urls, @"live": liveGroupIDs}];
+        }
+    }
+    // A tab can't join its new group until it has left the old one.
+    NSMutableArray<NSNumber *> *leaving = [NSMutableArray array];
+    NSMutableArray<NSString *> *leavingURLs = [NSMutableArray array];
+    for (NSUInteger i = 0; i < remove.count; i++) {
+        if ([leaving containsObject:remove[i]]) continue;
+        [leaving addObject:remove[i]];
+        [leavingURLs addObject:removeURLs[i]];
+    }
+    if (leaving.count) [ops insertObject:@{@"op": @"remove", @"ids": leaving, @"urls": leavingURLs, @"live": liveGroupIDs} atIndex:0];
+    return ops;
+}
+
+// AppleScript exposes every tab's address. Its tab id is an integer session id for some Dia builds and not
+// others; when it parses, tabs that never came through didRestoreWebContents can still be grouped.
+static void DPSupplementTabs(NSMapTable *tabsByBrowser, NSSet<NSNumber *> *pinnedSessions, NSSet<NSString *> *pinnedURLs, NSSet<NSString *> *openURLs) {
+    id app = NSApp.delegate;
+    if (![app respondsToSelector:@selector(appleScriptWindows)]) return;
+    NSArray *windows = DPMsg(app, @selector(appleScriptWindows));
+    NSArray *browsers = tabsByBrowser.keyEnumerator.allObjects;
+    if (![windows isKindOfClass:NSArray.class] || !browsers.count) return;
+    for (id window in windows) {
+        id browser = browsers.count == 1 ? browsers.firstObject : nil;
+        NSString *windowID = [window respondsToSelector:@selector(windowId)] ? DPText(DPMsg(window, @selector(windowId))) : nil;
+        if (!browser && windowID.length) for (id candidate in browsers) {
+            NSString *identifier = DPText(DPMsg(candidate, @selector(windowIdentifier)));
+            NSString *session = DPText(DPMsg(candidate, @selector(sessionId)));
+            if ([windowID isEqual:identifier] || [windowID isEqual:session]) { browser = candidate; break; }
+        }
+        NSMutableArray *tabs = browser ? [tabsByBrowser objectForKey:browser] : nil;
+        if (!tabs || ![window respondsToSelector:@selector(appleScriptTabs)]) continue;
+        NSMutableSet<NSNumber *> *seen = [NSMutableSet set];
+        for (NSDictionary *tab in tabs) [seen addObject:tab[@"session"]];
+        NSArray *scriptTabs = DPMsg(window, @selector(appleScriptTabs));
+        if (![scriptTabs isKindOfClass:NSArray.class]) continue;
+        for (id scriptTab in scriptTabs) {
+            if (![scriptTab respondsToSelector:@selector(tabId)]) continue;
+            long long sid = DPLongID(DPMsg(scriptTab, @selector(tabId)));
+            if (sid <= 0 || [seen containsObject:@(sid)]) continue;
+            NSString *url = [scriptTab respondsToSelector:@selector(URL)] ? DPText(DPMsg(scriptTab, @selector(URL))) : nil;
+            if ([DPRejected[@(sid)] isEqualToString:url ?: @""]) continue;
+            NSString *domain = DPDomainKey(url);
+            if (!domain || DPPinned(sid, url, pinnedSessions, pinnedURLs, openURLs)) continue;
+            [seen addObject:@(sid)];
+            [tabs addObject:@{@"session": @(sid), @"domain": domain, @"url": url ?: @"", @"contents": NSNull.null}];
+        }
+    }
+}
+
+static void DPGroupTabsNow(void) {
+    if (!DPOn[DPGroupTabsByDomain] || DPGroupInFlight) return;
+    NSMutableSet<NSNumber *> *pinnedSessions = [NSMutableSet set];
+    NSMutableSet<NSString *> *pinnedURLs = [NSMutableSet set], *openURLs = [NSMutableSet set];
+    DPCollectPinned(pinnedSessions, pinnedURLs, openURLs);
+
+    NSMapTable *tabsByBrowser = [NSMapTable strongToStrongObjectsMapTable];
+    for (id browser in DPBrowsers.allObjects) {
+        id delegate = [DPDelegateByBrowser objectForKey:browser];
+        if (![delegate respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)]) continue;
+        [tabsByBrowser setObject:[NSMutableArray array] forKey:browser];
+    }
+    for (id contents in DPTrackedContents.allObjects) {
+        NSNumber *session = objc_getAssociatedObject(contents, &DPSessionKey);
+        id browser = [DPBrowserByContents objectForKey:contents];
+        NSMutableArray *tabs = browser ? [tabsByBrowser objectForKey:browser] : nil;
+        NSString *url = DPText(DPMsg(contents, @selector(url)));
+        NSString *domain = DPDomainKey(url);
+        if (!session || !tabs || !domain) continue;
+        if ([DPRejected[session] isEqualToString:url ?: @""]) continue;
+        if (DPPinned(session.longLongValue, url, pinnedSessions, pinnedURLs, openURLs)) continue;
+        [tabs addObject:@{@"session": session, @"domain": domain, @"url": url ?: @"", @"contents": contents}];
+    }
+    DPSupplementTabs(tabsByBrowser, pinnedSessions, pinnedURLs, openURLs);
+    NSArray *browsers = tabsByBrowser.keyEnumerator.allObjects;
+    if (!browsers.count) return;
+    DPGroupInFlight = YES;
+    __block NSInteger left = browsers.count;
+    __block BOOL listed = YES, mutated = NO;
+    NSMutableSet<NSString *> *live = [NSMutableSet set];
+    for (id browser in browsers) {
+        NSArray *tabs = [[tabsByBrowser objectForKey:browser] copy];
+        id delegate = [DPDelegateByBrowser objectForKey:browser];
+        void (*ask)(id, SEL, id, void (^)(NSArray *)) = (void *)objc_msgSend;
+        ask(delegate, @selector(browser:getAllTabGroupsWithCompletion:), browser, ^(NSArray *groups) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (![groups isKindOfClass:NSArray.class]) listed = NO;
+                NSArray *ops = DPOn[DPGroupTabsByDomain] && [groups isKindOfClass:NSArray.class] ? DPOps(tabs, groups, live) : @[];
+                if (ops.count) mutated = YES;
+                DPRunOps(delegate, browser, ops, 0, ^{
+                    if (--left == 0) {
+                        if (listed) {
+                            for (NSString *groupID in DPAutoGroups.allKeys)
+                                if (![live containsObject:groupID]) [DPAutoGroups removeObjectForKey:groupID];
+                            DPSaveAutoGroups();
+                        }
+                        DPGroupInFlight = NO;
+                        if (!DPOn[DPGroupTabsByDomain]) { DPGroupPasses = 0; return; }
+                        // The follow-up folds a site group back up once its last extra tab has left.
+                        // The cap stops a pass that never observes its own write from rescheduling forever.
+                        if (mutated && DPGroupPasses < 3) { DPGroupPasses++; DPScheduleGroupTabs(); }
+                        else if (DPGroupPending) { DPGroupPasses = 0; DPGroupPending = NO; DPGroupTabsNow(); }
+                        else DPGroupPasses = 0;
+                    }
+                });
+            });
+        });
+    }
+}
+
 static void DPSetTweak(DPTweak tweak, BOOL on) {
     if (DPOn[tweak] == on) return;
     DPOn[tweak] = on;
     [DPDefaults setBool:on forKey:DPKeys[tweak]];
+    if (tweak == DPGroupTabsByDomain) {
+        if (on) { DPGroupPasses = 0; DPScheduleGroupTabs(); }
+        else DPGroupPending = NO;
+        return;
+    }
     if (tweak < DPAnimatedCount) DPAnimate();
     else {
         if (on) for (NSView *bar in DPBars) DPEnforceButtons(bar);
@@ -619,8 +1024,9 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
         {DPHideToolbar, @"menubar.rectangle", @"Hide toolbar", @"Remove the bar with the address, navigation buttons and extensions. Experimental."},
         {DPHideSidebarButton, @"sidebar.left", @"Hide sidebar button", @"Hide the sidebar toggle at the top left of the toolbar."},
         {DPHideChatButton, @"bubble.fill", @"Hide Chat button", @"Hide the Chat button at the top right of the toolbar."},
+        {DPGroupTabsByDomain, @"globe", @"Group tabs by domain", @"Group tabs from the same site, treating www as the site itself. Pinned tabs and single tabs stay put."},
     };
-    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor];
+    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
     for (size_t i = 0; i < sizeof rows / sizeof *rows; i++) {
@@ -1028,6 +1434,12 @@ __attribute__((constructor)) static void DPInit(void) {
     DPPanes = [NSHashTable weakObjectsHashTable];
     DPBars = [NSHashTable weakObjectsHashTable];
     DPSuppressed = [NSHashTable weakObjectsHashTable];
+    DPTrackedContents = [NSHashTable weakObjectsHashTable];
+    DPBrowsers = [NSHashTable weakObjectsHashTable];
+    DPBrowserByContents = [NSMapTable weakToWeakObjectsMapTable];
+    DPDelegateByBrowser = [NSMapTable weakToWeakObjectsMapTable];
+    DPLoadAutoGroups();
+    DPRejected = [NSMutableDictionary dictionary];
 
     DPHook(DPContainerClass(), @selector(setFrame:), (IMP)DPContainer_setFrame);
     for (NSString *selector in @[@"layout", @"updateLayer"])
@@ -1037,11 +1449,20 @@ __attribute__((constructor)) static void DPInit(void) {
     DPHook(DPToolbarClass(), @selector(layout), (IMP)DPBar_layout);
     DPHook(DPToolbarClass(), @selector(hitTest:), (IMP)DPToolbar_hitTest);
     DPHook(NSClassFromString(DPSettingsControllerClass), @selector(viewDidAppear), (IMP)DPSettings_viewDidAppear);
+    DPHook(NSClassFromString(@"ArcBrowser"), @selector(setDelegate:), (IMP)DPBrowser_setDelegate);
+    DPHook(NSClassFromString(@"_TtC3ADK15ChromiumBrowser"), @selector(browser:didRestoreWebContents:withSessionId:), (IMP)DPBrowser_didRestore);
+    DPHook(NSClassFromString(@"ArcWebContents"), @selector(setUrl:), (IMP)DPWeb_setUrl);
+    for (NSString *name in @[@"_TtC3ADK18WebContentChromium", @"ADK.WebContentChromium"]) {
+        Class web = NSClassFromString(name);
+        DPHook(web, @selector(webContents:didFinishNavigation:), (IMP)DPWeb_didNavigate);
+        DPHook(web, @selector(webContents:didFinishInPageNavigation:), (IMP)DPWeb_didNavigate);
+    }
 
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
         DPInstallUpdateMenuItem();
         DPRunCLI(@[@"update"], nil);
+        DPScheduleGroupTabs();
     }];
     [center addObserverForName:NSApplicationWillTerminateNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
         DPApplyStagedOnQuit();
