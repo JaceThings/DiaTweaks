@@ -15,6 +15,7 @@ static NSString *const kSparkle = @"http://www.andymatuschak.org/xml-namespaces/
 static NSString *const kLocalIdentity = @"DiaPatches Local Signing";
 static NSString *const kReleases = @"https://api.github.com/repos/JaceThings/DiaTweaks/releases/latest";
 static NSString *const kReleaseAsset = @"DiaTweaks.zip";
+static NSString *const kDiaReleaseNotes = @"https://www.diabrowser.com/release-notes/latest";
 
 static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
 static const char *gCommand;
@@ -319,7 +320,7 @@ static BOOL build(NSString *source) {
 #pragma mark - Updates
 
 @interface Release : NSObject
-@property(nonatomic, copy) NSString *build, *version, *url, *channel, *minimumOS, *notes;
+@property(nonatomic, copy) NSString *build, *version, *url, *channel, *minimumOS;
 @property(nonatomic) long long size;
 @end
 
@@ -336,17 +337,6 @@ static NSString *sparkle(NSXMLElement *item, NSXMLElement *enclosure, NSString *
     return value.length ? value : nil;
 }
 
-static NSString *plainText(NSString *html) {
-    NSMutableString *text = [html mutableCopy];
-    for (NSArray *swap in @[ @[ @"<(br|/p|/li|/h\\d)[^>]*>", @"\n" ], @[ @"<li[^>]*>", @"\n• " ], @[ @" +• +", @"\n• " ], @[ @"<[^>]+>", @"" ], @[ @"[ \t]+", @" " ],
-                             @[ @"\n\\s*\n+", @"\n" ] ])
-        [[NSRegularExpression regularExpressionWithPattern:swap[0] options:NSRegularExpressionCaseInsensitive error:NULL]
-            replaceMatchesInString:text options:0 range:NSMakeRange(0, text.length) withTemplate:swap[1]];
-    for (NSArray *entity in @[ @[ @"&amp;", @"&" ], @[ @"&lt;", @"<" ], @[ @"&gt;", @">" ], @[ @"&quot;", @"\"" ], @[ @"&#39;", @"'" ], @[ @"&nbsp;", @" " ] ])
-        [text replaceOccurrencesOfString:entity[0] withString:entity[1] options:0 range:NSMakeRange(0, text.length)];
-    return [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-}
-
 static NSArray<Release *> *releasesIn(NSXMLDocument *feed) {
     NSMutableArray<Release *> *releases = [NSMutableArray array];
     for (NSXMLElement *item in [feed nodesForXPath:@"/rss/channel/item" error:NULL]) {
@@ -357,7 +347,6 @@ static NSArray<Release *> *releasesIn(NSXMLDocument *feed) {
         release.channel = sparkle(item, nil, @"channel");
         release.minimumOS = sparkle(item, nil, @"minimumSystemVersion");
         release.size = [enclosure attributeForName:@"length"].stringValue.longLongValue;
-        release.notes = plainText([item elementsForName:@"description"].firstObject.stringValue ?: @"");
         NSString *shortVersion = sparkle(item, enclosure, @"shortVersionString") ?: @"?";
         NSString *suffix = [NSString stringWithFormat:@" (%@)", release.build];  // Dia's feed already has it
         release.version = [shortVersion hasSuffix:suffix] ? shortVersion : [shortVersion stringByAppendingString:suffix];
@@ -437,7 +426,7 @@ static NSDictionary *latestTweaks(int seconds, NSString **problem) {
         return nil;
     }
     return @{ @"tag" : release[@"tag_name"], @"digest" : digest, @"size" : asset[@"size"] ?: @0,
-              @"notes" : [release[@"body"] isKindOfClass:NSString.class] ? release[@"body"] : @"", @"url" : asset[@"browser_download_url"] };
+              @"releaseNotes" : release[@"html_url"] ?: @"", @"url" : asset[@"browser_download_url"] };
 }
 
 static BOOL tweaksAvailable(NSDictionary *latest) {
@@ -612,7 +601,7 @@ static BOOL checkUpdates(void) {
             @"installed" : versionOf(gPristine) ?: NSNull.null,
             @"latest" : dia.version ?: NSNull.null,
             @"size" : @(dia.size),
-            @"notes" : dia.notes ?: @"",
+            @"releaseNotes" : kDiaReleaseNotes,
             @"staged" : (stagedReady() ? versionOf(gStaged) : nil) ?: NSNull.null,
             @"available" : @((BOOL)(dia && newer(dia.build, buildOf(gPristine)) && !diaStaged)),
             @"error" : dia ? NSNull.null : problem,
@@ -621,7 +610,7 @@ static BOOL checkUpdates(void) {
             @"installed" : installedRelease()[@"tag"] ?: NSNull.null,
             @"latest" : tweaks[@"tag"] ?: NSNull.null,
             @"size" : tweaks[@"size"] ?: @0,
-            @"notes" : tweaks[@"notes"] ?: @"",
+            @"releaseNotes" : tweaks[@"releaseNotes"] ?: NSNull.null,
             @"staged" : stagedRelease()[@"tag"] ?: NSNull.null,
             @"available" : @((BOOL)tweaksAvailable(tweaks)),
             @"error" : tweaks ? NSNull.null : tweaksProblem,

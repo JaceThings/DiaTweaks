@@ -18,14 +18,6 @@ static NSTextField *DPLine(NSString *text, CGFloat size, NSColor *color) {
     return label;
 }
 
-static NSString *DPSummary(NSString *notes) {
-    for (NSString *line in [notes componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
-        NSString *trimmed = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-        if (trimmed.length && ![trimmed hasPrefix:@"#"]) return trimmed;
-    }
-    return nil;
-}
-
 static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part) {
     NSButton *button = [NSButton buttonWithTitle:title target:target action:action];
     button.identifier = part;
@@ -175,13 +167,10 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
                                                      DPButton(@"Update Now", self, @selector(updateNow:), part)]];
     }
     NSMutableArray *rows = [NSMutableArray arrayWithObject:DPRow(leading, trailing)];
-    NSString *summary = DPSummary(found[@"notes"]);
-    if (summary) {
-        NSTextField *text = DPLabel(summary, 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
-        text.maximumNumberOfLines = 3;
-        text.cell.truncatesLastVisibleLine = YES;
-        [rows addObject:DPRow(text, [NSStackView new])];
-    }
+    NSURL *notes = [found[@"releaseNotes"] isKindOfClass:NSString.class] ? [NSURL URLWithString:found[@"releaseNotes"]] : nil;
+    if (notes)
+        [rows addObject:DPLinkRow(DPRow(DPLine(@"Release Notes", 13, NSColor.labelColor), DPSymbol(@"arrow.up.right", 11, NSColor.secondaryLabelColor)),
+                                  @"Release Notes", ^{ [NSWorkspace.sharedWorkspace openURL:notes]; })];
     return DPGroup(rows);
 }
 

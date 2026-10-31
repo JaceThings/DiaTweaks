@@ -101,8 +101,7 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
         [entry addEntriesFromDictionary:@{
             @"latest" : latest, @"available" : @(!staged), @"staged" : staged ? latest : NSNull.null,
             @"size" : [part isEqual:DPDia] ? @704038560 : @960161,
-            @"notes" : [part isEqual:DPDia] ? @"Dia 1.56.0 brings easier app connections, Google Chat access, and steadier Chat responses."
-                                            : @"Software Update in Settings, so Dia and DiaTweaks update on your terms.",
+            @"releaseNotes" : [part isEqual:DPDia] ? @"https://www.diabrowser.com/release-notes/latest" : @"https://github.com/JaceThings/DiaTweaks/releases",
         }];
         found[part] = entry;
     }
