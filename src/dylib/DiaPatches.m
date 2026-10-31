@@ -210,11 +210,9 @@ static void DPTabStrip_viewWillLayout(NSViewController *self, SEL _cmd) {
     if (growth <= 0) return;
     for (NSView *button in @[recent ?: NSNull.null, downloads ?: NSNull.null, chats ?: NSNull.null])
         if ([button isKindOfClass:NSView.class]) [button setFrameOrigin:NSMakePoint(NSMinX(button.frame) - growth, NSMinY(button.frame))];
-    // With the window controls hidden Dia puts the pinned tabs right at the corner, where a short tile can't round enough to fit it.
-    CGFloat radius = MIN(DPPinnedTabRadius + growth, NSHeight(pinned.frame) / 2);
-    CGFloat inset = DPLargerCornerRadius - radius;
-    if (pinned && NSMinX(pinned.frame) < inset) {
-        CGFloat shift = inset - NSMinX(pinned.frame);
+    // With the window controls hidden the pinned tabs sit in the corner, so their side gap matches the top one.
+    if (pinned && NSMinX(pinned.frame) < DPLargerCornerRadius) {
+        CGFloat shift = NSMinY(pinned.frame) - NSMinX(pinned.frame);
         [pinned setFrameOrigin:NSMakePoint(NSMinX(pinned.frame) + shift, NSMinY(pinned.frame))];
         NSRect frame = tabs.frame;
         frame.origin.x += shift;
