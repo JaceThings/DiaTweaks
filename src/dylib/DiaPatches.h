@@ -26,6 +26,11 @@ IMP DPOriginalIMP(id object, SEL sel);
 
 #define DPCallOriginal(type, object, sel, ...) ((type)DPOriginalIMP(object, sel))(object, sel, ##__VA_ARGS__)
 
+NSView *DPFindView(NSView *root, BOOL (^match)(NSView *));
+
+void DPInstallButtons(void);
+void DPApplyButtons(DPPatch *patch);
+
 void DPInstallUpdates(void);
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output));
 void DPCheckForUpdates(void (^completion)(NSDictionary *status));
