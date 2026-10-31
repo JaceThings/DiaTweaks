@@ -27,10 +27,15 @@ static Class DPPaneClass(void) {
     return cls = cls ?: NSClassFromString(@"_TtC11ContentPane15ContentPaneView");
 }
 
+static Class DPBookmarksBarClass(void) {
+    static Class cls;
+    return cls = cls ?: NSClassFromString(@"_TtC11BookmarkBar15BookmarkBarView");
+}
+
 static void DPApplyToolbar(NSView *pane);
 
 @interface DPToolbarHover : NSObject
-@property (nonatomic, weak) NSView *pane, *bar;
+@property (nonatomic, weak) NSView *pane, *bar, *bookmarks;
 @property (nonatomic, strong) NSTrackingArea *tracking;
 @property (nonatomic, strong) NSTimer *animation, *hideTimer;
 @property (nonatomic) BOOL revealed;
@@ -125,11 +130,14 @@ static void DPApplyToolbar(NSView *pane);
     }];
 }
 
-- (void)updateForBar:(NSView *)bar {
+- (void)updateForBar:(NSView *)bar bookmarks:(NSView *)bookmarks {
     self.bar = bar;
+    self.bookmarks = bookmarks;
     NSRect rect = NSZeroRect;
     if (DPHideToolbar.on && DPRevealToolbarOnHover.on && !bar.hiddenOrHasHiddenAncestor) {
-        rect = NSIntersectionRect(DPLaidOutFrame(bar), self.pane.bounds);
+        rect = DPLaidOutFrame(bar);
+        if (bookmarks) rect = NSUnionRect(rect, DPLaidOutFrame(bookmarks));
+        rect = NSIntersectionRect(rect, self.pane.bounds);
         CGFloat height = MIN(DPToolbarHoverHeight, NSHeight(rect));
         if (self.revealed) {
             // A margin below the revealed bar keeps it from flickering at its edge.
@@ -160,7 +168,8 @@ static void DPApplyToolbar(NSView *pane);
 // The bar stays in Dia's layout: hiding it makes Dia reflow in ways it won't undo.
 static NSView *DPToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
     DPToolbarHover *hover = objc_getAssociatedObject(self.superview, &DPToolbarHoverKey);
-    return DPHideToolbar.on && hover.progress == 0 ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
+    BOOL hidden = DPHideToolbar.on && hover.progress == 0 && (self == hover.bar || self == hover.bookmarks);
+    return hidden ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
 }
 
 static NSView *DPToolbarIn(NSView *pane) {
@@ -172,9 +181,19 @@ static NSView *DPToolbarIn(NSView *pane) {
 static CGFloat DPTop(NSView *pane, NSRect r) { return pane.isFlipped ? NSMinY(r) : NSHeight(pane.bounds) - NSMaxY(r); }
 static CGFloat DPBottom(NSView *pane, NSRect r) { return pane.isFlipped ? NSMaxY(r) : NSHeight(pane.bounds) - NSMinY(r); }
 
+// Dia lays the bookmarks bar out right under the toolbar, so it hides and shows with it.
+static NSView *DPBookmarksUnder(NSView *pane, NSView *bar) {
+    for (NSView *sub in pane.subviews)
+        if ([sub isKindOfClass:DPBookmarksBarClass()] && !sub.hidden && fabs(DPTop(pane, DPLaidOutFrame(sub)) - DPBottom(pane, bar.frame)) < 0.5) return sub;
+    return nil;
+}
+
 static void DPApplyToolbar(NSView *pane) {
     NSView *bar = DPToolbarIn(pane);
     if (!bar) return;
+
+    NSView *bookmarks = DPBookmarksUnder(pane, bar);
+    NSArray<NSView *> *bars = bookmarks ? @[bar, bookmarks] : @[bar];
 
     DPToolbarHover *hover = objc_getAssociatedObject(pane, &DPToolbarHoverKey);
     if (!hover) {
@@ -182,23 +201,24 @@ static void DPApplyToolbar(NSView *pane) {
         hover.pane = pane;
         objc_setAssociatedObject(pane, &DPToolbarHoverKey, hover, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    [hover updateForBar:bar];
+    [hover updateForBar:bar bookmarks:bookmarks];
 
     CGFloat progress = DPHideToolbar.progress;
-    bar.alphaValue = 1 - progress * (1 - hover.progress);
-    NSView *lowest = pane.subviews.firstObject;
-    // Revealed on hover, the bar floats over the page instead of pushing it down.
+    for (NSView *view in bars) view.alphaValue = 1 - progress * (1 - hover.progress);
+    NSIndexSet *slots = [pane.subviews indexesOfObjectsPassingTest:^BOOL(NSView *sub, NSUInteger i, BOOL *stop) { return [bars containsObject:sub]; }];
+    BOOL onTop = slots.firstIndex == pane.subviews.count - bars.count, atBottom = slots.lastIndex == bars.count - 1;
+    // Revealed on hover, the bars float over the page instead of pushing it down.
     if (hover.revealed || hover.progress > 0) {
-        if (pane.subviews.lastObject != bar) [pane addSubview:bar positioned:NSWindowAbove relativeTo:nil];
-    } else if (progress > 0 && lowest != bar) {
-        [pane addSubview:bar positioned:NSWindowBelow relativeTo:lowest];
-    } else if (progress == 0 && lowest == bar) {
-        [pane addSubview:bar positioned:NSWindowAbove relativeTo:nil];
+        if (!onTop) for (NSView *view in bars) [pane addSubview:view positioned:NSWindowAbove relativeTo:nil];
+    } else if (progress > 0 && !atBottom) {
+        for (NSView *view in bars.reverseObjectEnumerator) [pane addSubview:view positioned:NSWindowBelow relativeTo:nil];
+    } else if (progress == 0 && slots.firstIndex == 0) {
+        for (NSView *view in bars) [pane addSubview:view positioned:NSWindowAbove relativeTo:nil];
     }
 
-    CGFloat shift = NSHeight(bar.frame) * progress, edge = DPBottom(pane, bar.frame);
+    CGFloat edge = DPBottom(pane, DPLaidOutFrame(bars.lastObject)), shift = (edge - DPTop(pane, bar.frame)) * progress;
     NSMutableArray<NSView *> *stack = [NSMutableArray new];
-    for (NSView *sub in pane.subviews) if (sub != bar) [stack addObject:sub];
+    for (NSView *sub in pane.subviews) if (![bars containsObject:sub]) [stack addObject:sub];
     [stack sortUsingComparator:^NSComparisonResult(NSView *a, NSView *b) {
         return [@(DPTop(pane, DPLaidOutFrame(a))) compare:@(DPTop(pane, DPLaidOutFrame(b)))];
     }];
@@ -240,6 +260,7 @@ static void DPInstallHideToolbar(void) {
     DPPanes = [NSHashTable weakObjectsHashTable];
     DPHook(DPPaneClass(), @selector(layout), DPPane_layout);
     DPHook(DPToolbarClass(), @selector(hitTest:), DPToolbar_hitTest);
+    DPHook(DPBookmarksBarClass(), @selector(hitTest:), DPToolbar_hitTest);
 }
 
 static NSString *DPVerifyHideToolbar(DPPatch *patch) {
@@ -250,14 +271,19 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
         if (!bar) return @"no toolbar found";
         DPToolbarHover *hover = objc_getAssociatedObject(pane, &DPToolbarHoverKey);
         if (hover.progress > 0) continue;  // Revealed by the pointer.
+        NSView *bookmarks = DPBookmarksUnder(pane, bar);
+        NSArray<NSView *> *bars = bookmarks ? @[bar, bookmarks] : @[bar];
         BOOL hidden = patch->on, found = NO;
-        if (fabs(bar.alphaValue - (hidden ? 0 : 1)) > 0.01) return hidden ? @"toolbar still shows" : @"toolbar is invisible";
-        if (hidden && [bar hitTest:NSMakePoint(NSMidX(bar.frame), NSMidY(bar.frame))]) return @"toolbar still takes clicks";
+        for (NSView *view in bars) {
+            if (fabs(view.alphaValue - (hidden ? 0 : 1)) > 0.01) return hidden ? @"toolbar still shows" : @"toolbar is invisible";
+            if (hidden && [view hitTest:NSMakePoint(NSMidX(view.frame), NSMidY(view.frame))]) return @"toolbar still takes clicks";
+        }
+        CGFloat edge = DPBottom(pane, DPLaidOutFrame(bars.lastObject));
         for (NSView *view in pane.subviews) {
             NSRect laidOut = DPLaidOutFrame(view);
-            if (view == bar || view.hidden || fabs(DPTop(pane, laidOut) - DPBottom(pane, bar.frame)) > 0.5) continue;
+            if ([bars containsObject:view] || view.hidden || fabs(DPTop(pane, laidOut) - edge) > 0.5) continue;
             found = YES;
-            CGFloat shift = hidden ? NSHeight(bar.frame) : 0;
+            CGFloat shift = hidden ? edge - DPTop(pane, bar.frame) : 0;
             if (fabs(DPTop(pane, view.frame) - (DPTop(pane, laidOut) - shift)) > 0.5)
                 return hidden ? @"page didn't move up into the toolbar's place" : @"page isn't below the toolbar";
         }
