@@ -108,13 +108,15 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         [views addObject:[self groupFor:part]];
     }
 
-    NSMutableArray<NSView *> *installed = [NSMutableArray new];
-    for (NSString *part in @[DPDia, DPTweaks]) {
-        id version = updates.found[part][@"installed"];
-        NSString *text = [version isKindOfClass:NSString.class] ? version : [part isEqual:DPDia] ? @"—" : @"Development build";
-        [installed addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), DPLine(text, 13, NSColor.secondaryLabelColor))];
+    if (updates.found) {
+        NSMutableArray<NSView *> *installed = [NSMutableArray new];
+        for (NSString *part in @[DPDia, DPTweaks]) {
+            id version = updates.found[part][@"installed"];
+            NSString *text = [version isKindOfClass:NSString.class] ? version : [part isEqual:DPDia] ? @"—" : @"Development build";
+            [installed addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), DPLine(text, 13, NSColor.secondaryLabelColor))];
+        }
+        [views addObjectsFromArray:@[DPHeader(@"Installed"), DPGroup(installed)]];
     }
-    [views addObjectsFromArray:@[DPHeader(@"Installed"), DPGroup(installed)]];
 
     NSMutableArray<NSView *> *automatic = [NSMutableArray new];
     for (NSString *part in @[DPDia, DPTweaks]) {

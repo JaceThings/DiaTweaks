@@ -200,7 +200,8 @@ static void DPShowUpdateAlert(void) {
             return;
         }
         alert.messageText = [[names componentsJoinedByString:@" and "] stringByAppendingString:@" available"];
-        alert.informativeText = @"Dia relaunches to install it once it’s downloaded.";
+        alert.informativeText = parts.count > 1 ? @"Dia relaunches to install them once they’re downloaded."
+                                                : @"Dia relaunches to install it once it’s downloaded.";
         [alert addButtonWithTitle:@"Update and Relaunch"];
         [alert addButtonWithTitle:@"Later"];
         if ([alert runModal] != NSAlertFirstButtonReturn) return;
