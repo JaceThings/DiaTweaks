@@ -16,6 +16,7 @@
     for (NSSwitch *toggle in self.toggles) {
         DPPatch *patch = DPPatches[toggle.tag];
         DPPatch *disabler = DPPatchNamed(patch->disabledBy), *required = DPRequired(patch);
+        toggle.state = patch->on;
         toggle.enabled = !patch->unavailable && !(disabler && disabler->on);
         if (required && !required->on) [hiddenRows addObject:toggle.superview];
     }
@@ -43,6 +44,10 @@
 
 - (void)toggle:(NSSwitch *)sender {
     DPSetPatch(DPPatches[sender.tag], sender.state == NSControlStateValueOn, YES);
+    [self patchesDidChange:nil];
+}
+
+- (void)patchesDidChange:(NSNotification *)notification {
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.allowsImplicitAnimation = YES;
         [self updateRows];
