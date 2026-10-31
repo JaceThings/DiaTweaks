@@ -1,8 +1,5 @@
 #import "Settings.h"
 
-static NSString *const DPSettingsControllerClass = @"_TtC11Preferences38SidebarPreferencesWindowViewController";
-static NSString *const DPSidebarListClass = @"_TtC11Preferences15SidebarListView";
-static NSString *const DPSidebarCellClass = @"_TtC11PreferencesP33_4E27E2219272DF78406B73092738280415SidebarCellView";
 static NSUserInterfaceItemIdentifier const DPPatchesCellIdentifier = @"DiaPatchesCell";
 static char DPSettingsKey, DPSearchItemKey;
 
@@ -21,11 +18,11 @@ static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
 @implementation DPSettings
 
 + (DPSettings *)forTable:(NSTableView *)table {
-    DPSettings *settings = objc_getAssociatedObject(table, &DPSettingsKey);
+    DPSettings *settings = DPGet(table, &DPSettingsKey);
     if (settings) return settings;
     settings = [DPSettings new];
     settings.table = table;
-    objc_setAssociatedObject(table, &DPSettingsKey, settings, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    DPSet(table, &DPSettingsKey, settings);
     return settings;
 }
 
@@ -40,7 +37,7 @@ static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
     [self.pane refresh];
 
     NSToolbar *toolbar = window.toolbar;
-    objc_setAssociatedObject(toolbar, &DPSearchItemKey, self.pane.searchItem, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    DPSet(toolbar, &DPSearchItemKey, self.pane.searchItem);
     [toolbar insertItemWithItemIdentifier:NSToolbarFlexibleSpaceItemIdentifier atIndex:toolbar.items.count];
     [toolbar insertItemWithItemIdentifier:DPSearchItemIdentifier atIndex:toolbar.items.count];
 
@@ -67,14 +64,14 @@ static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
 @end
 
 static NSInteger DPSidebar_numberOfRows(id self, SEL _cmd, NSTableView *table) {
-    return DPCallOriginal(NSInteger (*)(id, SEL, NSTableView *), self, _cmd, table) + 1;
+    return DPCallOriginal(DPSidebar_numberOfRows, self, table) + 1;
 }
 
 static NSView *DPSidebar_viewForRow(id self, SEL _cmd, NSTableView *table, NSTableColumn *column, NSInteger row) {
-    if (!DPIsPatchesRow(table, row)) return DPCallOriginal(NSView *(*)(id, SEL, NSTableView *, NSTableColumn *, NSInteger), self, _cmd, table, column, row);
+    if (!DPIsPatchesRow(table, row)) return DPCallOriginal(DPSidebar_viewForRow, self, table, column, row);
     NSTableCellView *cell = [table makeViewWithIdentifier:DPPatchesCellIdentifier owner:nil];
     if (cell) return cell;
-    cell = [NSClassFromString(DPSidebarCellClass) new];
+    cell = [objc_getClass(DPDiaSettingsSidebarCell) new];
     cell.identifier = DPPatchesCellIdentifier;
     cell.textField.stringValue = @"Patches";
     cell.imageView.image = [NSImage imageWithSystemSymbolName:@"wand.and.stars" accessibilityDescription:@"Patches"];
@@ -86,18 +83,17 @@ static void DPSidebar_selectionDidChange(id self, SEL _cmd, NSNotification *noti
     DPSettings *settings = [DPSettings forTable:table];
     if (DPIsPatchesRow(table, table.selectedRow)) return [settings showPane];
     [settings hidePane];
-    DPCallOriginal(void (*)(id, SEL, NSNotification *), self, _cmd, notification);
+    DPCallOriginal(DPSidebar_selectionDidChange, self, notification);
 }
 
 static NSToolbarItem *DPSettings_toolbarItem(id self, SEL _cmd, NSToolbar *toolbar, NSToolbarItemIdentifier identifier, BOOL willInsert) {
-    if ([identifier isEqualToString:DPSearchItemIdentifier]) return objc_getAssociatedObject(toolbar, &DPSearchItemKey);
-    return DPCallOriginal(NSToolbarItem *(*)(id, SEL, NSToolbar *, NSToolbarItemIdentifier, BOOL), self, _cmd, toolbar, identifier, willInsert);
+    if ([identifier isEqualToString:DPSearchItemIdentifier]) return DPGet(toolbar, &DPSearchItemKey);
+    return DPCallOriginal(DPSettings_toolbarItem, self, toolbar, identifier, willInsert);
 }
 
 void DPInstallSettings(void) {
-    Class list = NSClassFromString(DPSidebarListClass);
-    DPHook(list, @selector(numberOfRowsInTableView:), DPSidebar_numberOfRows);
-    DPHook(list, @selector(tableView:viewForTableColumn:row:), DPSidebar_viewForRow);
-    DPHook(list, @selector(tableViewSelectionDidChange:), DPSidebar_selectionDidChange);
-    DPHook(NSClassFromString(DPSettingsControllerClass), @selector(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:), DPSettings_toolbarItem);
+    DPHook(DPDiaSettingsSidebar, @selector(numberOfRowsInTableView:), (IMP)DPSidebar_numberOfRows);
+    DPHook(DPDiaSettingsSidebar, @selector(tableView:viewForTableColumn:row:), (IMP)DPSidebar_viewForRow);
+    DPHook(DPDiaSettingsSidebar, @selector(tableViewSelectionDidChange:), (IMP)DPSidebar_selectionDidChange);
+    DPHook(DPDiaSettingsController, @selector(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:), (IMP)DPSettings_toolbarItem);
 }
