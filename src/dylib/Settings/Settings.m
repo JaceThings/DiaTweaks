@@ -15,8 +15,8 @@ static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
 @property (nonatomic, strong) DPPaneView *pane;
 @property (nonatomic) NSWindowStyleMask mask;
 @property (nonatomic) NSSize minSize, maxSize;
-@property (nonatomic) CGFloat height;
-@property (nonatomic) BOOL backWasEnabled;  // Dia's own history, while a page borrows the back arrow.
+@property (nonatomic) CGFloat fixedHeight;
+@property (nonatomic) BOOL backWasEnabled;
 @end
 
 static __weak DPPaneView *DPShownPane;
@@ -90,15 +90,14 @@ static __weak DPPaneView *DPShownPane;
     return nil;
 }
 
-// Dia's Settings window has a fixed size; Patches lets it grow taller for long pages, and puts it back on the way out.
 - (void)allowResizing:(BOOL)allow {
     NSWindow *window = self.table.window;
-    if (allow == (self.height > 0)) return;  // height is only set while Patches made it resizable.
+    if (allow == (self.fixedHeight > 0)) return;
     if (allow) {
         self.mask = window.styleMask;
         self.minSize = window.contentMinSize;
         self.maxSize = window.contentMaxSize;
-        self.height = window.frame.size.height;
+        self.fixedHeight = window.frame.size.height;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
         window.contentMinSize = NSMakeSize(width, 400);
@@ -109,8 +108,8 @@ static __weak DPPaneView *DPShownPane;
     window.styleMask = self.mask;
     window.contentMinSize = self.minSize;
     window.contentMaxSize = self.maxSize;
-    [window setFrame:NSMakeRect(frame.origin.x, NSMaxY(frame) - self.height, frame.size.width, self.height) display:YES];
-    self.height = 0;
+    [window setFrame:NSMakeRect(frame.origin.x, NSMaxY(frame) - self.fixedHeight, frame.size.width, self.fixedHeight) display:YES];
+    self.fixedHeight = 0;
 }
 @end
 
@@ -142,7 +141,6 @@ static NSToolbarItem *DPSettings_toolbarItem(id self, SEL _cmd, NSToolbar *toolb
     return DPCallOriginal(DPSettings_toolbarItem, self, toolbar, identifier, willInsert);
 }
 
-// Dia's back arrow leaves a Patches page first, then does what it always does.
 static void DPSettings_handleBack(id self, SEL _cmd) {
     if (DPShownPane.showsPage) return [DPShownPane goBack];
     DPCallOriginal(DPSettings_handleBack, self);

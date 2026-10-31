@@ -5,8 +5,6 @@
 #define DP_PREVIEWS "https://raw.githubusercontent.com/wiki/JaceThings/DiaTweaks/previews/"
 #endif
 
-// Previews live in the wiki repo as previews/<key>.mp4 or previews/<key>.png, so adding one needs no new build.
-// The page shows the cached copy at once and swaps in a newer one when the download finishes.
 @implementation DPPreviewView {
     NSString *_key;
     CALayer *_media;
@@ -42,7 +40,6 @@ static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
     return self;
 }
 
-// The first kind the wiki has wins; a 404 clears that kind from the cache. Offline, the cached copy stays.
 - (void)fetch:(NSArray<NSString *> *)exts {
     if (!exts.count) return [self show:nil];
     NSURL *cached = DPCachedPreview(_key, exts[0]);

@@ -2,7 +2,6 @@
 
 NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 
-// The overview, and the page of whatever was clicked on it, which replaces it like System Settings.
 @implementation DPPaneView {
     NSScrollView *_overviewScroll, *_pageScroll;
     DPPageView *_page;
@@ -13,7 +12,6 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     self.wantsLayer = YES;
     _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
     _searchItem.searchField.delegate = self;
-    // The toolbar stretches the field to fill its space; pin it to two thirds of that.
     [_searchItem.searchField.widthAnchor constraintEqualToConstant:218].active = YES;
     _overview = [DPOverviewView new];
     __weak DPPaneView *weakSelf = self;
@@ -23,7 +21,6 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     return self;
 }
 
-// Dia's Settings window puts its toolbar over the pane, so the pane scrolls below the window's title.
 - (NSScrollView *)scrollFor:(NSView *)content {
     DPFlippedView *document = [DPFlippedView new];
     NSScrollView *scroll = [NSScrollView new];
@@ -38,6 +35,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     NSLayoutConstraint *fill = [content.widthAnchor constraintEqualToAnchor:document.widthAnchor constant:-48];
     fill.priority = NSLayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
+        // Dia's toolbar sits over the top of the pane.
         [scroll.topAnchor constraintEqualToAnchor:self.topAnchor constant:52],
         [scroll.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
         [scroll.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
@@ -54,45 +52,43 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     return scroll;
 }
 
+- (void)showPage:(DPPageView *)page {
+    [_pageScroll removeFromSuperview];
+    _page = page;
+    _pageScroll = page ? [self scrollFor:page] : nil;
+    _overviewScroll.hidden = page != nil;
+}
+
 - (void)openPage:(DPItem)item {
-    _page = [[DPPageView alloc] initWithItem:item];
-    _pageScroll = [self scrollFor:_page];
-    _overviewScroll.hidden = YES;
-    if (self.titleChanged) self.titleChanged(item.title, YES);
+    [self showPage:[[DPPageView alloc] initWithItem:item]];
+    self.titleChanged(item.title, YES);
 }
 
 - (BOOL)showsPage { return _page != nil; }
 
 - (void)goBack {
     if (!_page) return;
-    [_pageScroll removeFromSuperview];
-    _pageScroll = nil;
-    _page = nil;
-    _overviewScroll.hidden = NO;
-    if (self.titleChanged) self.titleChanged(@"Patches", NO);
+    [self showPage:nil];
+    self.titleChanged(@"Patches", NO);
 }
 
 - (void)reset {
-    [_pageScroll removeFromSuperview];
-    _pageScroll = nil;
-    _page = nil;
-    _overviewScroll.hidden = NO;
+    [self showPage:nil];
     self.searchItem.searchField.stringValue = @"";
-    [self.overview updateWithQuery:@""];
+    [self.overview syncWithQuery:@""];
 }
 
-// Searching looks through the overview, so typing on a page goes back to it.
 - (void)controlTextDidChange:(NSNotification *)notification {
     NSString *query = self.searchItem.searchField.stringValue;
-    if (_page && query.length) [self goBack];
-    [self.overview updateWithQuery:query];
+    if (query.length) [self goBack];
+    [self.overview syncWithQuery:query];
 }
 
 - (void)patchesDidChange:(NSNotification *)notification {
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.allowsImplicitAnimation = YES;
-        [self.overview updateWithQuery:self.searchItem.searchField.stringValue];
-        [self->_page update];
+        [self.overview syncWithQuery:self.searchItem.searchField.stringValue];
+        [self->_page sync];
         [self layoutSubtreeIfNeeded];
     }];
 }

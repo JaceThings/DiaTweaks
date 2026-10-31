@@ -10,41 +10,48 @@ extern NSToolbarItemIdentifier const DPSearchItemIdentifier;
 // Controls.m: the pieces the pane is built from, styled like macOS System Settings.
 NSView *DPGroup(NSArray<NSView *> *rows);
 NSView *DPRow(NSView *leading, NSView *trailing);
-NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void));  // Clicking anywhere but its controls calls `open`.
+NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void));
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color);
 NSView *DPIconTile(NSString *symbol, NSColor *color);
 NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color);
 NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing);
+void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 
 @interface DPFlippedView : NSView
 @end
 
-// Something with a page: a patch, or a command when `patch` is NULL.
+@interface DPPatchSwitch : NSSwitch
+@property (nonatomic, readonly) DPPatch *patch;
+- (instancetype)initWithPatch:(DPPatch *)patch;
+- (void)sync;
+@end
+
+// A patch, or a command when `patch` is NULL.
 typedef struct {
     DPPatch *patch;
     __unsafe_unretained NSString *key, *title, *detail, *symbol, *tint, *where;
 } DPItem;
 
 DPItem DPPatchItem(DPPatch *patch);
-NSArray<NSValue *> *DPOptions(DPPatch *patch);  // The patches that require it, shown on its page.
-NSString *DPWhyDisabled(DPPatch *patch);        // nil while its switch works.
+void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option));
+NSString *DPWhyDisabled(DPPatch *patch);
 NSURL *DPWikiURL(DPItem item);
 
 @interface DPPreviewView : NSView
 - (instancetype)initWithKey:(NSString *)key;
 @end
 
-@interface DPPageView : NSView
+@interface DPPageView : NSStackView
 - (instancetype)initWithItem:(DPItem)item;
-- (void)update;
+- (void)sync;
 @end
 
-@interface DPOverviewView : NSView
+@interface DPOverviewView : NSStackView
 @property (nonatomic, copy) void (^open)(DPItem item);
 @property (nonatomic, strong) NSMapTable<NSView *, NSString *> *searchText;
 @property (nonatomic, strong) NSTextField *status;
 @property (nonatomic, strong) NSButton *checkButton, *relaunchButton;
-- (void)updateWithQuery:(NSString *)query;
+- (void)syncWithQuery:(NSString *)query;
 @end
 
 @interface DPOverviewView (Updates)
@@ -59,5 +66,5 @@ NSURL *DPWikiURL(DPItem item);
 @property (nonatomic, copy) void (^titleChanged)(NSString *title, BOOL canGoBack);
 @property (nonatomic, readonly) BOOL showsPage;
 - (void)goBack;
-- (void)reset;  // The overview, no search.
+- (void)reset;
 @end

@@ -13,9 +13,9 @@ struct DPPatch {
     int order;  // Settings lists patches by ascending order.
     __unsafe_unretained NSString *title, *detail;
     __unsafe_unretained NSString *symbol, *tint;  // SF Symbol and NSColor class property for the row's icon.
-    __unsafe_unretained NSString *section;  // Its group in Settings. A patch that `requires` another is listed on that one's page instead.
+    __unsafe_unretained NSString *section;  // Its group in Settings.
     const char *const *classes;  // Dia classes it needs (DPClasses). If one is missing, it stays off and Settings says so.
-    __unsafe_unretained NSString *requires;    // Key of a patch that must be on: Settings shows the row only then.
+    __unsafe_unretained NSString *requires;    // Key of a patch that must be on. Settings lists this one as an option on that patch's page.
     __unsafe_unretained NSString *disabledBy;  // Key of a patch that, while on, disables this one's switch.
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.

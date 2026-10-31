@@ -47,7 +47,6 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
 @end
 
 @implementation DPLinkRowView
-// Labels and icons would take the click themselves; only a working switch or button keeps its own.
 - (NSView *)hitTest:(NSPoint)point {
     NSView *hit = [super hitTest:point];
     BOOL control = [hit isKindOfClass:NSSwitch.class] || [hit isKindOfClass:NSButton.class];
@@ -85,6 +84,15 @@ NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color) {
     view.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold];
     view.contentTintColor = color;
     return view;
+}
+
+void DPFillStack(NSStackView *stack, NSArray<NSView *> *views) {
+    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    stack.spacing = 8;
+    for (NSView *view in views) {
+        [stack addArrangedSubview:view];
+        [view.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+    }
 }
 
 NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing) {
