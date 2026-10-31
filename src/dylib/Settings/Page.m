@@ -29,7 +29,7 @@
                                   DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)], 2);
         [options addObject:DPRow(text, [self switchFor:option])];
     });
-    if (options.count) [views addObjectsFromArray:@[DPLabel(@"Options", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor), DPGroup(options)]];
+    if (options.count) [views addObjectsFromArray:@[DPHeader(@"Options"), DPGroup(options)]];
 
     NSURL *wiki = DPWikiURL(item);
     NSView *wikiRow = DPLinkRow(DPRow(DPLabel(@"Read more on the wiki", 13, NSFontWeightRegular, NSColor.labelColor),

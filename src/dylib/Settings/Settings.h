@@ -12,6 +12,7 @@ NSView *DPGroup(NSArray<NSView *> *rows);
 NSView *DPRow(NSView *leading, NSView *trailing);
 NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void));
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color);
+NSTextField *DPHeader(NSString *text);
 NSView *DPIconTile(NSString *symbol, NSColor *color);
 NSView *DPIconTileOfSize(NSString *symbol, NSColor *color, CGFloat size);
 NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color);
@@ -24,7 +25,6 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 @interface DPFillView : NSView
 @end
 
-// An eye.slash beside it says when the patch is on but another one hides what it changes.
 @interface DPPatchSwitch : NSSwitch
 @property (nonatomic, readonly) DPPatch *patch;
 @property (nonatomic, readonly) NSImageView *hiddenIcon;

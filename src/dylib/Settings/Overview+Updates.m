@@ -45,7 +45,7 @@
 
 - (void)refresh {
     [self updatesDidChange];
-    [DPUpdates.shared check];
+    [DPUpdates.shared check:nil];
 }
 
 - (void)leaveSafeMode:(id)sender {

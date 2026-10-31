@@ -1,7 +1,5 @@
 #import "Settings.h"
 
-static NSString *DPPartName(NSString *part) { return [part isEqual:DPDia] ? @"Dia" : @"DiaTweaks"; }
-
 // App icons carry their own margin, so Dia's is drawn larger than the tile to look the same size.
 static NSView *DPPartIcon(NSString *part) {
     if ([part isEqual:DPTweaks]) return DPIconTileOfSize(@"wand.and.stars", NSColor.systemPurpleColor, 30);
@@ -20,7 +18,6 @@ static NSTextField *DPLine(NSString *text, CGFloat size, NSColor *color) {
     return label;
 }
 
-// The first paragraph: Dia's notes go on to list every change, GitHub's to headings and bullets.
 static NSString *DPSummary(NSString *notes) {
     for (NSString *line in [notes componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
         NSString *trimmed = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
@@ -35,7 +32,6 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     return button;
 }
 
-// Like macOS's Software Update: what's available with its notes, then what's installed and the automatic settings.
 @implementation DPSoftwareUpdateView {
     NSString *_shape;
     NSMapTable<NSString *, NSProgressIndicator *> *_bars;
@@ -48,12 +44,10 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     _details = [NSMapTable strongToStrongObjectsMapTable];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sync) name:DPUpdatesDidChangeNotification object:nil];
     DPUpdates *updates = DPUpdates.shared;
-    if (!updates.checking && ![updates downloading:DPDia] && ![updates downloading:DPTweaks]) [updates check];
+    if (!updates.checking && ![updates downloading:DPDia] && ![updates downloading:DPTweaks]) [updates check:nil];
     [self sync];
     return self;
 }
-
-- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 
 - (NSArray<NSString *> *)shown {
     DPUpdates *updates = DPUpdates.shared;
@@ -114,7 +108,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
 
     for (NSString *part in shown) {
         if (part != shown.firstObject) {
-            NSStackView *header = [NSStackView stackViewWithViews:@[DPLabel(@"Also Available", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor)]];
+            NSStackView *header = [NSStackView stackViewWithViews:@[DPHeader(@"Also Available")]];
             [header addView:[NSButton buttonWithTitle:@"Update All" target:self action:@selector(updateAll:)] inGravity:NSStackViewGravityTrailing];
             [views addObject:header];
         }
@@ -127,7 +121,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         NSString *text = [version isKindOfClass:NSString.class] ? version : [part isEqual:DPDia] ? @"—" : @"Development build";
         [installed addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), DPLine(text, 13, NSColor.secondaryLabelColor))];
     }
-    [views addObjectsFromArray:@[DPLabel(@"Installed", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor), DPGroup(installed)]];
+    [views addObjectsFromArray:@[DPHeader(@"Installed"), DPGroup(installed)]];
 
     NSMutableArray<NSView *> *automatic = [NSMutableArray new];
     for (NSString *part in @[DPDia, DPTweaks]) {
@@ -140,7 +134,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         menu.accessibilityLabel = [DPPartName(part) stringByAppendingString:@" updates"];
         [automatic addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), menu)];
     }
-    [views addObjectsFromArray:@[DPLabel(@"Automatic Updates", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor), DPGroup(automatic)]];
+    [views addObjectsFromArray:@[DPHeader(@"Automatic Updates"), DPGroup(automatic)]];
 
     DPFillStack(self, views);
     [self setCustomSpacing:14 afterView:views.firstObject];
@@ -166,7 +160,6 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         NSProgressIndicator *bar = [NSProgressIndicator new];
         bar.style = NSProgressIndicatorStyleBar;
         bar.indeterminate = NO;
-        bar.minValue = 0;
         bar.maxValue = 1;
         [bar.widthAnchor constraintEqualToConstant:140].active = YES;
         [_bars setObject:bar forKey:part];
@@ -189,8 +182,8 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     return DPGroup(rows);
 }
 
-- (void)checkAgain:(id)sender { [DPUpdates.shared check]; }
-- (void)download:(NSButton *)sender { [DPUpdates.shared download:sender.identifier]; }
+- (void)checkAgain:(id)sender { [DPUpdates.shared check:nil]; }
+- (void)download:(NSButton *)sender { [DPUpdates.shared download:sender.identifier then:nil]; }
 - (void)relaunch:(NSButton *)sender { [DPUpdates.shared installAndRelaunch:@[sender.identifier]]; }
 
 - (void)updateNow:(NSButton *)sender {

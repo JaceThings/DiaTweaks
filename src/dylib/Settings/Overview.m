@@ -36,7 +36,7 @@ static const DPItem DPGroupTabsItem = {
 
     NSMutableArray<NSView *> *views = [NSMutableArray new];
     for (NSString *title in titles) {
-        NSTextField *header = DPLabel(title, 12, NSFontWeightSemibold, NSColor.secondaryLabelColor);
+        NSTextField *header = DPHeader(title);
         NSView *group = DPGroup(rows[title]);
         [views addObjectsFromArray:@[header, group]];
         [self.sections addObject:@[header, group, rows[title]]];

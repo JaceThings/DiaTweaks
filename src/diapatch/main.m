@@ -420,7 +420,6 @@ static NSString *sha256(NSString *file) {
     return [@"sha256:" stringByAppendingString:hex];
 }
 
-// tag, digest, size, notes and url of the latest release's DiaTweaks.zip.
 static NSDictionary *latestTweaks(int seconds, NSString **problem) {
     NSString *url = env("DIAPATCH_RELEASES") ?: kReleases, *output;
     if (fetch(url, seconds, nil, &output) != 0) {
@@ -474,8 +473,9 @@ static BOOL stageTweaks(void) {
 static BOOL applyTweaks(void) {
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
+    NSDictionary<NSString *, NSString *> *targets = tweaksTargets();
     BOOL ok = makeDir(inHome(@"bin"));
-    for (NSString *name in tweaksTargets()) ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:name], tweaksTargets()[name]);
+    for (NSString *name in targets) ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:name], targets[name]);
     ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:@"release.plist"], inHome(@"release.plist"));
     return ok && removeTree(gStagedTweaks) && say(@"installed DiaTweaks %@", tag);
 }
@@ -601,7 +601,7 @@ static BOOL status(BOOL json) {
     return YES;
 }
 
-// Everything Settings' Software Update page shows. Like status, it doesn't wait for other runs.
+// Like status, it runs without taking the lock.
 static BOOL checkUpdates(void) {
     NSString *channel, *problem, *tweaksProblem;
     Release *dia = latest(15, &channel, &problem);

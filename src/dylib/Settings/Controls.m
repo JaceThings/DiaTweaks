@@ -105,6 +105,8 @@ NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing) {
     return stack;
 }
 
+NSTextField *DPHeader(NSString *text) { return DPLabel(text, 12, NSFontWeightSemibold, NSColor.secondaryLabelColor); }
+
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color) {
     NSTextField *label = [NSTextField wrappingLabelWithString:text];
     label.lineBreakStrategy = NSLineBreakStrategyStandard;
