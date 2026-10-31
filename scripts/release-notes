@@ -1,0 +1,20 @@
+#!/bin/sh
+# Drafts the notes for release $1 from the commits since the tag before it.
+# The first line is what Dia's Software Update shows, so the release workflow leaves it for you to write.
+set -eu
+cd "$(dirname "$0")/.."
+tag=$1
+previous=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)
+commits=$(git log --format=%s ${previous:+"$previous.."}"$tag")
+
+# "feat(dylib): reveal the toolbar (#6)" becomes "Reveal the toolbar (#6)".
+section() {
+    lines=$(printf '%s\n' "$commits" | grep -E "^($1)(\([^)]*\))?!?: " | perl -pe 's/^[a-z]+(\([^)]*\))?!?: //; s/^(.)/\u$1/' || true)
+    [ -z "$lines" ] || printf '\n## %s\n\n%s\n' "$2" "$(printf '%s\n' "$lines" | sed 's/^/- /')"
+}
+
+echo "One sentence on what's new. Dia's Software Update shows this line."
+section feat New
+section 'fix|perf' Fixes
+echo
+echo "**Full changes:** https://github.com/${GITHUB_REPOSITORY:-JaceThings/DiaTweaks}/compare/${previous:-$(git rev-list --max-parents=0 "$tag")}...$tag"

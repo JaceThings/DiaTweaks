@@ -43,7 +43,12 @@ To try `install.sh`, `diapatch` or `diatweaks` without touching your own Dia, po
 
 ## Releasing
 
-Push a tag like `v1.2.0`. The Release workflow builds `DiaTweaks.zip` with `scripts/package` and attaches it to that release, and every install picks it up the next time Dia opens. Installs compare the zip's digest, not the version, so to fix a release in place, run the workflow again by hand with the same tag: the new zip replaces the old one and counts as an update. Keep immutable releases off in the repo settings, or that stops working.
+1. Tag main and push the tag: `git tag v1.2.0 && git push origin v1.2.0`. Versions are `vMAJOR.MINOR.PATCH`.
+2. The Release workflow builds `DiaTweaks.zip` and opens a draft release with it attached. The notes list every `feat` under New and every `fix` or `perf` under Fixes, which is why commit subjects read as sentences.
+3. Replace the first line of the notes with one sentence on what's new. Dia's Software Update shows only that line.
+4. Publish. Installs see it the next time Dia opens or someone checks.
+
+Installs compare the zip's digest, not the version. To fix a release without a new version, push the fix to main, move the tag (`git tag -f v1.2.0 && git push -f origin v1.2.0`), then run the Release workflow by hand with that tag. It replaces the zip, and everyone gets it as an update, including people who already installed the broken one. Edit the notes on GitHub at any time. Keep immutable releases off in the repo settings, or GitHub won't let the zip change.
 
 ## Commits
 
