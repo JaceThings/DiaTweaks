@@ -13,6 +13,7 @@ NSView *DPRow(NSView *leading, NSView *trailing);
 NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void));
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color);
 NSView *DPIconTile(NSString *symbol, NSColor *color);
+NSView *DPIconTileOfSize(NSString *symbol, NSColor *color, CGFloat size);
 NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color);
 NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing);
 void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);

@@ -9,10 +9,10 @@ void DPHandOffAndQuit(NSArray<NSString *> *args);  // Quits Dia while the CLI ru
 // The two things that update. Each is a key in `diapatch check --json`.
 extern NSString *const DPDia, *const DPTweaks;
 
-// Automatic Updates settings, all on unless turned off.
-extern NSString *const DPAutoCheck, *const DPAutoDownload, *const DPAutoInstallDia, *const DPAutoInstallTweaks;
-BOOL DPAutoUpdate(NSString *key);
-void DPSetAutoUpdate(NSString *key, BOOL on);
+// How far each part updates on its own. Each level does what the one before it does too.
+typedef NS_ENUM(NSInteger, DPAutoLevel) { DPAutoOff, DPAutoNotify, DPAutoDownload, DPAutoInstall };
+DPAutoLevel DPAutoLevelOf(NSString *part);  // DPAutoInstall unless changed
+void DPSetAutoLevel(NSString *part, DPAutoLevel level);
 
 extern NSNotificationName const DPUpdatesDidChangeNotification;
 

@@ -42,7 +42,7 @@ Tweak names work as keys or titles, like `hideToolbar` or `"Hide toolbar"`. Add 
 
 ## Updating
 
-Dia's own updater is switched off. **Settings → Patches → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. By default it checks when Dia opens, downloads what it finds and installs it when you quit; **Automatic Updates** there turns each step off.
+Dia's own updater is switched off. **Settings → Patches → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. Under **Automatic Updates**, pick for each of Dia and DiaTweaks: off, just show updates, download them, or download and install them when you quit (the default).
 
 - **Dia now:** `diatweaks update-dia`
 - **DiaTweaks now:** `diatweaks update`

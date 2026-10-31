@@ -1,8 +1,6 @@
 #import "Updates/Updates.h"
 
 NSString *const DPDia = @"dia", *const DPTweaks = @"tweaks";
-NSString *const DPAutoCheck = @"autoCheckUpdates", *const DPAutoDownload = @"autoDownloadUpdates",
-                *const DPAutoInstallDia = @"autoInstallDia", *const DPAutoInstallTweaks = @"autoInstallTweaks";
 NSNotificationName const DPUpdatesDidChangeNotification = @"DPUpdatesDidChange";
 
 static NSString *DPSupport(NSString *name) {
@@ -14,9 +12,14 @@ static NSString *DPCLI(void) { return DPSupport(@"bin/diapatch"); }
 
 static NSUserDefaults *DPUpdateDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
 
-BOOL DPAutoUpdate(NSString *key) { return [DPUpdateDefaults() objectForKey:key] ? [DPUpdateDefaults() boolForKey:key] : YES; }
+static NSString *DPAutoKey(NSString *part) { return [part isEqual:DPDia] ? @"autoUpdateDia" : @"autoUpdateTweaks"; }
 
-void DPSetAutoUpdate(NSString *key, BOOL on) { [DPUpdateDefaults() setBool:on forKey:key]; }
+DPAutoLevel DPAutoLevelOf(NSString *part) {
+    id level = [DPUpdateDefaults() objectForKey:DPAutoKey(part)];
+    return level ? MIN(MAX([level integerValue], DPAutoOff), DPAutoInstall) : DPAutoInstall;
+}
+
+void DPSetAutoLevel(NSString *part, DPAutoLevel level) { [DPUpdateDefaults() setInteger:level forKey:DPAutoKey(part)]; }
 
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -155,8 +158,8 @@ static void DPShowUpdateAlert(void) {
 }
 
 static void DPInstallOnQuit(void) {
-    BOOL dia = DPAutoUpdate(DPAutoInstallDia) && [NSFileManager.defaultManager fileExistsAtPath:DPSupport(@"staged/Dia.app")];
-    BOOL tweaks = DPAutoUpdate(DPAutoInstallTweaks) && [NSFileManager.defaultManager fileExistsAtPath:DPSupport(@"staged/DiaTweaks")];
+    BOOL dia = DPAutoLevelOf(DPDia) == DPAutoInstall && [NSFileManager.defaultManager fileExistsAtPath:DPSupport(@"staged/Dia.app")];
+    BOOL tweaks = DPAutoLevelOf(DPTweaks) == DPAutoInstall && [NSFileManager.defaultManager fileExistsAtPath:DPSupport(@"staged/DiaTweaks")];
     if (!dia && !tweaks) return;
     NSMutableArray *args = [NSMutableArray arrayWithObjects:@"apply", @"--wait", @(getpid()).stringValue, nil];
     if (dia) [args addObject:@"--dia"];
@@ -170,12 +173,11 @@ static void DPInstallOnQuit(void) {
 void DPInstallUpdates(void) {
     DPOnLaunch(^{
         DPOnMenuItem(nil, @"Check for Updates", ^{ DPShowUpdateAlert(); });
-        if (!DPAutoUpdate(DPAutoCheck)) return;
+        if (DPAutoLevelOf(DPDia) == DPAutoOff && DPAutoLevelOf(DPTweaks) == DPAutoOff) return;
         DPUpdates *updates = DPUpdates.shared;
         [updates check:^{
-            if (!DPAutoUpdate(DPAutoDownload)) return;
             for (NSString *part in @[DPDia, DPTweaks])
-                if ([updates available:part]) [updates download:part];
+                if (DPAutoLevelOf(part) >= DPAutoDownload && [updates available:part]) [updates download:part];
         }];
     });
     DPOnQuit(^{ DPInstallOnQuit(); });

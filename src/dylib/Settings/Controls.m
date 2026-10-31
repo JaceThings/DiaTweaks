@@ -113,19 +113,21 @@ NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor 
     return label;
 }
 
-NSView *DPIconTile(NSString *symbol, NSColor *color) {
+NSView *DPIconTile(NSString *symbol, NSColor *color) { return DPIconTileOfSize(symbol, color, 20); }
+
+NSView *DPIconTileOfSize(NSString *symbol, NSColor *color, CGFloat size) {
     NSView *tile = [NSView new];
     tile.wantsLayer = YES;
     tile.layer.backgroundColor = color.CGColor;
-    tile.layer.cornerRadius = 5;
+    tile.layer.cornerRadius = size / 4;
     tile.layer.cornerCurve = kCACornerCurveContinuous;
-    NSImageView *glyph = DPSymbol(symbol, 12, NSColor.whiteColor);
+    NSImageView *glyph = DPSymbol(symbol, size * 0.6, NSColor.whiteColor);
     glyph.translatesAutoresizingMaskIntoConstraints = NO;
     tile.translatesAutoresizingMaskIntoConstraints = NO;
     [tile addSubview:glyph];
     [NSLayoutConstraint activateConstraints:@[
-        [tile.widthAnchor constraintEqualToConstant:20],
-        [tile.heightAnchor constraintEqualToConstant:20],
+        [tile.widthAnchor constraintEqualToConstant:size],
+        [tile.heightAnchor constraintEqualToConstant:size],
         [glyph.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor],
         [glyph.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor],
     ]];

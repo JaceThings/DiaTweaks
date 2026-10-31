@@ -2,21 +2,12 @@
 
 static NSString *DPPartName(NSString *part) { return [part isEqual:DPDia] ? @"Dia" : @"DiaTweaks"; }
 
+// App icons carry their own margin, so Dia's is drawn larger than the tile to look the same size.
 static NSView *DPPartIcon(NSString *part) {
-    NSImage *image = [part isEqual:DPDia] ? [NSWorkspace.sharedWorkspace iconForFile:NSBundle.mainBundle.bundlePath]
-                                          : [NSImage imageWithSystemSymbolName:@"wand.and.stars" accessibilityDescription:nil];
-    NSImageView *icon = [NSImageView imageViewWithImage:image];
-    if ([part isEqual:DPTweaks]) {
-        icon.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:16 weight:NSFontWeightSemibold];
-        icon.contentTintColor = NSColor.whiteColor;
-        icon.wantsLayer = YES;
-        icon.layer.backgroundColor = NSColor.systemPurpleColor.CGColor;
-        icon.layer.cornerRadius = 7;
-        icon.layer.cornerCurve = kCACornerCurveContinuous;
-    }
-    CGFloat size = [part isEqual:DPDia] ? 36 : 30;
-    [icon.widthAnchor constraintEqualToConstant:size].active = YES;
-    [icon.heightAnchor constraintEqualToConstant:size].active = YES;
+    if ([part isEqual:DPTweaks]) return DPIconTileOfSize(@"wand.and.stars", NSColor.systemPurpleColor, 30);
+    NSImageView *icon = [NSImageView imageViewWithImage:[NSWorkspace.sharedWorkspace iconForFile:NSBundle.mainBundle.bundlePath]];
+    [icon.widthAnchor constraintEqualToConstant:36].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:36].active = YES;
     return icon;
 }
 
@@ -49,7 +40,6 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     NSString *_shape;
     NSMapTable<NSString *, NSProgressIndicator *> *_bars;
     NSMapTable<NSString *, NSTextField *> *_details;
-    NSMutableArray<NSSwitch *> *_automatic;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -84,7 +74,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     NSMutableString *shape = [NSMutableString stringWithFormat:@"%d %d", updates.checking, updates.found != nil];
     for (NSString *part in self.shown)
         [shape appendFormat:@" %@:%@:%@:%d", part, [self stateOf:part], updates.found[part][@"latest"], [updates failed:part]];
-    for (NSString *key in @[DPAutoCheck, DPAutoDownload, DPAutoInstallDia, DPAutoInstallTweaks]) [shape appendFormat:@"%d", DPAutoUpdate(key)];
+    for (NSString *part in @[DPDia, DPTweaks]) [shape appendFormat:@"%ld", DPAutoLevelOf(part)];
     if (![shape isEqual:_shape]) {
         _shape = shape;
         [self rebuild];
@@ -139,14 +129,18 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     }
     [views addObjectsFromArray:@[DPLabel(@"Installed", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor), DPGroup(installed)]];
 
-    NSButton *info = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:@"info.circle" accessibilityDescription:@"Automatic Updates options"]
-                                        target:self action:@selector(showAutomatic:)];
-    info.bordered = NO;
-    info.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:15 weight:NSFontWeightRegular];
-    info.contentTintColor = NSColor.secondaryLabelColor;
-    NSStackView *trailing = [NSStackView stackViewWithViews:@[DPLine(self.automaticSummary, 13, NSColor.secondaryLabelColor), info]];
-    trailing.spacing = 8;
-    [views addObject:DPGroup(@[DPRow(DPLine(@"Automatic Updates", 13, NSColor.labelColor), trailing)])];
+    NSMutableArray<NSView *> *automatic = [NSMutableArray new];
+    for (NSString *part in @[DPDia, DPTweaks]) {
+        NSPopUpButton *menu = [NSPopUpButton new];
+        [menu addItemsWithTitles:@[@"Off", @"Show in Software Update", @"Download", @"Download and install on quit"]];
+        [menu selectItemAtIndex:DPAutoLevelOf(part)];
+        menu.identifier = part;
+        menu.target = self;
+        menu.action = @selector(automaticChanged:);
+        menu.accessibilityLabel = [DPPartName(part) stringByAppendingString:@" updates"];
+        [automatic addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), menu)];
+    }
+    [views addObjectsFromArray:@[DPLabel(@"Automatic Updates", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor), DPGroup(automatic)]];
 
     DPFillStack(self, views);
     [self setCustomSpacing:14 afterView:views.firstObject];
@@ -156,7 +150,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     DPUpdates *updates = DPUpdates.shared;
     NSDictionary *found = updates.found[part];
     NSString *state = [self stateOf:part];
-    BOOL installsOnQuit = DPAutoUpdate([part isEqual:DPDia] ? DPAutoInstallDia : DPAutoInstallTweaks);
+    BOOL installsOnQuit = DPAutoLevelOf(part) == DPAutoInstall;
     NSString *size = [NSByteCountFormatter stringFromByteCount:[found[@"size"] longLongValue] countStyle:NSByteCountFormatterCountStyleFile];
     NSTextField *detail = DPLine([state isEqual:@"staged"] ? (installsOnQuit ? @"Installs when you quit" : @"Ready to install")
                                  : [updates failed:part] ? @"Download failed" : size,
@@ -195,13 +189,6 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     return DPGroup(rows);
 }
 
-- (NSString *)automaticSummary {
-    if (!DPAutoUpdate(DPAutoCheck)) return @"Off";
-    if (!DPAutoUpdate(DPAutoDownload)) return @"Check only";
-    BOOL dia = DPAutoUpdate(DPAutoInstallDia), tweaks = DPAutoUpdate(DPAutoInstallTweaks);
-    return dia && tweaks ? @"On" : dia ? @"Dia only" : tweaks ? @"DiaTweaks only" : @"Download only";
-}
-
 - (void)checkAgain:(id)sender { [DPUpdates.shared check]; }
 - (void)download:(NSButton *)sender { [DPUpdates.shared download:sender.identifier]; }
 - (void)relaunch:(NSButton *)sender { [DPUpdates.shared installAndRelaunch:@[sender.identifier]]; }
@@ -224,66 +211,8 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     }
 }
 
-#pragma mark Automatic Updates sheet
-
-- (void)showAutomatic:(id)sender {
-    NSArray<NSArray<NSString *> *> *options = @[
-        @[DPAutoCheck, @"Check for updates"],
-        @[DPAutoDownload, @"Download updates when available"],
-        @[DPAutoInstallDia, @"Install Dia updates"],
-        @[DPAutoInstallTweaks, @"Install DiaTweaks updates"],
-    ];
-    _automatic = [NSMutableArray new];
-    NSMutableArray<NSView *> *rows = [NSMutableArray new];
-    for (NSArray<NSString *> *option in options) {
-        NSSwitch *toggle = [NSSwitch new];
-        toggle.controlSize = NSControlSizeSmall;
-        toggle.state = DPAutoUpdate(option[0]);
-        toggle.identifier = option[0];
-        toggle.accessibilityLabel = option[1];
-        toggle.target = self;
-        toggle.action = @selector(automaticChanged:);
-        [_automatic addObject:toggle];
-        [rows addObject:DPRow(DPLine(option[1], 13, NSColor.labelColor), toggle)];
-    }
-    NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(endAutomatic:)];
-    NSButton *done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(endAutomatic:)];
-    cancel.keyEquivalent = @"\e";
-    done.keyEquivalent = @"\r";
-    done.tag = NSModalResponseOK;
-    NSStackView *buttons = [NSStackView stackViewWithViews:@[cancel, done]];
-    NSStackView *stack = [NSStackView new];
-    DPFillStack(stack, @[DPGroup(rows)]);
-    [stack addArrangedSubview:buttons];
-    stack.alignment = NSLayoutAttributeTrailing;
-    stack.spacing = 14;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    NSView *content = [NSView new];
-    [content addSubview:stack];
-    [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:content.topAnchor constant:20],
-        [stack.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-20],
-        [stack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:20],
-        [stack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-20],
-        [stack.widthAnchor constraintEqualToConstant:400],
-    ]];
-    [self automaticChanged:nil];
-
-    NSWindow *sheet = [[NSWindow alloc] initWithContentRect:NSZeroRect styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:YES];
-    sheet.contentView = content;
-    [self.window beginSheet:sheet completionHandler:^(NSModalResponse response) {
-        if (response != NSModalResponseOK) return;
-        for (NSSwitch *toggle in self->_automatic) DPSetAutoUpdate(toggle.identifier, toggle.state == NSControlStateValueOn);
-        [self sync];
-    }];
+- (void)automaticChanged:(NSPopUpButton *)sender {
+    DPSetAutoLevel(sender.identifier, sender.indexOfSelectedItem);
+    [self sync];
 }
-
-// Each option needs the one above it, the way macOS's do.
-- (void)automaticChanged:(id)sender {
-    BOOL check = _automatic[0].state == NSControlStateValueOn, download = check && _automatic[1].state == NSControlStateValueOn;
-    _automatic[1].enabled = check;
-    _automatic[2].enabled = _automatic[3].enabled = download;
-}
-
-- (void)endAutomatic:(NSButton *)sender { [self.window endSheet:sender.window returnCode:sender.tag == NSModalResponseOK ? NSModalResponseOK : NSModalResponseCancel]; }
 @end
