@@ -27,6 +27,19 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 Dia quits and reopens. When macOS asks to access "Dia Safe Storage", enter your password and click **Always Allow**.
 
+## diatweaks
+
+The installer also adds a `diatweaks` command, to switch tweaks and update from Terminal. Run it on its own for a menu, or:
+
+- `diatweaks list`: every tweak and whether it's on
+- `diatweaks enable <tweak>…` and `diatweaks disable <tweak>…`: turn tweaks on or off by key or title, like `hideToolbar` or `"Hide toolbar"`. A running Dia changes straight away.
+- `diatweaks status`: Dia's versions, whether it's patched, safe mode and which tweaks are on
+- `diatweaks update`: get the latest DiaTweaks, build it and patch Dia again
+- `diatweaks update-dia`: download a newer Dia and patch it
+- `diatweaks restore`: put the original Dia back. `--purge` also deletes DiaTweaks' files.
+
+`-y` answers yes to every question. `diatweaks` is written in Rust, and the installer offers to install Rust if it's missing.
+
 ## Update DiaTweaks
 
 Dia itself updates on its own. To get new tweaks and fixes, paste this into Terminal:
