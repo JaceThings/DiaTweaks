@@ -12,7 +12,7 @@ static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"
 static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO};
 static const CGFloat DPWindowPadding = 6;
 static const CFTimeInterval DPAnimationDuration = 0.25;
-static const CGFloat DPLargerCornerRadius = 20;
+static const CGFloat DPLargerCornerRadius = 26;
 
 static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
@@ -837,7 +837,7 @@ static const CGFloat DPPaneTitleHeight = 52;
         {DPHideWindowControls, @"macwindow", @"Hide window controls", @"Hide the close, minimize, and maximize buttons."},
         {DPHidePinnedTabBorder, @"square.dashed", @"Hide pinned tab border", @"Remove the border around the selected pinned tab."},
         {DPLiquidGlassBackground, @"sparkles", @"Liquid Glass background", @"Use Liquid Glass behind the tab bar and sidebar instead of the theme color."},
-        {DPLargerWindowCorners, @"app", @"Larger window corners", @"Round the corners of browser windows to 20 points."},
+        {DPLargerWindowCorners, @"app", @"Larger window corners", @"Round the corners of browser windows to 26 points."},
     };
     NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor, NSColor.systemCyanColor, NSColor.systemMintColor];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
