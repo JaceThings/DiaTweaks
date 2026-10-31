@@ -2,6 +2,13 @@ name: Feature request
 description: A patch you'd like to see. If someone already asked for it, give theirs a thumbs-up instead.
 labels: [feature]
 body:
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Already asked?
+      options:
+        - label: I searched open and closed issues and nobody has asked for this yet
+          required: true
   - type: textarea
     id: what
     attributes:
