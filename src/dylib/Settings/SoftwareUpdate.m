@@ -20,6 +20,24 @@ static NSView *DPPartIcon(NSString *part) {
     return icon;
 }
 
+static NSTextField *DPLine(NSString *text, CGFloat size, NSColor *color) {
+    NSTextField *label = [NSTextField labelWithString:text];
+    label.font = [NSFont systemFontOfSize:size];
+    label.textColor = color;
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    [label setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    return label;
+}
+
+// The first paragraph: Dia's notes go on to list every change, GitHub's to headings and bullets.
+static NSString *DPSummary(NSString *notes) {
+    for (NSString *line in [notes componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if (trimmed.length && ![trimmed hasPrefix:@"#"]) return trimmed;
+    }
+    return nil;
+}
+
 static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part) {
     NSButton *button = [NSButton buttonWithTitle:title target:target action:action];
     button.identifier = part;
@@ -95,41 +113,40 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         spinner.style = NSProgressIndicatorStyleSpinning;
         spinner.controlSize = NSControlSizeSmall;
         [spinner startAnimation:nil];
-        [views addObject:DPGroup(@[DPRow(DPLabel(@"Checking for updates…", 13, NSFontWeightRegular, NSColor.labelColor), spinner)])];
+        [views addObject:DPGroup(@[DPRow(DPLine(@"Checking for updates…", 13, NSColor.labelColor), spinner)])];
     } else if (!updates.found) {
-        [views addObject:DPGroup(@[DPRow(DPLabel(@"Couldn’t check for updates.", 13, NSFontWeightRegular, NSColor.labelColor),
+        [views addObject:DPGroup(@[DPRow(DPLine(@"Couldn’t check for updates", 13, NSColor.labelColor),
                                          [NSButton buttonWithTitle:@"Try Again" target:self action:@selector(checkAgain:)])])];
     } else if (!shown.count) {
-        NSString *unchecked = [updates.found[DPTweaks][@"error"] isKindOfClass:NSString.class] ? @"Couldn’t reach DiaTweaks releases." : nil;
-        NSView *text = DPColumn(unchecked ? @[DPLabel(@"Dia is up to date.", 13, NSFontWeightRegular, NSColor.labelColor),
-                                              DPLabel(unchecked, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]
-                                          : @[DPLabel(@"Dia and DiaTweaks are up to date.", 13, NSFontWeightRegular, NSColor.labelColor)], 2);
-        [views addObject:DPGroup(@[DPRow(text, [NSButton buttonWithTitle:@"Check Now" target:self action:@selector(checkAgain:)])])];
+        [views addObject:DPGroup(@[DPRow(DPLine(@"Everything is up to date", 13, NSColor.labelColor),
+                                         [NSButton buttonWithTitle:@"Check Now" target:self action:@selector(checkAgain:)])])];
     }
 
     for (NSString *part in shown) {
         if (part != shown.firstObject) {
-            NSStackView *header = [NSStackView stackViewWithViews:@[DPLabel(@"Also Available", 13, NSFontWeightSemibold, NSColor.labelColor)]];
+            NSStackView *header = [NSStackView stackViewWithViews:@[DPLabel(@"Also Available", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor)]];
             [header addView:[NSButton buttonWithTitle:@"Update All" target:self action:@selector(updateAll:)] inGravity:NSStackViewGravityTrailing];
             [views addObject:header];
         }
         [views addObject:[self groupFor:part]];
     }
 
-    NSMutableArray *installed = [NSMutableArray arrayWithObject:[@"Dia " stringByAppendingString:updates.found[DPDia][@"installed"] ?: @"?"]];
-    id tweaks = updates.found[DPTweaks][@"installed"];
-    [installed addObject:[tweaks isKindOfClass:NSString.class] ? [@"DiaTweaks " stringByAppendingString:tweaks] : @"DiaTweaks from source"];
-    [views addObject:DPGroup(@[DPRow(DPLabel(@"Installed", 13, NSFontWeightRegular, NSColor.labelColor),
-                                     DPLabel([installed componentsJoinedByString:@" · "], 13, NSFontWeightRegular, NSColor.secondaryLabelColor))])];
+    NSMutableArray<NSView *> *installed = [NSMutableArray new];
+    for (NSString *part in @[DPDia, DPTweaks]) {
+        id version = updates.found[part][@"installed"];
+        NSString *text = [version isKindOfClass:NSString.class] ? version : [part isEqual:DPDia] ? @"—" : @"Development build";
+        [installed addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), DPLine(text, 13, NSColor.secondaryLabelColor))];
+    }
+    [views addObjectsFromArray:@[DPLabel(@"Installed", 12, NSFontWeightSemibold, NSColor.secondaryLabelColor), DPGroup(installed)]];
 
     NSButton *info = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:@"info.circle" accessibilityDescription:@"Automatic Updates options"]
                                         target:self action:@selector(showAutomatic:)];
     info.bordered = NO;
     info.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:15 weight:NSFontWeightRegular];
     info.contentTintColor = NSColor.secondaryLabelColor;
-    NSStackView *trailing = [NSStackView stackViewWithViews:@[DPLabel(self.automaticSummary, 13, NSFontWeightRegular, NSColor.secondaryLabelColor), info]];
-    trailing.spacing = 10;
-    [views addObject:DPGroup(@[DPRow(DPLabel(@"Automatic Updates", 13, NSFontWeightRegular, NSColor.labelColor), trailing)])];
+    NSStackView *trailing = [NSStackView stackViewWithViews:@[DPLine(self.automaticSummary, 13, NSColor.secondaryLabelColor), info]];
+    trailing.spacing = 8;
+    [views addObject:DPGroup(@[DPRow(DPLine(@"Automatic Updates", 13, NSColor.labelColor), trailing)])];
 
     DPFillStack(self, views);
     [self setCustomSpacing:14 afterView:views.firstObject];
@@ -139,14 +156,14 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     DPUpdates *updates = DPUpdates.shared;
     NSDictionary *found = updates.found[part];
     NSString *state = [self stateOf:part];
-    NSTextField *detail = DPLabel(@"", 11, NSFontWeightRegular, NSColor.secondaryLabelColor);
     BOOL installsOnQuit = DPAutoUpdate([part isEqual:DPDia] ? DPAutoInstallDia : DPAutoInstallTweaks);
-    detail.stringValue = [state isEqual:@"staged"] ? (installsOnQuit ? @"Downloaded · installs when you quit Dia" : @"Downloaded")
-        : [updates failed:part] ? @"Couldn’t download it. Try again."
-        : [NSByteCountFormatter stringFromByteCount:[found[@"size"] longLongValue] countStyle:NSByteCountFormatterCountStyleFile];
+    NSString *size = [NSByteCountFormatter stringFromByteCount:[found[@"size"] longLongValue] countStyle:NSByteCountFormatterCountStyleFile];
+    NSTextField *detail = DPLine([state isEqual:@"staged"] ? (installsOnQuit ? @"Installs when you quit" : @"Ready to install")
+                                 : [updates failed:part] ? @"Download failed" : size,
+                                 11, [updates failed:part] ? NSColor.systemRedColor : NSColor.secondaryLabelColor);
     NSStackView *leading = [NSStackView stackViewWithViews:@[
         DPPartIcon(part),
-        DPColumn(@[DPLabel([NSString stringWithFormat:@"%@ %@", DPPartName(part), found[@"latest"]], 13, NSFontWeightRegular, NSColor.labelColor), detail], 2),
+        DPColumn(@[DPLine([NSString stringWithFormat:@"%@ %@", DPPartName(part), found[@"latest"]], 13, NSColor.labelColor), detail], 2),
     ]];
     leading.spacing = 10;
 
@@ -162,16 +179,16 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         [_details setObject:detail forKey:part];
         trailing = bar;
     } else if ([state isEqual:@"staged"]) {
-        trailing = DPButton(@"Relaunch Now", self, @selector(relaunch:), part);
+        trailing = DPButton(@"Relaunch", self, @selector(relaunch:), part);
     } else {
-        trailing = [NSStackView stackViewWithViews:@[DPButton(@"Download", self, @selector(download:), part),
+        trailing = [NSStackView stackViewWithViews:@[DPButton([updates failed:part] ? @"Try Again" : @"Download", self, @selector(download:), part),
                                                      DPButton(@"Update Now", self, @selector(updateNow:), part)]];
     }
     NSMutableArray *rows = [NSMutableArray arrayWithObject:DPRow(leading, trailing)];
-    NSString *notes = [found[@"notes"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (notes.length) {
-        NSTextField *text = DPLabel(notes, 11, NSFontWeightRegular, NSColor.secondaryLabelColor);
-        text.maximumNumberOfLines = 6;
+    NSString *summary = DPSummary(found[@"notes"]);
+    if (summary) {
+        NSTextField *text = DPLabel(summary, 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
+        text.maximumNumberOfLines = 3;
         text.cell.truncatesLastVisibleLine = YES;
         [rows addObject:DPRow(text, [NSStackView new])];
     }
@@ -182,7 +199,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     if (!DPAutoUpdate(DPAutoCheck)) return @"Off";
     if (!DPAutoUpdate(DPAutoDownload)) return @"Check only";
     BOOL dia = DPAutoUpdate(DPAutoInstallDia), tweaks = DPAutoUpdate(DPAutoInstallTweaks);
-    return dia && tweaks ? @"On" : dia ? @"Install Dia only" : tweaks ? @"Install DiaTweaks only" : @"Download only";
+    return dia && tweaks ? @"On" : dia ? @"Dia only" : tweaks ? @"DiaTweaks only" : @"Download only";
 }
 
 - (void)checkAgain:(id)sender { [DPUpdates.shared check]; }
@@ -212,7 +229,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
 - (void)showAutomatic:(id)sender {
     NSArray<NSArray<NSString *> *> *options = @[
         @[DPAutoCheck, @"Check for updates"],
-        @[DPAutoDownload, @"Download new updates when available"],
+        @[DPAutoDownload, @"Download updates when available"],
         @[DPAutoInstallDia, @"Install Dia updates"],
         @[DPAutoInstallTweaks, @"Install DiaTweaks updates"],
     ];
@@ -227,9 +244,8 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         toggle.target = self;
         toggle.action = @selector(automaticChanged:);
         [_automatic addObject:toggle];
-        [rows addObject:DPRow(DPLabel(option[1], 13, NSFontWeightRegular, NSColor.labelColor), toggle)];
+        [rows addObject:DPRow(DPLine(option[1], 13, NSColor.labelColor), toggle)];
     }
-    NSString *note = @"Updates install when you quit Dia. Turn off an install to choose when it happens in Software Update.";
     NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(endAutomatic:)];
     NSButton *done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(endAutomatic:)];
     cancel.keyEquivalent = @"\e";
@@ -237,7 +253,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     done.tag = NSModalResponseOK;
     NSStackView *buttons = [NSStackView stackViewWithViews:@[cancel, done]];
     NSStackView *stack = [NSStackView new];
-    DPFillStack(stack, @[DPGroup(rows), DPLabel(note, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]);
+    DPFillStack(stack, @[DPGroup(rows)]);
     [stack addArrangedSubview:buttons];
     stack.alignment = NSLayoutAttributeTrailing;
     stack.spacing = 14;
