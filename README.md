@@ -68,51 +68,44 @@ rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTw
 ## FAQ
 
 <details>
-<summary>Is it safe?</summary>
+<summary><strong>Is it safe?</strong></summary>
 
-Everything is built on your Mac from this source. The only download is Dia itself, from The Browser Company's own update feed, and it's only used if it's signed by The Browser Company and passes Gatekeeper. The tweaks only rearrange Dia's own interface: they don't read your pages, history or passwords, and their only network use is checking that update feed.
-
-</details>
-
-<details>
-<summary>How does it work?</summary>
-
-DiaTweaks keeps an untouched copy of the official Dia, then makes a patched copy that loads one small add-on when it opens. The add-on moves and hides parts of Dia's interface while it runs. The patched Dia is signed with a certificate made on your Mac ("DiaPatches Local Signing"), never anyone else's.
+Yes. It's built on your Mac from this code. It only changes how Dia looks, and never reads your pages, history or passwords.
 
 </details>
 
 <details>
-<summary>Why does macOS ask about "Dia Safe Storage"?</summary>
+<summary><strong>How does it work?</strong></summary>
 
-The patched Dia is signed by you, not The Browser Company, so macOS asks once per Dia update before it can read its saved data. Click **Always Allow**.
-
-</details>
-
-<details>
-<summary>Does anything run in the background?</summary>
-
-No. Updates are checked when Dia opens and installed when you quit it.
+It keeps an untouched copy of Dia and makes a second copy that loads a small add-on. The add-on moves and hides parts of Dia while it runs.
 
 </details>
 
 <details>
-<summary>What doesn't work?</summary>
+<summary><strong>Why does my Mac ask about "Dia Safe Storage"?</strong></summary>
 
-Dia's passkeys, since only The Browser Company can sign for them. Signing in with a password works.
-
-</details>
-
-<details>
-<summary>Dia crashed. What happens now?</summary>
-
-If Dia quits unexpectedly twice in a row right after opening, it opens next time with the tweaks off. **Settings → Patches** says so and has a button to turn them back on. Updating DiaTweaks turns them back on too. If Dia keeps crashing even with the tweaks off, DiaTweaks loads nothing at all until you update it.
+The tweaked Dia is signed by you instead of The Browser Company, so macOS checks once per Dia update. Click **Always Allow**.
 
 </details>
 
 <details>
-<summary>Does Group Tabs by Domain read my tabs?</summary>
+<summary><strong>Does it run in the background?</strong></summary>
 
-It reads the address of each tab in the current window to know which site it's on. Nothing else, and nothing leaves your Mac.
+No. It only does anything while Dia is open.
+
+</details>
+
+<details>
+<summary><strong>Does anything stop working?</strong></summary>
+
+Passkeys. Signing in with a password still works.
+
+</details>
+
+<details>
+<summary><strong>What if Dia keeps crashing?</strong></summary>
+
+After two crashes in a row, Dia opens with the tweaks off. **Settings → Patches** has a button to turn them back on.
 
 </details>
 
