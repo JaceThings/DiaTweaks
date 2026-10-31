@@ -2,12 +2,13 @@ use std::{env, ffi::OsString, path::PathBuf};
 
 use anyhow::{Context, Result};
 
-/// Where things live. The DIAPATCH_* variables are the ones diapatch reads; DIATWEAKS_DOMAIN
-/// exists so tests can use their own settings domain.
+/// Where things live. The DIAPATCH_* variables are the ones diapatch reads; the DIATWEAKS_* ones
+/// exist so tests can use their own settings domain and a source repository that isn't GitHub.
 pub struct Env {
     pub support: PathBuf,
     pub app: PathBuf,
     pub domain: String,
+    pub repo: String,
 }
 
 impl Env {
@@ -23,6 +24,8 @@ impl Env {
             app: var_os("DIAPATCH_APP")
                 .map_or_else(|| PathBuf::from("/Applications/Dia.app"), PathBuf::from),
             domain: var("DIATWEAKS_DOMAIN").unwrap_or_else(|| "com.diapatches".into()),
+            repo: var("DIATWEAKS_REPO")
+                .unwrap_or_else(|| "https://github.com/JaceThings/DiaTweaks.git".into()),
         })
     }
 
@@ -32,6 +35,10 @@ impl Env {
 
     pub fn manifest(&self) -> PathBuf {
         self.support.join("patches.json")
+    }
+
+    pub fn staged(&self) -> PathBuf {
+        self.support.join("staged/Dia.app")
     }
 }
 

@@ -113,6 +113,14 @@ impl Ui {
         Spinner { bar, label }
     }
 
+    /// Asks before doing what the command is for. Scripts asked for it by running the command.
+    pub fn proceed(&self, question: impl Display) -> Result<bool> {
+        if self.yes || !self.interactive {
+            return Ok(true);
+        }
+        prompt(cliclack::confirm(question).initial_value(true).interact())
+    }
+
     /// Asks about something extra. Without a terminal the answer is no, unless --yes.
     pub fn choose(&self, question: impl Display, default: bool) -> Result<bool> {
         if self.yes {

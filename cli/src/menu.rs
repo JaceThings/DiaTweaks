@@ -5,11 +5,14 @@ use crate::{
     signals::{self, Cancelled},
     status, tweaks,
     ui::{self, Ui},
+    update, update_dia,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
     Tweaks,
+    UpdateDia,
+    UpdateDiaTweaks,
     Status,
     Quit,
 }
@@ -24,6 +27,8 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
         action = ui::prompt(
             cliclack::select("What do you want to do?")
                 .item(Action::Tweaks, "Tweaks", "turn tweaks on or off")
+                .item(Action::UpdateDia, "Update Dia", "")
+                .item(Action::UpdateDiaTweaks, "Update DiaTweaks", "")
                 .item(Action::Status, "Status", "")
                 .item(Action::Quit, "Quit", "")
                 .initial_value(action)
@@ -31,10 +36,14 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
         )?;
         let result = match action {
             Action::Tweaks => tweaks::menu(env, ui),
+            Action::UpdateDia => update_dia::run(env, ui),
+            Action::UpdateDiaTweaks => update::run(env, ui),
             Action::Status => status::show(env, ui),
             Action::Quit => break,
         };
         match result {
+            // The menu would carry on with the replaced binary.
+            Ok(()) if action == Action::UpdateDiaTweaks => break,
             Ok(()) => {}
             Err(err) => match err.downcast_ref::<Cancelled>() {
                 Some(_) if signals::interrupted() => return Err(err),

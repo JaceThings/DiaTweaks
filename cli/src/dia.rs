@@ -1,6 +1,8 @@
 use std::{
     path::{Path, PathBuf},
     process::Command,
+    thread,
+    time::{Duration, Instant},
 };
 
 use anyhow::{bail, Context, Result};
@@ -63,6 +65,33 @@ impl Diapatch {
     }
 }
 
+/// Compares the build numbers the way diapatch does.
+pub fn is_newer(version: &str, than: &str) -> bool {
+    numbers(build(version)) > numbers(build(than))
+}
+
+fn build(version: &str) -> &str {
+    version
+        .rsplit_once(" (")
+        .and_then(|(_, build)| build.strip_suffix(')'))
+        .unwrap_or(version)
+}
+
+fn numbers(text: &str) -> Vec<u64> {
+    text.split(|c: char| !c.is_ascii_digit())
+        .filter_map(|part| part.parse().ok())
+        .collect()
+}
+
+/// "1.55.1 (89833)", like diapatch prints it.
+pub fn version_of(app: &Path) -> Option<String> {
+    let info = plist::Value::from_file(app.join("Contents/Info.plist")).ok()?;
+    let info = info.as_dictionary()?;
+    let short = info.get("CFBundleShortVersionString")?.as_string()?;
+    let build = info.get("CFBundleVersion")?.as_string()?;
+    Some(format!("{short} ({build})"))
+}
+
 pub fn is_patched(app: &Path) -> bool {
     plist::Value::from_file(app.join("Contents/Info.plist"))
         .ok()
@@ -92,4 +121,29 @@ fn processes(app: &Path) -> Vec<(libc::pid_t, PathBuf)> {
 
 pub fn is_running(app: &Path) -> bool {
     !processes(app).is_empty()
+}
+
+/// Quits Dia the way ⌘Q does, so it saves its windows, and waits for every Dia process to end.
+/// Only the Dia at `app` is asked, by process ID, in case another copy is open.
+pub fn quit(app: &Path) -> Result<()> {
+    let macos = app.canonicalize()?.join("Contents/MacOS");
+    for (pid, path) in processes(app) {
+        if path.parent() != Some(macos.as_path()) {
+            continue;
+        }
+        let script = format!(
+            "ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier({pid}).terminate"
+        );
+        child::quick(Command::new("/usr/bin/osascript").args(["-l", "JavaScript", "-e", &script]));
+    }
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while is_running(app) {
+        if Instant::now() > deadline {
+            bail!(
+                "Dia didn't quit. If it's showing a dialog, answer it, quit Dia, then try again."
+            );
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    Ok(())
 }

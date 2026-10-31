@@ -9,16 +9,23 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
-use crate::{signals, ui::Spinner};
+use crate::{
+    signals::{self, Cancelled},
+    ui::Spinner,
+};
 
 /// What Ctrl-C (or SIGTERM, SIGHUP) does to a running child. Children get their own process group,
 /// so the terminal's Ctrl-C reaches only diatweaks, which then decides.
 pub enum OnInterrupt {
+    /// Stop it: it only writes inside our temporary checkout.
+    Stop,
     /// Stop only its downloads; diapatch cleans up after a failed download and exits. Everything
     /// else it does finishes, because it moves whole app bundles.
     StopDownloads,
+    /// Let it finish, showing why.
+    Finish(&'static str),
 }
 
 pub struct Finished {
@@ -65,6 +72,17 @@ pub fn run(
         }
         if signals::interrupted() {
             match on_interrupt {
+                OnInterrupt::Stop => match stopping_since {
+                    None => {
+                        spinner.set_message("Stopping…");
+                        unsafe { libc::killpg(pid, libc::SIGINT) };
+                        stopping_since = Some(Instant::now());
+                    }
+                    Some(since) if since.elapsed() > Duration::from_secs(10) => unsafe {
+                        libc::killpg(pid, libc::SIGKILL);
+                    },
+                    Some(_) => {}
+                },
                 OnInterrupt::StopDownloads => {
                     if stopping_since.is_none() {
                         spinner.set_message("Stopping after the current step…");
@@ -72,10 +90,19 @@ pub fn run(
                     }
                     stop_downloads(pid);
                 }
+                OnInterrupt::Finish(why) => {
+                    if stopping_since.is_none() {
+                        spinner.set_message(why);
+                        stopping_since = Some(Instant::now());
+                    }
+                }
             }
         }
         thread::sleep(Duration::from_millis(50));
     };
+    if matches!(on_interrupt, OnInterrupt::Stop) && signals::interrupted() {
+        bail!(Cancelled::nothing_changed());
+    }
     let mut bytes = Vec::new();
     log.seek(SeekFrom::Start(0))?;
     log.read_to_end(&mut bytes)?;
@@ -116,4 +143,18 @@ pub fn pid_path(pid: libc::pid_t) -> Option<PathBuf> {
     let length =
         unsafe { libc::proc_pidpath(pid, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
     (length > 0).then(|| PathBuf::from(OsStr::from_bytes(&buffer[..length as usize])))
+}
+
+/// The output of a short command that needs no interrupt handling, if it succeeded.
+pub fn quick(command: &mut Command) -> Option<String> {
+    let output = command
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

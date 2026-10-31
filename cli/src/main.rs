@@ -9,6 +9,8 @@ mod signals;
 mod status;
 mod tweaks;
 mod ui;
+mod update;
+mod update_dia;
 
 use std::{io, process::ExitCode};
 
@@ -47,6 +49,10 @@ enum Command {
     },
     /// Show Dia's versions, safe mode and which tweaks are on
     Status,
+    /// Download and build the newest DiaTweaks, then patch Dia again
+    Update,
+    /// Download and patch a newer Dia
+    UpdateDia,
 }
 
 fn main() -> ExitCode {
@@ -90,5 +96,7 @@ fn run(command: Option<Command>, ui: &Ui) -> Result<()> {
         Command::Enable { tweaks } => tweaks::set(&env, ui, &tweaks, true),
         Command::Disable { tweaks } => tweaks::set(&env, ui, &tweaks, false),
         Command::Status => status::print(&env, ui),
+        Command::Update => update::run(&env, ui),
+        Command::UpdateDia => update_dia::run(&env, ui),
     }
 }
