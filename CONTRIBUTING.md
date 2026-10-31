@@ -13,7 +13,7 @@ Keep it small, test it hard, show it working.
 
 ## Adding a patch
 
-Each patch is one folder in `src/dylib/Patches/`, built on StdPatch: `src/dylib/StdPatch/StdPatch.h` is the whole API. Nothing outside the folder changes.
+Each patch is one folder in `src/dylib/Patches/`, built on StdPatch: `src/dylib/StdPatch/StdPatch.h` is the whole API. Apart from its [page](#documenting-a-patch), nothing outside the folder changes.
 
 - `make patch NAME=HideFooButton` creates `Patches/HideFooButton/HideFooButton.m` with a `DP_PATCH` in it. That registers it: its row in Settings, its saved switch, its place in `make test` and its entry in `build/patches.json`, the list `diatweaks` shows, come from the fields, and `.order` sets where it's listed.
 - Find what to change with the developer tools. Turn them on with `defaults write com.diapatches devTools -bool YES`, relaunch Dia, and use **Help → DiaPatches: Copy View Tree** for the front window's views with their classes, frames and accessibility labels.
@@ -26,6 +26,16 @@ Each patch is one folder in `src/dylib/Patches/`, built on StdPatch: `src/dylib/
 - Keep files to about 100 lines. Split a big patch into several files in its folder.
 
 With the developer tools on, a script can also drive Dia: post the distributed notification `com.diapatches.dev.set` with the object `hideToolbar=1` to flip a switch, or `com.diapatches.dev.dump` to write every window's view tree to `~/Library/Application Support/DiaPatches/views.txt`.
+
+## Documenting a patch
+
+Every tweak has a page in [`docs/tweaks`](docs/tweaks/README.md), and a new patch's PR adds its own:
+
+- Copy `docs/tweaks/_template.md` to `docs/tweaks/<key>.md` and fill it in.
+- Add before and after screenshots as `docs/tweaks/images/<key>-before.png` and `<key>-after.png`: PNG, at most 1400 pixels wide, cropped to the part of Dia the tweak changes, with none of your own tabs in them.
+- Add a row for it to `docs/tweaks/README.md`.
+
+CI fails if a patch has no page or the index doesn't link to it. Run `scripts/check-tweak-docs` after `make` to check.
 
 ## Testing
 
