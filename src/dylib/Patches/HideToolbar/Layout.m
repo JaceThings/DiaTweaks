@@ -1,6 +1,14 @@
 #import "HideToolbar.h"
 
 NSHashTable<NSView *> *DPPanes;
+NSHashTable<NSWindow *> *DPToolbarlessWindows;
+
+__attribute__((constructor)) static void DPMakeTables(void) {
+    DPPanes = [NSHashTable weakObjectsHashTable];
+    DPToolbarlessWindows = [NSHashTable weakObjectsHashTable];
+}
+
+BOOL DPToolbarless(NSView *view) { return view.window && [DPToolbarlessWindows containsObject:view.window]; }
 static char DPFrameKey, DPFillsKey;
 
 NSRect DPLaidOutFrame(NSView *view) {
@@ -32,7 +40,7 @@ void DPApplyToolbar(NSView *pane) {
     DPToolbarHover *hover = [DPToolbarHover attachToPane:pane];
     [hover updateForBar:bar bookmarks:bookmarks];
 
-    CGFloat progress = DPHideToolbar.progress;
+    CGFloat progress = DPToolbarless(pane) ? 1 : DPHideToolbar.progress;
     for (NSView *view in bars) view.alphaValue = 1 - progress * (1 - hover.progress);
     NSIndexSet *slots = [pane.subviews indexesOfObjectsPassingTest:^BOOL(NSView *sub, NSUInteger i, BOOL *stop) { return [bars containsObject:sub]; }];
     BOOL onTop = slots.firstIndex == pane.subviews.count - bars.count, atBottom = slots.lastIndex == bars.count - 1;

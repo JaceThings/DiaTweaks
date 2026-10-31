@@ -17,6 +17,14 @@ static NSView *DPPatchRow(DPPatch *patch, NSSwitch *toggle) {
     return DPRow(leading, toggle);
 }
 
+// Always overlay, so a connected mouse or "Show scroll bars: Always" doesn't reserve a gutter.
+@interface DPOverlayScrollView : NSScrollView
+@end
+
+@implementation DPOverlayScrollView
+- (void)setScrollerStyle:(NSScrollerStyle)style { [super setScrollerStyle:NSScrollerStyleOverlay]; }
+@end
+
 @implementation DPPaneView
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -67,10 +75,12 @@ static NSView *DPPatchRow(DPPatch *patch, NSSwitch *toggle) {
 // Dia's Settings window doesn't grow, so the pane scrolls below the window's title.
 - (void)addScrollingContent:(NSView *)content {
     DPFlippedView *document = [DPFlippedView new];
-    NSScrollView *scroll = [NSScrollView new];
+    NSScrollView *scroll = [DPOverlayScrollView new];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;
+    scroll.scrollerStyle = NSScrollerStyleOverlay;
+    scroll.verticalScroller.controlSize = NSControlSizeSmall;
     scroll.automaticallyAdjustsContentInsets = NO;
     scroll.documentView = document;
     [document addSubview:content];

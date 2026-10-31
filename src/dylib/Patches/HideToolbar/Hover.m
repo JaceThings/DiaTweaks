@@ -84,7 +84,7 @@ static char DPHoverKey;
 }
 
 - (void)mouseEntered:(NSEvent *)event {
-    if (!DPHideToolbar.on || !DPRevealToolbarOnHover.on || ![self containsPointer]) return;
+    if (!DPHideToolbar.on || !DPRevealToolbarOnHover.on || DPToolbarless(self.pane) || ![self containsPointer]) return;
     [self.hideTimer invalidate];
     self.hideTimer = nil;
     self.revealed = YES;
@@ -108,7 +108,7 @@ static char DPHoverKey;
     self.bar = bar;
     self.bookmarks = bookmarks;
     NSRect rect = NSZeroRect;
-    if (DPHideToolbar.on && DPRevealToolbarOnHover.on && !bar.hiddenOrHasHiddenAncestor) {
+    if (DPHideToolbar.on && DPRevealToolbarOnHover.on && !bar.hiddenOrHasHiddenAncestor && !DPToolbarless(self.pane)) {
         rect = DPLaidOutFrame(bar);
         if (bookmarks) rect = NSUnionRect(rect, DPLaidOutFrame(bookmarks));
         rect = NSIntersectionRect(rect, self.pane.bounds);

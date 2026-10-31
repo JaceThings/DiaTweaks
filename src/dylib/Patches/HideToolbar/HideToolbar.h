@@ -3,6 +3,9 @@
 
 extern DPPatch DPHideToolbar, DPRevealToolbarOnHover;
 extern NSHashTable<NSView *> *DPPanes;  // Every content pane laid out so far.
+// Windows that never show their toolbar, whether or not Hide toolbar is on, such as Little Dia. Relayout panes after changing it.
+extern NSHashTable<NSWindow *> *DPToolbarlessWindows;
+BOOL DPToolbarless(NSView *view);
 
 // Shows the hidden toolbar while the pointer is at the top of a pane. One per pane.
 @interface DPToolbarHover : NSObject

@@ -3,7 +3,7 @@
 // The bar stays in Dia's layout: hiding it makes Dia reflow in ways it won't undo.
 static NSView *DPToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
     DPToolbarHover *hover = [DPToolbarHover forPane:self.superview];
-    BOOL hidden = DPHideToolbar.on && hover.progress == 0 && (self == hover.bar || self == hover.bookmarks);
+    BOOL hidden = (DPHideToolbar.on || DPToolbarless(self)) && hover.progress == 0 && (self == hover.bar || self == hover.bookmarks);
     return hidden ? nil : DPCallOriginal(DPToolbar_hitTest, self, point);
 }
 
@@ -14,7 +14,6 @@ static void DPPane_layout(NSView *self, SEL _cmd) {
 }
 
 static void DPInstallHideToolbar(void) {
-    DPPanes = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaContentPane, @selector(layout), (IMP)DPPane_layout);
     DPHook(DPDiaToolbar, @selector(hitTest:), (IMP)DPToolbar_hitTest);
     DPHook(DPDiaBookmarksBar, @selector(hitTest:), (IMP)DPToolbar_hitTest);
@@ -26,6 +25,7 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
     for (NSView *pane in panes) {
         NSView *bar = DPSubview(pane, DPDiaToolbar);
         if (!bar) return @"no toolbar found";
+        if (DPToolbarless(pane)) continue;
         if ([DPToolbarHover forPane:pane].progress > 0) continue;  // Revealed by the pointer.
         NSView *bookmarks = DPBookmarksUnder(pane, bar);
         NSArray<NSView *> *bars = bookmarks ? @[bar, bookmarks] : @[bar];

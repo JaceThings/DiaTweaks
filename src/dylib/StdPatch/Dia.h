@@ -17,3 +17,5 @@
 #define DPDiaSettingsController "_TtC11Preferences38SidebarPreferencesWindowViewController"
 #define DPDiaSettingsSidebar    "_TtC11Preferences15SidebarListView"
 #define DPDiaSettingsSidebarCell "_TtC11PreferencesP33_4E27E2219272DF78406B73092738280415SidebarCellView"
+#define DPDiaOpenURLEventManager "_TtC13OpenURLClient19OpenURLEventManager"
+#define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // Resolves only once Swift's runtime is up: look it up after launch.
