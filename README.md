@@ -1,79 +1,127 @@
 # DiaTweaks
 
-Small tweaks for the [Dia](https://www.diabrowser.com) browser, kept in place when Dia updates. Turn them on and off in **Dia → Settings → Patches**:
-
-- Edge-to-edge web content
-- Square corners by the sidebar
-- Hide toolbar
-- Reveal toolbar on hover
-- Hide sidebar button
-- Hide Chat button
-- Hide Chats button
-- Hide recent tabs button
-
-Right-click a tab and choose **Group Tabs by Domain**, at the end of the group commands after **Move to Window**. The same command is in the menu bar, in the Tab menu if Dia has one, otherwise in the menu that holds the tab commands.
+Small tweaks for the [Dia](https://www.diabrowser.com) browser that stay in place when Dia updates.
 
 Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 or later.
 
+## Tweaks
+
+Turn them on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
+
+| Tweak | What it does |
+|---|---|
+| Edge-to-edge web content | Removes the padding between pages and the window edge |
+| Square corners by the sidebar | Pages meet the sidebar with straight edges |
+| Hide toolbar | Hides the address bar, navigation buttons and extensions |
+| Reveal toolbar on hover | Shows the hidden toolbar when the pointer is at the top of the page |
+| Hide sidebar button | Hides the sidebar toggle |
+| Hide Chat button | Hides the Chat button in the toolbar |
+| Hide Chats button | Hides the Chats button in the tab bar or sidebar |
+| Hide recent tabs button | Hides the recent tabs button in the tab bar or sidebar |
+
+Plus **Group Tabs by Domain**: right-click a tab, or use the Tabs menu.
+
 ## Install
 
-1. Install Dia into Applications, if it isn't there already.
+1. Put Dia in your Applications folder.
 2. Install Apple's developer tools: `xcode-select --install`
-3. Open Terminal and paste:
+3. Paste this into Terminal:
 
    ```sh
    git clone https://github.com/JaceThings/DiaTweaks.git ~/DiaTweaks && ~/DiaTweaks/install.sh
    ```
 
-Dia quits and reopens. When macOS asks to access "Dia Safe Storage", enter your password and click **Always Allow**.
+Dia quits and reopens. If macOS asks about "Dia Safe Storage", enter your password and click **Always Allow**.
 
-## diatweaks
+## The `diatweaks` command
 
-The installer also adds a `diatweaks` command, to switch tweaks and update from Terminal. Run it on its own for a menu, or:
+Run `diatweaks` on its own for a menu, or:
 
-- `diatweaks list`: every tweak and whether it's on
-- `diatweaks enable <tweak>…` and `diatweaks disable <tweak>…`: turn tweaks on or off by key or title, like `hideToolbar` or `"Hide toolbar"`. A running Dia changes straight away.
-- `diatweaks status`: Dia's versions, whether it's patched, safe mode and which tweaks are on
-- `diatweaks update`: get the latest DiaTweaks, build it and patch Dia again
-- `diatweaks update-dia`: download a newer Dia and patch it
-- `diatweaks restore`: put the original Dia back. `--purge` also deletes DiaTweaks' files.
+| Command | Does |
+|---|---|
+| `diatweaks list` | Shows every tweak and whether it's on |
+| `diatweaks enable hideToolbar` | Turns a tweak on; Dia changes straight away |
+| `diatweaks disable hideToolbar` | Turns a tweak off |
+| `diatweaks status` | Shows Dia's version, safe mode and which tweaks are on |
+| `diatweaks update` | Gets the latest DiaTweaks and patches Dia again |
+| `diatweaks update-dia` | Downloads a newer Dia and patches it |
+| `diatweaks restore` | Puts the original Dia back |
 
-`-y` answers yes to every question. `diatweaks` is written in Rust, and the installer offers to install Rust if it's missing.
+Tweak names work as keys or titles, like `hideToolbar` or `"Hide toolbar"`. Add `-y` to skip the questions.
 
-## Update DiaTweaks
+## Updating
 
-Dia itself updates on its own. To get new tweaks and fixes, paste this into Terminal:
+- **Dia:** Dia's own updater is switched off. DiaTweaks checks for new Dia versions when Dia opens and installs them, patched, when you quit it. `diatweaks update-dia` does it right away.
+- **DiaTweaks:** run `diatweaks update`.
 
-```sh
-cd ~/DiaTweaks && git pull && ./install.sh
-```
+<details>
+<summary>Installed before <code>diatweaks</code> existed?</summary>
 
-If that says `No such file or directory`, you cloned DiaTweaks somewhere else. This works from anywhere:
+Update once by hand, then use `diatweaks update` from then on:
 
 ```sh
 rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTweaks.git /tmp/DiaTweaks && /tmp/DiaTweaks/install.sh
 ```
 
-## How it works
+</details>
 
-- Everything is built on your Mac from this source. The only download is Dia itself, from The Browser Company's own update feed, and it's used only if it's signed by The Browser Company and passes Gatekeeper.
-- An untouched copy of the official Dia is kept in `~/Library/Application Support/DiaPatches/pristine`. Restoring puts it back.
-- The patched Dia gets one extra line that loads the add-on, its built-in updater is switched off (DiaTweaks updates it instead, keeping the patches), and it's re-signed with a certificate created on your Mac, in your login keychain, called "DiaPatches Local Signing". Nothing is signed with anyone else's certificate.
-- The add-on only rearranges Dia's own interface. Group Tabs by Domain reads the address of each open tab in the current window, not the page. It doesn't read your pages, history or passwords, and its only network use is checking Dia's update feed.
-- Nothing runs in the background. Updates are checked when Dia opens and installed when you quit it.
-- Because the app is now signed by you, macOS asks once per Dia update before Dia can read "Dia Safe Storage". Dia's built-in passkey support is off, since only The Browser Company can sign for it; signing in with a password works.
-- If Dia quits unexpectedly twice in a row right after opening, the next launch leaves the patches off. **Settings → Patches** says so and can turn them back on, and updating DiaTweaks turns them back on too. If Dia keeps crashing without them, DiaTweaks loads nothing at all until it's updated or you delete `~/Library/Application Support/DiaPatches/safe-mode.plist`.
+## FAQ
+
+<details>
+<summary>Is it safe?</summary>
+
+Everything is built on your Mac from this source. The only download is Dia itself, from The Browser Company's own update feed, and it's only used if it's signed by The Browser Company and passes Gatekeeper. The tweaks only rearrange Dia's own interface: they don't read your pages, history or passwords, and their only network use is checking that update feed.
+
+</details>
+
+<details>
+<summary>How does it work?</summary>
+
+DiaTweaks keeps an untouched copy of the official Dia, then makes a patched copy that loads one small add-on when it opens. The add-on moves and hides parts of Dia's interface while it runs. The patched Dia is signed with a certificate made on your Mac ("DiaPatches Local Signing"), never anyone else's.
+
+</details>
+
+<details>
+<summary>Why does macOS ask about "Dia Safe Storage"?</summary>
+
+The patched Dia is signed by you, not The Browser Company, so macOS asks once per Dia update before it can read its saved data. Click **Always Allow**.
+
+</details>
+
+<details>
+<summary>Does anything run in the background?</summary>
+
+No. Updates are checked when Dia opens and installed when you quit it.
+
+</details>
+
+<details>
+<summary>What doesn't work?</summary>
+
+Dia's passkeys, since only The Browser Company can sign for them. Signing in with a password works.
+
+</details>
+
+<details>
+<summary>Dia crashed. What happens now?</summary>
+
+If Dia quits unexpectedly twice in a row right after opening, it opens next time with the tweaks off. **Settings → Patches** says so and has a button to turn them back on. Updating DiaTweaks turns them back on too. If Dia keeps crashing even with the tweaks off, DiaTweaks loads nothing at all until you update it.
+
+</details>
+
+<details>
+<summary>Does Group Tabs by Domain read my tabs?</summary>
+
+It reads the address of each tab in the current window to know which site it's on. Nothing else, and nothing leaves your Mac.
+
+</details>
 
 ## Uninstall
 
 In Dia, open **Settings → Patches** and click **Restore…**. Dia reopens as the original app with its own updates.
 
-Or from Terminal:
-
-```sh
-~/Library/Application\ Support/DiaPatches/bin/diapatch uninstall --relaunch --purge
-```
+To also delete DiaTweaks' files and the `diatweaks` command, run `diatweaks restore --purge` instead.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs need a screenshot or screen recording of the change.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
