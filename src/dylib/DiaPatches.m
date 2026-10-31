@@ -762,7 +762,6 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
 
 @interface DPSidebarRow : NSControl
 @property (nonatomic) BOOL selected;
-@property (nonatomic) BOOL hovered;
 @property (nonatomic, strong) NSImageView *icon;
 @property (nonatomic, strong) NSTextField *label;
 @property (nonatomic) NSRect iconFrame, labelFrame, pillFrame;
@@ -771,15 +770,11 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
 @end
 
 @implementation DPSidebarRow {
-    NSTrackingArea *_tracking;
-    NSView *_hover;
     NSVisualEffectView *_selection;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
-    _hover = [NSView new];
-    _hover.wantsLayer = YES;
     _selection = [NSVisualEffectView new];
     _selection.material = NSVisualEffectMaterialSelection;
     _selection.state = NSVisualEffectStateFollowsWindowActiveState;
@@ -787,7 +782,7 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
     _selection.hidden = YES;
     _icon = [DPSolidImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:@"wand.and.stars" accessibilityDescription:nil]];
     _label = [DPSolidLabel labelWithString:@"Patches"];
-    for (NSView *v in @[_hover, _selection, _icon, _label]) [self addSubview:v];
+    for (NSView *v in @[_selection, _icon, _label]) [self addSubview:v];
     self.accessibilityRole = NSAccessibilityButtonRole;
     self.accessibilityLabel = @"Patches";
     return self;
@@ -810,11 +805,9 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
 
 - (void)layout {
     [super layout];
-    for (NSView *v in @[_hover, _selection]) {
-        v.frame = self.pillFrame;
-        v.layer.cornerRadius = self.pillRadius;
-        v.layer.masksToBounds = YES;
-    }
+    _selection.frame = self.pillFrame;
+    _selection.layer.cornerRadius = self.pillRadius;
+    _selection.layer.masksToBounds = YES;
     self.icon.frame = self.iconFrame;
     [self.label sizeToFit];
     NSRect labelFrame = self.labelFrame;
@@ -822,23 +815,12 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
     self.label.frame = labelFrame;
 }
 
-- (void)updateTrackingAreas {
-    [super updateTrackingAreas];
-    if (_tracking) [self removeTrackingArea:_tracking];
-    _tracking = [[NSTrackingArea alloc] initWithRect:self.bounds options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow owner:self userInfo:nil];
-    [self addTrackingArea:_tracking];
-}
-
-- (void)mouseEntered:(NSEvent *)event { self.hovered = YES; }
-- (void)mouseExited:(NSEvent *)event { self.hovered = NO; }
-- (void)setHovered:(BOOL)hovered { _hovered = hovered; [self redraw]; }
 - (void)setSelected:(BOOL)selected { _selected = selected; [self redraw]; }
 
 - (void)updateLayer {
     BOOL key = self.window.isKeyWindow, emphasized = self.selected && key;
     _selection.hidden = !self.selected;
     _selection.emphasized = emphasized;
-    _hover.layer.backgroundColor = [NSColor.labelColor colorWithAlphaComponent:self.hovered && !self.selected ? 0.05 : 0].CGColor;
     self.label.textColor = emphasized ? NSColor.alternateSelectedControlTextColor : key || self.selected ? NSColor.labelColor : NSColor.secondaryLabelColor;
     NSFont *font = self.labelFont ?: self.label.font;
     NSFont *face = self.selected ? [NSFont systemFontOfSize:font.pointSize weight:NSFontWeightSemibold] : font;
