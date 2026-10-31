@@ -74,6 +74,11 @@ static NSString *DPVerifyEdgeToEdge(DPPatch *patch) {
     for (NSView *container in containers) {
         NSValue *requested = DPRequestedFrame(container);
         if (!requested) return @"never saw Dia place the web content";
+        CALayer *layer = DPRoundedContent(container).layer;
+        CACornerMask screen = DPBesideSidebar(container) ? DPRightCorners : DPLeftCorners | DPRightCorners;
+        BOOL square = patch->on && DPFullScreen(container);
+        if (layer && (layer.mask || (layer.maskedCorners & screen) != (square ? 0 : screen)))
+            return square ? @"corners stay round in full screen" : @"corners are square out of full screen";
         if (!patch->on || DPChatCard(container)) {
             if (!NSEqualRects(container.frame, requested.rectValue)) return @"web content isn't where Dia put it";
             continue;
