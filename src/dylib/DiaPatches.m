@@ -445,6 +445,9 @@ static Class DPContainerClass(void) {
 }
 
 static void DPRestyleContainer(NSView *container) {
+    // Dia resets the radius when the tab layout or window size changes, without going through setFrame:.
+    NSValue *laidOut = objc_getAssociatedObject(container, &DPRequestedFrameKey);
+    if (laidOut) DPSetCornerRadius(container, NSEqualRects(DPEdgeToEdgeFrame(container, laidOut.rectValue), laidOut.rectValue) ? 0 : DPProgress[DPEdgeToEdge] * DPWindowPadding);
     DPApplySquareCorners(container);
     CALayer *card = DPChatCard(container).layer;
     if (!card) return;
