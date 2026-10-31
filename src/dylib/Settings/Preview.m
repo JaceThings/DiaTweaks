@@ -22,10 +22,6 @@ static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
 - (instancetype)initWithKey:(NSString *)key {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _key = key;
-    self.wantsLayer = YES;
-    self.layer.cornerRadius = 10;
-    self.layer.cornerCurve = kCACornerCurveContinuous;
-    self.layer.masksToBounds = YES;
     _placeholder = DPLabel(@"No preview yet", 12, NSFontWeightRegular, NSColor.tertiaryLabelColor);
     _placeholder.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_placeholder];
@@ -90,7 +86,4 @@ static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
     _media.frame = self.bounds;
     [CATransaction commit];
 }
-
-- (BOOL)wantsUpdateLayer { return YES; }
-- (void)updateLayer { self.layer.backgroundColor = [NSColor.labelColor colorWithAlphaComponent:0.04].CGColor; }
 @end

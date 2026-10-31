@@ -14,13 +14,15 @@ NSView *DPGroup(NSArray<NSView *> *rows) {
         [stack addArrangedSubview:row];
         [row.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
     }];
-    NSBox *box = [NSBox new];
-    box.boxType = NSBoxCustom;
-    box.borderWidth = 0;
-    box.cornerRadius = 10;
-    box.fillColor = [NSColor.labelColor colorWithAlphaComponent:0.04];
-    box.contentViewMargins = NSZeroSize;
-    box.contentView = stack;
+    DPFillView *box = [DPFillView new];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [box addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:box.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:box.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:box.topAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:box.bottomAnchor],
+    ]];
     return box;
 }
 
@@ -128,6 +130,20 @@ NSView *DPIconTile(NSString *symbol, NSColor *color) {
     ]];
     return tile;
 }
+
+// An NSBox resolves its fill once, so it kept the dark one in light mode.
+@implementation DPFillView
+- (instancetype)initWithFrame:(NSRect)frame {
+    if (!(self = [super initWithFrame:frame])) return nil;
+    self.wantsLayer = YES;
+    self.layer.cornerRadius = 10;
+    self.layer.cornerCurve = kCACornerCurveContinuous;
+    self.layer.masksToBounds = YES;
+    return self;
+}
+- (BOOL)wantsUpdateLayer { return YES; }
+- (void)updateLayer { self.layer.backgroundColor = [NSColor.labelColor colorWithAlphaComponent:0.05].CGColor; }
+@end
 
 @implementation DPFlippedView
 - (BOOL)isFlipped { return YES; }

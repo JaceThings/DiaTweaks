@@ -20,6 +20,9 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 @interface DPFlippedView : NSView
 @end
 
+@interface DPFillView : NSView
+@end
+
 @interface DPPatchSwitch : NSSwitch
 @property (nonatomic, readonly) DPPatch *patch;
 - (instancetype)initWithPatch:(DPPatch *)patch;
@@ -37,7 +40,7 @@ void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option));
 NSString *DPWhyDisabled(DPPatch *patch);
 NSURL *DPWikiURL(DPItem item);
 
-@interface DPPreviewView : NSView
+@interface DPPreviewView : DPFillView
 - (instancetype)initWithKey:(NSString *)key;
 @end
 
