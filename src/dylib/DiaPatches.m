@@ -13,6 +13,18 @@ NSView *DPFindView(NSView *root, BOOL (^match)(NSView *)) {
     return nil;
 }
 
+static void DPCollectViews(NSView *view, Class cls, NSMutableArray<NSView *> *views) {
+    if ([view isKindOfClass:cls]) [views addObject:view];
+    for (NSView *sub in view.subviews) DPCollectViews(sub, cls, views);
+}
+
+NSArray<NSView *> *DPFindViews(Class cls) {
+    NSMutableArray<NSView *> *views = [NSMutableArray new];
+    for (NSWindow *window in NSApp.windows)
+        if (cls && window.isVisible) DPCollectViews(window.contentView, cls, views);
+    return views;
+}
+
 // Settings lists the patches in this order.
 DPPatch *const DPPatches[] = {
     &DPEdgeToEdge,
@@ -47,31 +59,42 @@ static void DPAnimate(void) {
     [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
-void DPSetPatch(DPPatch *patch, BOOL on) {
+void DPSetPatch(DPPatch *patch, BOOL on, BOOL save) {
     if (patch->on == on) return;
     patch->on = on;
-    [DPDefaults setBool:on forKey:patch->key];
+    if (save) [DPDefaults setBool:on forKey:patch->key];
     if (patch->apply) patch->apply(patch);
     else DPAnimate();
+}
+
+BOOL DPSavedOn(DPPatch *patch) {
+    id value = [DPDefaults objectForKey:patch->key];
+    return !patch->unavailable && (value ? [value boolValue] : patch->defaultOn);
 }
 
 __attribute__((constructor)) static void DPInit(void) {
     DPBeginLaunch();
     if (DPSafeMode == 2) return;
     DPDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
+    for (NSUInteger i = 0; i < DPPatchCount; i++)
+        for (const char *const *name = DPPatches[i]->classes; name && *name; name++) DPPatches[i]->unavailable |= !objc_getClass(*name);
     for (NSUInteger i = 0; i < DPPatchCount; i++) {
         DPPatch *patch = DPPatches[i];
-        id value = [DPDefaults objectForKey:patch->key];
-        patch->on = value ? [value boolValue] : patch->defaultOn;
+        for (DPPatch *required = patch->requires; required; required = required->requires) patch->unavailable |= required->unavailable;
+        patch->on = DPSavedOn(patch);
         patch->progress = patch->on;
     }
 
     if (!DPSafeMode) {
-        for (NSUInteger i = 0; i < DPPatchCount; i++) if (DPPatches[i]->install) DPPatches[i]->install();
+        for (NSUInteger i = 0; i < DPPatchCount; i++) if (!DPPatches[i]->unavailable && DPPatches[i]->install) DPPatches[i]->install();
         DPInstallButtons();
         DPInstallGroupTabs();
     }
     DPInstallSettings();
 
     DPInstallUpdates();
+
+    NSString *report = NSProcessInfo.processInfo.environment[@"DIAPATCH_TEST"];
+    unsetenv("DIAPATCH_TEST");  // Dia relaunched from Settings would inherit it and test again.
+    if (report) DPRunTests(report);
 }
