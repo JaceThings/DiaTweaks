@@ -58,8 +58,8 @@ static int DPCompareOrder(const void *a, const void *b) {
     return (*(DPPatch *const *)a)->order - (*(DPPatch *const *)b)->order;
 }
 
-void DPLoadPatches(void) {
-    DPDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
+// The DP_PATCH entries, in Settings order.
+static void DPReadPatches(void) {
     unsigned long size = 0;
     DPPatch **entries = (DPPatch **)getsectiondata(&__dso_handle, "__DATA", "__dppatches", &size);
     DPPatch **sorted = malloc(size);
@@ -67,6 +67,11 @@ void DPLoadPatches(void) {
     DPPatchCount = size / sizeof *sorted;
     qsort(sorted, DPPatchCount, sizeof *sorted, DPCompareOrder);
     DPPatches = sorted;
+}
+
+void DPLoadPatches(void) {
+    DPDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
+    DPReadPatches();
 
     for (NSUInteger i = 0; i < DPPatchCount; i++)
         for (const char *const *name = DPPatches[i]->classes; name && *name; name++) DPPatches[i]->unavailable |= !objc_getClass(*name);
@@ -84,4 +89,23 @@ void DPLoadPatches(void) {
 void DPInstallPatches(void) {
     for (NSUInteger i = 0; i < DPPatchCount; i++) if (!DPPatches[i]->unavailable && DPPatches[i]->install) DPPatches[i]->install();
     DPInstallHides();
+}
+
+BOOL DPWriteManifest(NSString *path) {
+    DPReadPatches();
+    NSMutableArray<NSDictionary *> *patches = [NSMutableArray new];
+    for (NSUInteger i = 0; i < DPPatchCount; i++) {
+        DPPatch *patch = DPPatches[i], *required = DPRequired(patch), *disabler = DPPatchNamed(patch->disabledBy);
+        [patches addObject:@{
+            @"key": patch->key,
+            @"title": patch->title,
+            @"detail": patch->detail,
+            @"defaultOn": @(patch->defaultOn),
+            @"requires": required ? required->key : NSNull.null,
+            @"disabledBy": disabler ? disabler->key : NSNull.null,
+        }];
+    }
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"version": @1, @"patches": patches}
+                                                   options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:nil];
+    return [json writeToFile:path atomically:YES];
 }

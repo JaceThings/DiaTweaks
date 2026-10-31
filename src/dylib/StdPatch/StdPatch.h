@@ -44,6 +44,7 @@ void DPSetPatch(DPPatch *patch, BOOL on, BOOL save);  // save: NO changes it onl
 BOOL DPSavedOn(DPPatch *patch);
 void DPLoadPatches(void);     // Reads every DP_PATCH, what it needs and its saved switch.
 void DPInstallPatches(void);  // Runs the installs of the available ones.
+BOOL DPWriteManifest(NSString *path);  // patches.json, the patch list diatweaks shows. Reads no settings.
 
 #pragma mark Hooks
 
