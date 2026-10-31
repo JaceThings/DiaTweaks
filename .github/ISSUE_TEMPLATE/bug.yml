@@ -2,6 +2,15 @@ name: Bug
 description: Something a patch broke or doesn't do right.
 labels: [bug]
 body:
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Already reported?
+      options:
+        - label: I searched open and closed issues and this bug isn't there yet
+          required: true
+        - label: It still happens on the latest DiaTweaks and Dia
+          required: true
   - type: dropdown
     id: patch
     attributes:
