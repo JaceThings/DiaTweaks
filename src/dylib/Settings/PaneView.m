@@ -13,6 +13,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     self.wantsLayer = YES;
     _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
     _searchItem.searchField.delegate = self;
+    _searchItem.preferredWidthForSearchField = 200;  // Two thirds of the width it takes by default.
     _overview = [DPOverviewView new];
     __weak DPPaneView *weakSelf = self;
     _overview.open = ^(DPItem item) { [weakSelf openPage:item]; };
