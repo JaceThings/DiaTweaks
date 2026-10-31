@@ -1,0 +1,51 @@
+name: Bug
+description: Something a patch broke or doesn't do right.
+labels: [bug]
+body:
+  - type: dropdown
+    id: patch
+    attributes:
+      label: Which patch?
+      multiple: true
+      options:
+        - Edge-to-edge web content
+        - Square corners by the sidebar
+        - Hide toolbar
+        - Hide sidebar button
+        - Hide Chat button
+        - Hide Chats button
+        - Hide recent tabs button
+        - Patches pane in Settings
+        - Installing, updating or restoring
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: proof
+    attributes:
+      label: Screenshot or recording
+      description: Drag it in here.
+  - type: dropdown
+    id: tabs
+    attributes:
+      label: Tabs
+      options:
+        - Sidebar
+        - Top of window
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Dia and macOS versions
+      placeholder: Dia 1.55.1, macOS 26.1
+    validations:
+      required: true

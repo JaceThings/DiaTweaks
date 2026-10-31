@@ -1,0 +1,28 @@
+name: Feature request
+description: A patch you'd like to see. If someone already asked for it, give theirs a thumbs-up instead.
+labels: [feature]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: The change, in a sentence or two.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What it fixes or makes better for you.
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference
+      description: Screenshots or recordings of what it should look like, from Dia, another app or a mockup.
+  - type: textarea
+    id: knock-on
+    attributes:
+      label: Knock-on effects
+      description: What else moving or hiding this would affect, and where those things would go instead.
