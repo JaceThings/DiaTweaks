@@ -415,11 +415,11 @@ static BOOL DPToolbarRevealed, DPRevealAnimating;
 static BOOL DPToolbarHidden(void) { return DPOn[DPHideToolbar] && !DPToolbarRevealed; }
 
 // The bar stays in Dia's layout: hiding it makes Dia reflow in ways it won't undo.
-// Little Dia always shows its toolbar: the address there is the preview's header.
+// Little Dia never shows its toolbar, whether or not Hide toolbar is on, and the top edge doesn't reveal it.
 static BOOL DPInLittle(NSView *view) { return [DPLittleWindows containsObject:view.window]; }
 
 static NSView *DPToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
-    return DPToolbarHidden() && !DPInLittle(self) ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
+    return DPToolbarHidden() || DPInLittle(self) ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
 }
 
 static NSView *DPToolbarIn(NSView *pane) {
@@ -451,7 +451,7 @@ static NSVisualEffectView *DPBackdrop(NSView *pane) {
 
 // The lifted bar is drawn above the page but still sits under it in the view tree, so clicks are routed to it.
 static NSView *DPPane_hitTest(NSView *self, SEL _cmd, NSPoint point) {
-    NSView *bar = DPOn[DPHideToolbar] && DPToolbarRevealed ? DPToolbarIn(self) : nil;
+    NSView *bar = DPOn[DPHideToolbar] && DPToolbarRevealed && !DPInLittle(self) ? DPToolbarIn(self) : nil;
     NSPoint local = [self convertPoint:point fromView:self.superview];
     NSView *hit = bar && NSPointInRect(local, bar.frame) ? [bar hitTest:local] : nil;
     return hit ?: DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
@@ -461,7 +461,8 @@ static void DPApplyToolbar(NSView *pane) {
     NSView *bar = DPToolbarIn(pane);
     if (!bar) return;
 
-    CGFloat progress = DPInLittle(pane) ? 0 : DPProgress[DPHideToolbar];
+    BOOL little = DPInLittle(pane), revealed = DPToolbarRevealed && !little;
+    CGFloat progress = little ? 1 : DPProgress[DPHideToolbar];
     NSVisualEffectView *backdrop = DPBackdrop(pane);
     backdrop.frame = bar.frame;
     backdrop.hidden = progress < 1;
@@ -470,8 +471,8 @@ static void DPApplyToolbar(NSView *pane) {
         bar.layer.zPosition = 0;
     } else if (!DPRevealAnimating) {
         // Dia's own layout passes can reset these, so they're reapplied after each one.
-        bar.alphaValue = backdrop.alphaValue = DPToolbarRevealed;
-        bar.layer.zPosition = DPToolbarRevealed ? 2 : 0;
+        bar.alphaValue = backdrop.alphaValue = revealed;
+        bar.layer.zPosition = revealed ? 2 : 0;
     }
     NSView *lowest = pane.subviews.firstObject;
     if (progress > 0 && lowest != bar) [pane addSubview:bar positioned:NSWindowBelow relativeTo:lowest];
@@ -603,7 +604,7 @@ static void DPSetToolbarRevealed(BOOL revealed) {
         context.timingFunction = [CAMediaTimingFunction functionWithName:revealed ? kCAMediaTimingFunctionEaseOut : kCAMediaTimingFunctionEaseInEaseOut];
         for (NSView *pane in DPPanes) {
             NSView *bar = DPToolbarIn(pane);
-            if (!bar) continue;
+            if (!bar || DPInLittle(pane)) continue;
             NSVisualEffectView *backdrop = DPBackdrop(pane);
             backdrop.frame = bar.frame;
             if (revealed) bar.layer.zPosition = 2;
@@ -613,7 +614,7 @@ static void DPSetToolbarRevealed(BOOL revealed) {
     } completionHandler:^{
         if (current != generation) return;
         DPRevealAnimating = NO;
-        for (NSView *pane in DPPanes) DPToolbarIn(pane).layer.zPosition = DPToolbarRevealed ? 2 : 0;
+        for (NSView *pane in DPPanes) if (!DPInLittle(pane)) DPToolbarIn(pane).layer.zPosition = DPToolbarRevealed ? 2 : 0;
     }];
 }
 
@@ -1179,7 +1180,7 @@ static void DPInstallLittleDia(void) {
         if (![DPLittleWindows containsObject:event.window]) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
         BOOL command = mods == NSEventModifierFlagCommand;
-        // Esc still reaches the address field, so it can cancel an edit there.
+        // Esc still reaches a text field being edited, so it can cancel the edit there.
         BOOL editing = [event.window.firstResponder isKindOfClass:NSText.class];
         if (command && event.keyCode == kVK_ANSI_O) DPMoveToDia(event.window);
         else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) DPHideLittle(event.window);
