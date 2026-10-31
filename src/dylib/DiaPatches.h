@@ -35,6 +35,8 @@ void DPApplyButtons(DPPatch *patch);
 
 void DPInstallSettings(void);
 
+void DPInstallGroupTabs(void);
+
 void DPInstallUpdates(void);
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output));
 void DPCheckForUpdates(void (^completion)(NSDictionary *status));
