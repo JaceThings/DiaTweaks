@@ -4,11 +4,11 @@
 
 typedef NS_ENUM(NSInteger, DPTweak) {
     DPEdgeToEdge, DPHideToolbar, DPSquareSidebarCorners, DPAnimatedCount,
-    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideDownloadsButton, DPHideRecentTabsButton, DPHidePinnedTabsBackground, DPHideWindowControls, DPTweakCount
+    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideDownloadsButton, DPHideRecentTabsButton, DPHidePinnedTabsBackground, DPHideWindowControls, DPHidePinnedTabBorder, DPTweakCount
 };
 
-static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideDownloadsButton", @"hideRecentTabsButton", @"hidePinnedTabsBackground", @"hideWindowControls"};
-static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO};
+static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideDownloadsButton", @"hideRecentTabsButton", @"hidePinnedTabsBackground", @"hideWindowControls", @"hidePinnedTabBorder"};
+static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO, NO};
 static const CGFloat DPWindowPadding = 6;
 static const CFTimeInterval DPAnimationDuration = 0.25;
 
@@ -107,6 +107,11 @@ static Class DPWindowControlsClass(void) {
     return cls = cls ?: NSClassFromString(@"_TtC5ARCUI21WindowStandardButtons");
 }
 
+static Class DPSelectionOutlineClass(void) {
+    static Class cls;
+    return cls = cls ?: NSClassFromString(@"_TtC5TabUIP33_CFF5B89D7BC9743BBA6108D119E2E37020SelectionOutlineView");
+}
+
 static Class DPPinnedTabsClass(void) {
     static Class cls;
     return cls = cls ?: NSClassFromString(@"_TtC8TabStrip16TabStripDockView");
@@ -128,6 +133,7 @@ static NSInteger DPButtonTweak(NSView *view) {
                     : [view isKindOfClass:DPChatsButtonClass()]     ? DPHideChatsButton
                     : [view isKindOfClass:DPChatsRowClass()]        ? DPHideChatsButton
                     : [view isKindOfClass:DPWindowControlsClass()]  ? DPHideWindowControls
+                    : [view isKindOfClass:DPSelectionOutlineClass()] ? DPHidePinnedTabBorder
                     : [view isKindOfClass:DPDebossedClass()] && [view.superview isKindOfClass:DPPinnedTabsClass()] ? DPHidePinnedTabsBackground
                                                                     : -1;
     if (match >= 0) objc_setAssociatedObject(view, &DPButtonKey, @(match), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -212,6 +218,15 @@ static void DPSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
         frame.size.height += NSHeight(footer.frame);
         sub.frame = frame;
     }
+}
+
+// The visible border is a masked gradient layer. Dia shows and hides it with selection and never touches its opacity.
+static void DPPinnedTab_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(void (*)(id, SEL), self, _cmd);
+    [DPBars addObject:self];
+    DPEnforceButtons(self);
+    for (CALayer *layer in self.subviews.firstObject.layer.sublayers)
+        if ([layer isKindOfClass:CAGradientLayer.class]) layer.opacity = DPOn[DPHidePinnedTabBorder] ? 0 : 1;
 }
 
 // Dia creates this background lazily, and each tab inside has a debossed view of its own, so only direct children count.
@@ -721,8 +736,9 @@ static const CGFloat DPPaneTitleHeight = 52;
         {DPHideRecentTabsButton, @"chevron.down", @"Hide recent tabs button", @"Hide the recent tabs button from the tab bar and sidebar."},
         {DPHidePinnedTabsBackground, @"rectangle.dashed", @"Hide pinned tabs background", @"Remove the background behind the pinned tabs in the tab bar."},
         {DPHideWindowControls, @"macwindow", @"Hide window controls", @"Hide the close, minimize, and maximize buttons."},
+        {DPHidePinnedTabBorder, @"square.dashed", @"Hide pinned tab border", @"Remove the border around the selected pinned tab."},
     };
-    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor];
+    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
     for (size_t i = 0; i < sizeof rows / sizeof *rows; i++) {
@@ -1159,6 +1175,7 @@ __attribute__((constructor)) static void DPInit(void) {
     DPHook(DPToolbarClass(), @selector(hitTest:), (IMP)DPToolbar_hitTest);
     DPHook(NSClassFromString(@"_TtC8TabStrip31TabStripContainerViewController"), @selector(viewWillLayout), (IMP)DPTabStrip_viewWillLayout);
     DPHook(DPPinnedTabsClass(), @selector(layout), (IMP)DPPinnedTabs_layout);
+    DPHook(NSClassFromString(@"_TtC5TabUI15TabDockItemView"), @selector(layout), (IMP)DPPinnedTab_layout);
     DPHook(NSClassFromString(@"_TtC10TabSidebar30SidebarContainerViewController"), @selector(viewWillLayout), (IMP)DPSidebar_viewWillLayout);
     DPHook(DPSidebarFooterClass(), @selector(layout), (IMP)DPBar_layout);
     DPHook(NSClassFromString(@"_TtC10TabSidebar17SidebarHeaderView"), @selector(layout), (IMP)DPBar_layout);
