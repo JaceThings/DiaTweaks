@@ -67,6 +67,7 @@ __attribute__((constructor)) static void DPInit(void) {
     for (NSUInteger i = 0; i < DPPatchCount; i++) if (DPPatches[i]->install) DPPatches[i]->install();
     DPInstallButtons();
     DPInstallSettings();
+    DPInstallGroupTabs();
 
     DPInstallUpdates();
 }
