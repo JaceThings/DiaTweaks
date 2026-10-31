@@ -4,11 +4,11 @@
 
 typedef NS_ENUM(NSInteger, DPTweak) {
     DPEdgeToEdge, DPHideToolbar, DPSquareSidebarCorners, DPAnimatedCount,
-    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideDownloadsButton, DPHideRecentTabsButton, DPHidePinnedTabsBackground, DPHideWindowControls, DPHidePinnedTabBorder, DPTweakCount
+    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideDownloadsButton, DPHideRecentTabsButton, DPHidePinnedTabsBackground, DPHideWindowControls, DPHidePinnedTabBorder, DPLiquidGlassBackground, DPTweakCount
 };
 
-static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideDownloadsButton", @"hideRecentTabsButton", @"hidePinnedTabsBackground", @"hideWindowControls", @"hidePinnedTabBorder"};
-static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO, NO};
+static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideDownloadsButton", @"hideRecentTabsButton", @"hidePinnedTabsBackground", @"hideWindowControls", @"hidePinnedTabBorder", @"liquidGlassBackground"};
+static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO, NO, NO, NO};
 static const CGFloat DPWindowPadding = 6;
 static const CFTimeInterval DPAnimationDuration = 0.25;
 
@@ -16,7 +16,7 @@ static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
 static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
-static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey;
+static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPGlassKey, DPWindowColorKey;
 
 static NSString *DPCLI(void) {
     return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -519,6 +519,47 @@ static void DPPane_layout(NSView *self, SEL _cmd) {
     DPApplyToolbar(self);
 }
 
+#pragma mark - Liquid Glass
+
+// Variant 17 is the system sidebar's glass; the default reads too clear at this size. The window has to stop being opaque for it to pick up what's behind.
+static void DPApplyGlass(NSView *frame) {
+    NSWindow *window = frame.window;
+    NSView *content = window.contentView, *background = nil, *tint = nil;
+    for (NSView *sub in content.subviews) {
+        NSString *name = NSStringFromClass(sub.class);
+        if ([name containsString:@"WindowFrameBackgroundView"]) background = sub;
+        if ([name containsString:@"WindowBackgroundOverlayTintView"]) tint = sub;
+    }
+    Class glassClass = NSClassFromString(@"NSGlassEffectView");
+    if (!background || !glassClass) return;
+    BOOL on = DPOn[DPLiquidGlassBackground];
+    NSView *glass = objc_getAssociatedObject(window, &DPGlassKey);
+    if (!on && !glass) return;
+    if (on && !glass) {
+        glass = [[glassClass alloc] initWithFrame:content.bounds];
+        glass.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        [glass setValue:@17 forKey:@"_variant"];
+        [content addSubview:glass positioned:NSWindowBelow relativeTo:background];
+        objc_setAssociatedObject(window, &DPGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(window, &DPWindowColorKey, window.backgroundColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!on) {
+        [glass removeFromSuperview];
+        objc_setAssociatedObject(window, &DPGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    background.hidden = tint.hidden = on;
+    for (NSView *sub in frame.subviews) if ([sub isKindOfClass:NSVisualEffectView.class]) sub.hidden = on;
+    if (window.opaque == on) {
+        window.opaque = !on;
+        window.backgroundColor = on ? NSColor.clearColor : objc_getAssociatedObject(window, &DPWindowColorKey);
+    }
+}
+
+static void DPWindowFrame_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(void (*)(id, SEL), self, _cmd);
+    [DPBars addObject:self];
+    DPApplyGlass(self);
+}
+
 #pragma mark - Animation
 
 static void DPRelayout(void) {
@@ -737,11 +778,13 @@ static const CGFloat DPPaneTitleHeight = 52;
         {DPHidePinnedTabsBackground, @"rectangle.dashed", @"Hide pinned tabs background", @"Remove the background behind the pinned tabs in the tab bar."},
         {DPHideWindowControls, @"macwindow", @"Hide window controls", @"Hide the close, minimize, and maximize buttons."},
         {DPHidePinnedTabBorder, @"square.dashed", @"Hide pinned tab border", @"Remove the border around the selected pinned tab."},
+        {DPLiquidGlassBackground, @"sparkles", @"Liquid Glass background", @"Use Liquid Glass behind the tab bar and sidebar instead of the theme color."},
     };
-    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor];
+    NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor, NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemGreenColor, NSColor.systemPinkColor, NSColor.systemBrownColor, NSColor.systemRedColor, NSColor.systemYellowColor, NSColor.systemCyanColor];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
     for (size_t i = 0; i < sizeof rows / sizeof *rows; i++) {
+        if (rows[i].tweak == DPLiquidGlassBackground && !NSClassFromString(@"NSGlassEffectView")) continue;
         NSStackView *text = [NSStackView stackViewWithViews:@[
             DPLabel(rows[i].title, 13, NSFontWeightRegular, NSColor.labelColor),
             DPLabel(rows[i].detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
@@ -1175,6 +1218,7 @@ __attribute__((constructor)) static void DPInit(void) {
     DPHook(DPToolbarClass(), @selector(hitTest:), (IMP)DPToolbar_hitTest);
     DPHook(NSClassFromString(@"_TtC8TabStrip31TabStripContainerViewController"), @selector(viewWillLayout), (IMP)DPTabStrip_viewWillLayout);
     DPHook(DPPinnedTabsClass(), @selector(layout), (IMP)DPPinnedTabs_layout);
+    DPHook(NSClassFromString(@"_TtC6Window24PlatformWindowThemeFrame"), @selector(layout), (IMP)DPWindowFrame_layout);
     DPHook(NSClassFromString(@"_TtC5TabUI15TabDockItemView"), @selector(layout), (IMP)DPPinnedTab_layout);
     DPHook(NSClassFromString(@"_TtC10TabSidebar30SidebarContainerViewController"), @selector(viewWillLayout), (IMP)DPSidebar_viewWillLayout);
     DPHook(DPSidebarFooterClass(), @selector(layout), (IMP)DPBar_layout);
