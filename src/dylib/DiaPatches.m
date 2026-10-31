@@ -197,11 +197,32 @@ static void DPTabStrip_viewWillLayout(NSViewController *self, SEL _cmd) {
     if (DPOn[DPHideDownloadsButton] && downloads && chats) [chats setFrameOrigin:downloads.frame.origin];
 }
 
+// With nothing left in it, the sidebar header shrinks to the window padding and the pinned tabs move up. It stays in place because it's what drags the window.
+static void DPCollapseSidebarHeader(NSView *sidebar) {
+    if (!DPOn[DPHideWindowControls]) return;
+    NSView *header = nil;
+    for (NSView *sub in sidebar.subviews) if ([sub isKindOfClass:NSClassFromString(@"_TtC10TabSidebar17SidebarHeaderView")]) header = sub;
+    NSView *stack = DPFindView(header, ^BOOL(NSView *v) { return [v isKindOfClass:NSStackView.class]; });
+    if (!stack) return;
+    for (NSView *item in stack.subviews) if (!item.hidden && item.subviews.count) return;
+    CGFloat bottom = NSMaxY(header.frame), gap = NSHeight(header.frame) - DPWindowPadding;
+    if (gap <= 0) return;
+    for (NSView *sub in sidebar.subviews) {
+        if (fabs(NSMinY(sub.frame) - bottom) > 0.5) continue;
+        NSRect frame = sub.frame;
+        frame.origin.y -= gap;
+        frame.size.height += gap;
+        sub.frame = frame;
+    }
+    [header setFrameSize:NSMakeSize(NSWidth(header.frame), DPWindowPadding)];
+}
+
 // With both of its items hidden the sidebar footer is an empty band, so the tab list takes its place.
 static void DPSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(void (*)(id, SEL), self, _cmd);
     NSView *sidebar = self.view, *footer = nil;
     [DPBars addObject:sidebar];
+    DPCollapseSidebarHeader(sidebar);
     for (NSView *sub in sidebar.subviews) if ([sub isKindOfClass:DPSidebarFooterClass()]) footer = sub;
     if (!footer) return;
     BOOL empty = DPOn[DPHideChatsButton] && DPOn[DPHideRecentTabsButton];
