@@ -529,7 +529,7 @@ static NSString *DPDomainKey(NSString *urlString) {
     NSString *host = url.host.lowercaseString;
     if (!host.length) return nil;
     while ([host hasSuffix:@"."]) host = [host substringToIndex:host.length - 1];
-    NSMutableArray<NSString *> *labels = [host.componentsSeparatedByString:@"."].mutableCopy;
+    NSMutableArray<NSString *> *labels = [[host componentsSeparatedByString:@"."] mutableCopy];
     for (NSUInteger i = 0; i < labels.count; i++) labels[i] = DPDecodeLabel(labels[i]);
     host = [labels componentsJoinedByString:@"."];
     if ([host hasPrefix:@"www."] && host.length > 4) host = [host substringFromIndex:4];
