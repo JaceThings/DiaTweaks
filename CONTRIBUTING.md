@@ -20,7 +20,7 @@ Each patch is one folder in `src/dylib/Patches/`, built on StdPatch: `src/dylib/
 - Hiding a button only takes a `.hides` function, such as `DPHasLabel(view, @"Recent tabs")` or `DPIsKind(view, DPDiaLibraryButton)`. StdPatch hides it wherever Dia shows it, and checks it in `make test`.
 - Anything else hooks Dia in `.install` with `DPHook`, and calls through with `DPCallOriginal`. Dia's class names go in `StdPatch/Dia.h`.
 - `.apply` applies a toggle at once. Without it the patch animates: `progress` eases between 0 and 1 while `.relayout` runs each frame.
-- `.requires` and `.disabledBy` take another patch's key.
+- `.section` is its group in Settings. `.requires` and `.disabledBy` take another patch's key; a patch that requires another is listed as an option on that one's page instead of in a section.
 - List the Dia classes it relies on in `.classes`. On a Dia version without one of them, the patch stays off and Settings shows it as unavailable.
 - Give it a `.verify` that looks at Dia's views and returns `nil` when they match `on`, or a few words saying what's wrong. Find the views with `DPFindViews`, not through your own hooks, so a hook that never ran shows up as a failure.
 - Keep files to about 100 lines. Split a big patch into several files in its folder.
@@ -30,6 +30,8 @@ With the developer tools on, a script can also drive Dia: post the distributed n
 ## Documenting a patch
 
 Every tweak has a page on the [wiki](https://github.com/JaceThings/DiaTweaks/wiki), titled as it is in Settings. For a new patch, fill in [`docs/tweak-page.md`](docs/tweak-page.md) in your PR description with before and after screenshots: PNG, at most 1400 pixels wide, cropped to the part of Dia the tweak changes, with none of your own tabs in them. A maintainer puts it on the wiki and links it from the sidebar before merging.
+
+Its page in Settings shows a preview from the wiki repo: `previews/<key>.mp4`, or `previews/<key>.png`, 16:10. Push it to `https://github.com/JaceThings/DiaTweaks.wiki.git` and Dia shows it the next time the page opens, with no new build.
 
 CI fails if a patch has no wiki page or the sidebar doesn't link to it. Run `scripts/check-tweak-docs` after `make` to check.
 

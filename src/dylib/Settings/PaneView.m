@@ -2,70 +2,27 @@
 
 NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 
-static NSView *DPPatchRow(DPPatch *patch, NSSwitch *toggle) {
-    NSStackView *text = [NSStackView stackViewWithViews:@[
-        DPLabel(patch->title, 13, NSFontWeightRegular, NSColor.labelColor),
-        DPLabel(patch->unavailable ? @"Unavailable on this Dia version." : patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
-    ]];
-    text.orientation = NSUserInterfaceLayoutOrientationVertical;
-    text.alignment = NSLayoutAttributeLeading;
-    text.spacing = 2;
-    NSStackView *leading = [NSStackView stackViewWithViews:@[DPIconTile(patch->symbol, [NSColor valueForKey:patch->tint]), text]];
-    leading.spacing = 10;
-    leading.alignment = NSLayoutAttributeCenterY;
-    toggle.controlSize = NSControlSizeSmall;
-    return DPRow(leading, toggle);
+// The overview, and the page of whatever was clicked on it, which slides in over it like System Settings.
+@implementation DPPaneView {
+    NSScrollView *_overviewScroll, *_pageScroll;
+    DPPageView *_page;
 }
-
-@implementation DPPaneView
 
 - (instancetype)initWithFrame:(NSRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
-    _searchText = [NSMapTable strongToStrongObjectsMapTable];
-    NSMutableArray<NSView *> *patchRows = [NSMutableArray new];
-    NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
-    for (NSUInteger i = 0; i < DPPatchCount; i++) {
-        NSSwitch *toggle = [NSSwitch new];
-        toggle.tag = i;
-        toggle.target = self;
-        toggle.action = @selector(toggle:);
-        [toggles addObject:toggle];
-        NSView *row = DPPatchRow(DPPatches[i], toggle);
-        [_searchText setObject:[NSString stringWithFormat:@"%@ %@", DPPatches[i]->title, DPPatches[i]->detail] forKey:row];
-        [patchRows addObject:row];
-    }
-    _toggles = toggles;
-    NSMutableArray<NSArray *> *groups = [NSMutableArray arrayWithArray:@[@[@"Interface", patchRows], @[@"Updates", [self makeUpdateRows]]]];
-    if (DPSafeMode) [groups insertObject:@[@"Safe Mode", @[[self makeSafeModeRow]]] atIndex:0];
-
+    self.wantsLayer = YES;
     _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
     _searchItem.searchField.delegate = self;
-    _noResults = DPLabel(@"No results", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
-    _notice = DPLabel(@"DiaPatches is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor);
-    NSMutableArray<NSView *> *views = [NSMutableArray new];
-    NSMutableArray<NSArray *> *sections = [NSMutableArray new];
-    for (NSArray *section in groups) {
-        NSTextField *header = DPLabel(section[0], 12, NSFontWeightSemibold, NSColor.secondaryLabelColor);
-        NSView *group = DPGroup(section[1]);
-        [views addObjectsFromArray:@[header, group]];
-        [sections addObject:@[header, group, section[1]]];
-    }
-    [views addObjectsFromArray:@[_noResults, _notice]];
-    _sections = sections;
-
-    NSStackView *content = [NSStackView stackViewWithViews:views];
-    content.orientation = NSUserInterfaceLayoutOrientationVertical;
-    content.alignment = NSLayoutAttributeLeading;
-    content.spacing = 8;
-    for (NSView *v in content.arrangedSubviews) [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
-    [self addScrollingContent:content];
-    [self updateRows];
+    _overview = [DPOverviewView new];
+    __weak DPPaneView *weakSelf = self;
+    _overview.open = ^(DPItem item) { [weakSelf openPage:item]; };
+    _overviewScroll = [self scrollFor:_overview];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(patchesDidChange:) name:DPPatchesDidChangeNotification object:nil];
     return self;
 }
 
-// Dia's Settings window doesn't grow, so the pane scrolls below the window's title.
-- (void)addScrollingContent:(NSView *)content {
+// Dia's Settings window puts its toolbar over the pane, so the pane scrolls below the window's title.
+- (NSScrollView *)scrollFor:(NSView *)content {
     DPFlippedView *document = [DPFlippedView new];
     NSScrollView *scroll = [NSScrollView new];
     scroll.drawsBackground = NO;
@@ -92,6 +49,62 @@ static NSView *DPPatchRow(DPPatch *patch, NSSwitch *toggle) {
         [content.widthAnchor constraintLessThanOrEqualToConstant:560],
         fill,
     ]];
+    return scroll;
+}
+
+- (void)slideFrom:(CATransitionSubtype)side {
+    CATransition *slide = [CATransition animation];
+    slide.type = kCATransitionPush;
+    slide.subtype = side;
+    slide.duration = 0.25;
+    slide.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+    [self.layer addAnimation:slide forKey:@"slide"];
+}
+
+- (void)openPage:(DPItem)item {
+    [self slideFrom:kCATransitionFromRight];
+    _page = [[DPPageView alloc] initWithItem:item];
+    _pageScroll = [self scrollFor:_page];
+    _overviewScroll.hidden = YES;
+    if (self.titleChanged) self.titleChanged(item.title, YES);
+}
+
+- (BOOL)showsPage { return _page != nil; }
+
+- (void)goBack {
+    if (!_page) return;
+    if (self.window) [self slideFrom:kCATransitionFromLeft];
+    [_pageScroll removeFromSuperview];
+    _pageScroll = nil;
+    _page = nil;
+    _overviewScroll.hidden = NO;
+    if (self.titleChanged) self.titleChanged(@"Patches", NO);
+}
+
+- (void)reset {
+    [self.layer removeAnimationForKey:@"slide"];
+    [_pageScroll removeFromSuperview];
+    _pageScroll = nil;
+    _page = nil;
+    _overviewScroll.hidden = NO;
+    self.searchItem.searchField.stringValue = @"";
+    [self.overview updateWithQuery:@""];
+}
+
+// Searching looks through the overview, so typing on a page goes back to it.
+- (void)controlTextDidChange:(NSNotification *)notification {
+    NSString *query = self.searchItem.searchField.stringValue;
+    if (_page && query.length) [self goBack];
+    [self.overview updateWithQuery:query];
+}
+
+- (void)patchesDidChange:(NSNotification *)notification {
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.allowsImplicitAnimation = YES;
+        [self.overview updateWithQuery:self.searchItem.searchField.stringValue];
+        [self->_page update];
+        [self layoutSubtreeIfNeeded];
+    }];
 }
 
 - (BOOL)isFlipped { return YES; }

@@ -1,6 +1,6 @@
 #import "Settings.h"
 
-@implementation DPPaneView (Updates)
+@implementation DPOverviewView (Updates)
 
 - (NSArray<NSView *> *)makeUpdateRows {
     self.status = DPLabel(@"", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
@@ -39,12 +39,12 @@
 - (void)checkForUpdates:(NSButton *)sender {
     sender.enabled = NO;
     self.status.stringValue = @"Checking for updates…";
-    __weak DPPaneView *weakSelf = self;
+    __weak DPOverviewView *weakSelf = self;
     DPCheckForUpdates(^(NSDictionary *status) { [weakSelf showStatus:status]; });
 }
 
 - (void)refresh {
-    __weak DPPaneView *weakSelf = self;
+    __weak DPOverviewView *weakSelf = self;
     DPRunCLI(@[@"status", @"--json"], ^(NSString *output) {
         id status = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
         [weakSelf showStatus:[status isKindOfClass:NSDictionary.class] ? status : nil];

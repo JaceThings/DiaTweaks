@@ -42,6 +42,58 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
     return row;
 }
 
+@interface DPLinkRowView : NSView
+@property (nonatomic, copy) void (^open)(void);
+@end
+
+@implementation DPLinkRowView
+// Labels would take the click themselves; only real controls, like the switch, keep theirs.
+- (NSView *)hitTest:(NSPoint)point {
+    NSView *hit = [super hitTest:point];
+    return !hit || ([hit isKindOfClass:NSControl.class] && ![hit isKindOfClass:NSTextField.class]) ? hit : self;
+}
+- (void)mouseDown:(NSEvent *)event {}
+- (void)mouseUp:(NSEvent *)event {
+    if (NSPointInRect([self convertPoint:event.locationInWindow fromView:nil], self.bounds)) self.open();
+}
+- (BOOL)accessibilityPerformPress {
+    self.open();
+    return YES;
+}
+@end
+
+NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
+    DPLinkRowView *link = [DPLinkRowView new];
+    link.open = open;
+    link.accessibilityElement = YES;
+    link.accessibilityRole = NSAccessibilityButtonRole;
+    link.accessibilityLabel = title;
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [link addSubview:row];
+    [NSLayoutConstraint activateConstraints:@[
+        [row.leadingAnchor constraintEqualToAnchor:link.leadingAnchor],
+        [row.trailingAnchor constraintEqualToAnchor:link.trailingAnchor],
+        [row.topAnchor constraintEqualToAnchor:link.topAnchor],
+        [row.bottomAnchor constraintEqualToAnchor:link.bottomAnchor],
+    ]];
+    return link;
+}
+
+NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color) {
+    NSImageView *view = [NSImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil]];
+    view.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold];
+    view.contentTintColor = color;
+    return view;
+}
+
+NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing) {
+    NSStackView *stack = [NSStackView stackViewWithViews:views];
+    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    stack.alignment = NSLayoutAttributeLeading;
+    stack.spacing = spacing;
+    return stack;
+}
+
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color) {
     NSTextField *label = [NSTextField wrappingLabelWithString:text];
     label.font = [NSFont systemFontOfSize:size weight:weight];
@@ -55,9 +107,7 @@ NSView *DPIconTile(NSString *symbol, NSColor *color) {
     tile.layer.backgroundColor = color.CGColor;
     tile.layer.cornerRadius = 5;
     tile.layer.cornerCurve = kCACornerCurveContinuous;
-    NSImageView *glyph = [NSImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil]];
-    glyph.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:12 weight:NSFontWeightSemibold];
-    glyph.contentTintColor = NSColor.whiteColor;
+    NSImageView *glyph = DPSymbol(symbol, 12, NSColor.whiteColor);
     glyph.translatesAutoresizingMaskIntoConstraints = NO;
     tile.translatesAutoresizingMaskIntoConstraints = NO;
     [tile addSubview:glyph];
