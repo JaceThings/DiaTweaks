@@ -1,25 +1,16 @@
 # DiaTweaks
 
-Small tweaks for the [Dia](https://www.diabrowser.com) browser that stay in place when Dia updates.
+Small tweaks for [Dia](https://www.diabrowser.com) that stay in place when Dia updates.
 
 Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 or later.
 
 ## Tweaks
 
-Turn them on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
+Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site.
 
-| Tweak | What it does |
-|---|---|
-| Edge-to-edge web content | Removes the padding between pages and the window edge |
-| Square corners by the sidebar | Pages meet the sidebar with straight edges |
-| Hide toolbar | Hides the address bar, navigation buttons and extensions |
-| Reveal toolbar on hover | Shows the hidden toolbar when the pointer is at the top of the page |
-| Hide sidebar button | Hides the sidebar toggle |
-| Hide Chat button | Hides the Chat button in the toolbar |
-| Hide Chats button | Hides the Chats button in the tab bar or sidebar |
-| Hide recent tabs button | Hides the recent tabs button in the tab bar or sidebar |
+Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
 
-Plus **Group Tabs by Domain**: right-click a tab, or use the Tabs menu.
+[See all tweaks →](docs/tweaks/README.md)
 
 ## Install
 
