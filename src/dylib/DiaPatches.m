@@ -603,6 +603,14 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
     return tile;
 }
 
+@interface DPFlippedDocument : NSView
+@end
+@implementation DPFlippedDocument
+- (BOOL)isFlipped { return YES; }
+@end
+
+static const CGFloat DPPaneTitleHeight = 52;
+
 @interface DPPaneView : NSView
 @property (nonatomic, strong) NSArray<NSSwitch *> *toggles;
 @property (nonatomic, strong) NSTextField *status;
@@ -670,12 +678,31 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
     content.spacing = 8;
     for (NSView *v in content.arrangedSubviews) [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     content.translatesAutoresizingMaskIntoConstraints = NO;
-    [self addSubview:content];
-    NSLayoutConstraint *fill = [content.widthAnchor constraintEqualToAnchor:self.widthAnchor constant:-48];
+    // Dia's settings window has a fixed height, so the pane scrolls below the title.
+    DPFlippedDocument *document = [DPFlippedDocument new];
+    document.translatesAutoresizingMaskIntoConstraints = NO;
+    [document addSubview:content];
+    NSScrollView *scroll = [NSScrollView new];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.drawsBackground = NO;
+    scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.automaticallyAdjustsContentInsets = NO;
+    scroll.documentView = document;
+    [self addSubview:scroll];
+    NSLayoutConstraint *fill = [content.widthAnchor constraintEqualToAnchor:document.widthAnchor constant:-48];
     fill.priority = NSLayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
-        [content.topAnchor constraintEqualToAnchor:self.topAnchor constant:72],
-        [content.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:self.topAnchor constant:DPPaneTitleHeight],
+        [scroll.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [document.topAnchor constraintEqualToAnchor:scroll.contentView.topAnchor],
+        [document.leadingAnchor constraintEqualToAnchor:scroll.contentView.leadingAnchor],
+        [document.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor],
+        [content.topAnchor constraintEqualToAnchor:document.topAnchor constant:72 - DPPaneTitleHeight],
+        [content.bottomAnchor constraintEqualToAnchor:document.bottomAnchor constant:-20],
+        [content.centerXAnchor constraintEqualToAnchor:document.centerXAnchor],
         [content.widthAnchor constraintLessThanOrEqualToConstant:560],
         fill,
     ]];
