@@ -107,6 +107,20 @@ static void DPBrowser_didCreate(id self, SEL _cmd, id browser, id contents, BOOL
     if (browser && contents) DPRemember(contents, nil, browser, DPGroupingDelegate(self, browser));
 }
 
+// Tabs opened from Dia's own UI come from here, not from the Chromium callbacks above, which only see
+// tabs restored at launch and ones a page opens.
+static id DPBrowser_createWebContents(id self, SEL _cmd, id params) {
+    id contents = DPCallOriginal(id (*)(id, SEL, id), self, _cmd, params);
+    DPRemember(contents, nil, self, [DPDelegateByBrowser objectForKey:self]);
+    return contents;
+}
+
+// A tab dragged to another window changes browser.
+static void DPBrowser_takeOwnership(id self, SEL _cmd, id contents) {
+    DPCallOriginal(void (*)(id, SEL, id), self, _cmd, contents);
+    DPRemember(contents, nil, self, [DPDelegateByBrowser objectForKey:self]);
+}
+
 static BOOL DPIsNewGroupTitle(NSString *title) {
     if ([title isEqualToString:@"New Group with Tab"] || [title isEqualToString:@"New Group with Tabs"]) return YES;
     return [title hasPrefix:@"New Group with "] && ([title hasSuffix:@" Tab"] || [title hasSuffix:@" Tabs"]);
@@ -358,6 +372,8 @@ void DPInstallGroupTabs(void) {
 
     DPHook(NSClassFromString(@"ArcBrowser"), @selector(setDelegate:), (IMP)DPBrowser_setDelegate);
     DPHook(NSClassFromString(@"ArcBrowser"), @selector(setWindow:), (IMP)DPBrowser_setWindow);
+    DPHook(NSClassFromString(@"ArcBrowser"), @selector(createWebContents:), (IMP)DPBrowser_createWebContents);
+    DPHook(NSClassFromString(@"ArcBrowser"), @selector(takeOwnershipOfWebContents:), (IMP)DPBrowser_takeOwnership);
     Class browserDelegate = NSClassFromString(@"_TtC3ADK15ChromiumBrowser");
     DPHook(browserDelegate, @selector(browser:didRestoreWebContents:withSessionId:), (IMP)DPBrowser_didRestore);
     DPHook(browserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
