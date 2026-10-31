@@ -14,7 +14,7 @@ NSArray<NSValue *> *DPOptions(DPPatch *patch) {
 NSString *DPWhyDisabled(DPPatch *patch) {
     if (patch->unavailable) return @"Unavailable on this Dia version.";
     DPPatch *disabler = DPPatchNamed(patch->disabledBy);
-    return disabler && disabler->on ? [NSString stringWithFormat:@"Off while %@ is on.", disabler->title] : nil;
+    return disabler && disabler->on ? [NSString stringWithFormat:@"Not needed while %@ is on.", disabler->title] : nil;
 }
 
 // Wiki pages are named after the title, with spaces as hyphens.
