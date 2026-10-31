@@ -1,9 +1,19 @@
 #import "Updates/Updates.h"
 
-static NSString *DPCLI(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches/bin/diapatch"];
+static NSString *DPLaunchedRelease;
+
+static NSString *DPHome(NSString *name) {
+    return [[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
+        stringByAppendingPathComponent:@"DiaPatches"] stringByAppendingPathComponent:name];
 }
+
+static NSString *DPCLI(void) { return DPHome(@"bin/diapatch"); }
+
+static NSUserDefaults *DPSettingsDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
+
+BOOL DPAutoUpdates(void) { return [DPSettingsDefaults() objectForKey:@"autoUpdate"] ? [DPSettingsDefaults() boolForKey:@"autoUpdate"] : YES; }
+
+void DPSetAutoUpdates(BOOL on) { [DPSettingsDefaults() setBool:on forKey:@"autoUpdate"]; }
 
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -34,8 +44,14 @@ static NSString *DPStagedPath(void) {
     return [DPCLI().stringByDeletingLastPathComponent.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"staged/Dia.app"];
 }
 
-void DPCheckForUpdates(void (^completion)(NSDictionary *status)) {
+static void DPUpdateDiaAndTweaks(void (^done)(void)) {
     DPRunCLI(@[@"update"], ^(NSString *_) {
+        DPRunCLI(@[@"self-update"], ^(NSString *_) { if (done) done(); });
+    });
+}
+
+void DPCheckForUpdates(void (^completion)(NSDictionary *status)) {
+    DPUpdateDiaAndTweaks(^{
         DPRunCLI(@[@"status", @"--json"], ^(NSString *output) {
             id status = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
             completion([status isKindOfClass:NSDictionary.class] ? status : nil);
@@ -43,13 +59,21 @@ void DPCheckForUpdates(void (^completion)(NSDictionary *status)) {
     });
 }
 
+NSString *DPPendingUpdate(NSDictionary *status) {
+    id dia = status[@"staged"], tweaks = status[@"release"];
+    BOOL newTweaks = [tweaks isKindOfClass:NSString.class] && ![tweaks isEqual:DPLaunchedRelease];
+    if ([dia isKindOfClass:NSString.class])
+        return newTweaks ? [NSString stringWithFormat:@"Dia %@ and DiaTweaks %@", dia, tweaks] : [@"Dia " stringByAppendingString:dia];
+    return newTweaks ? [@"DiaTweaks " stringByAppendingString:tweaks] : nil;
+}
+
 static void DPShowUpdateAlert(void) {
     DPCheckForUpdates(^(NSDictionary *status) {
         NSAlert *alert = [NSAlert new];
-        id staged = status[@"staged"];
-        if ([staged isKindOfClass:NSString.class]) {
-            alert.messageText = [NSString stringWithFormat:@"Dia %@ is ready", staged];
-            alert.informativeText = @"It will be installed with your patches when you quit Dia.";
+        NSString *pending = DPPendingUpdate(status);
+        if (pending) {
+            alert.messageText = [pending stringByAppendingString:@" is ready"];
+            alert.informativeText = @"It’s installed when you quit Dia.";
             [alert addButtonWithTitle:@"Relaunch Now"];
             [alert addButtonWithTitle:@"Later"];
             if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@"apply");
@@ -69,9 +93,10 @@ static void DPApplyStagedOnQuit(void) {
 }
 
 void DPInstallUpdates(void) {
+    DPLaunchedRelease = [NSDictionary dictionaryWithContentsOfFile:DPHome(@"release.plist")][@"tag"];
     DPOnLaunch(^{
         DPOnMenuItem(nil, @"Check for Updates", ^{ DPShowUpdateAlert(); });
-        DPRunCLI(@[@"update"], nil);
+        if (DPAutoUpdates()) DPUpdateDiaAndTweaks(nil);
     });
     DPOnQuit(^{ DPApplyStagedOnQuit(); });
 }

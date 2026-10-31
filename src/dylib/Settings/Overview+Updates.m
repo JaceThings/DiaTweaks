@@ -9,11 +9,21 @@
     self.relaunchButton.bezelColor = NSColor.controlAccentColor;
     self.relaunchButton.hidden = YES;
     NSView *updateRow = DPRow(self.status, [NSStackView stackViewWithViews:@[self.relaunchButton, self.checkButton]]);
+    NSSwitch *automatic = [NSSwitch new];
+    automatic.controlSize = NSControlSizeSmall;
+    automatic.state = DPAutoUpdates();
+    automatic.target = self;
+    automatic.action = @selector(toggleAutoUpdates:);
+    automatic.accessibilityLabel = @"Install updates automatically";
+    NSView *automaticRow = DPRow(DPColumn(@[DPLabel(@"Install updates automatically", 13, NSFontWeightRegular, NSColor.labelColor),
+                                            DPLabel(@"Downloads new versions of Dia and DiaTweaks when Dia opens, and installs them when it quits.",
+                                                    11, NSFontWeightRegular, NSColor.secondaryLabelColor)], 2), automatic);
     NSView *restoreRow = DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor),
                                [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)]);
     [self.searchText setObject:@"Check for updates version" forKey:updateRow];
+    [self.searchText setObject:@"Install updates automatically auto update download" forKey:automaticRow];
     [self.searchText setObject:@"Restore the original Dia without patches uninstall" forKey:restoreRow];
-    return @[updateRow, restoreRow];
+    return @[updateRow, automaticRow, restoreRow];
 }
 
 - (NSView *)makeSafeModeRow {
@@ -27,12 +37,13 @@
     NSString *running = [NSString stringWithFormat:@"Dia %@ (%@)",
         [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
         [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"]];
-    id staged = status[@"staged"];
-    BOOL ready = [staged isKindOfClass:NSString.class];
+    id release = status[@"release"];
+    if ([release isKindOfClass:NSString.class]) running = [running stringByAppendingFormat:@" · DiaTweaks %@", release];
+    NSString *pending = DPPendingUpdate(status);
     self.status.stringValue = !status ? [running stringByAppendingString:@" · couldn’t check for updates"]
-                            : ready   ? [NSString stringWithFormat:@"Dia %@ installs when you quit", staged]
+                            : pending ? [pending stringByAppendingString:@" installs when you quit"]
                                       : [running stringByAppendingString:@" · up to date"];
-    self.relaunchButton.hidden = !ready;
+    self.relaunchButton.hidden = !pending;
     self.checkButton.enabled = YES;
 }
 
@@ -49,6 +60,10 @@
         id status = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
         [weakSelf showStatus:[status isKindOfClass:NSDictionary.class] ? status : nil];
     });
+}
+
+- (void)toggleAutoUpdates:(NSSwitch *)sender {
+    DPSetAutoUpdates(sender.state == NSControlStateValueOn);
 }
 
 - (void)relaunchToUpdate:(id)sender {
