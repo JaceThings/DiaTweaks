@@ -17,6 +17,7 @@ static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
 static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
+static NSHashTable<NSWindow *> *DPLittleWindows;
 static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPCollapsedKey, DPSearchItemKey, DPBackdropKey, DPLittleIDKey;
 
 static NSString *DPCLI(void) {
@@ -414,8 +415,11 @@ static BOOL DPToolbarRevealed, DPRevealAnimating;
 static BOOL DPToolbarHidden(void) { return DPOn[DPHideToolbar] && !DPToolbarRevealed; }
 
 // The bar stays in Dia's layout: hiding it makes Dia reflow in ways it won't undo.
+// Little Dia always shows its toolbar: the address there is the preview's header.
+static BOOL DPInLittle(NSView *view) { return [DPLittleWindows containsObject:view.window]; }
+
 static NSView *DPToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
-    return DPToolbarHidden() ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
+    return DPToolbarHidden() && !DPInLittle(self) ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
 }
 
 static NSView *DPToolbarIn(NSView *pane) {
@@ -457,7 +461,7 @@ static void DPApplyToolbar(NSView *pane) {
     NSView *bar = DPToolbarIn(pane);
     if (!bar) return;
 
-    CGFloat progress = DPProgress[DPHideToolbar];
+    CGFloat progress = DPInLittle(pane) ? 0 : DPProgress[DPHideToolbar];
     NSVisualEffectView *backdrop = DPBackdrop(pane);
     backdrop.frame = bar.frame;
     backdrop.hidden = progress < 1;
@@ -568,7 +572,9 @@ static BOOL DPWantsToolbar(void) {
     for (NSView *pane in DPPanes) {
         NSView *bar = DPToolbarIn(pane);
         NSWindow *window = pane.window;
-        if (!bar || !window.isVisible || pane.isHiddenOrHasHiddenAncestor) continue;
+        if (!bar || !window.isVisible || pane.isHiddenOrHasHiddenAncestor || DPInLittle(pane)) continue;
+        // The window under an open Little Dia is dimmed and only there to be clicked back to.
+        if (window.childWindows.count && [DPLittleWindows containsObject:window.childWindows.lastObject] && window.childWindows.lastObject.isVisible) continue;
         if (DPEditingIn(bar)) return YES;
         // Address suggestions, menus and popovers open from the bar in windows of their own.
         if (DPToolbarRevealed && underWindow && underWindow != window
@@ -657,8 +663,15 @@ static const CGFloat DPLittleCornerRadius = 12, DPLittleOriginWidth = 160, DPLit
 // A touch under critical damping: it lands quickly with a barely visible settle.
 static const CGFloat DPSpringMass = 1, DPSpringStiffness = 240, DPSpringDamping = 27;
 static const UInt32 DPLittleHotKeySignature = 0x44506C64;
-static NSHashTable<NSWindow *> *DPLittleWindows;
-static BOOL DPLaunched;
+// There's one Little Dia, kept hidden between uses like Arc's Peek: reusing it skips the 0.7s Dia takes to make a window.
+static __weak NSWindow *DPLittle;
+static BOOL DPLaunched, DPLittleOpening;
+static const NSTimeInterval DPLittleHideDuration = 0.15, DPScrimDuration = 0.2;
+static NSString *const DPLittleWindowIDKey = @"littleWindowID";
+static const NSTimeInterval DPLeftoverPoll = 0.5;
+static const int DPLeftoverAttempts = 20;
+static const CGFloat DPPopoverWidthFraction = 0.82, DPPopoverHeightFraction = 0.86, DPPopoverMaxWidth = 1200, DPScrimOpacity = 0.25;
+static NSView *DPScrim;
 
 static NSString *DPQuoted(NSString *text) {
     text = [text stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
@@ -690,6 +703,78 @@ static void DPCollapseSidebar(NSWindow *window) {
     if (header && ![header tryToPerform:toggle with:nil] && window.isKeyWindow) [NSApp sendAction:toggle to:nil from:nil];
 }
 
+static BOOL DPLittleAlive(NSWindow *window) {
+    return window && DPLittleID(window) && [NSApp.windows containsObject:window];
+}
+
+static void DPHideLittle(NSWindow *window);
+
+// Dims the window Little Dia opened over; a click on it dismisses Little Dia, like clicking outside a popover.
+@interface DPScrimView : NSView
+@end
+
+@implementation DPScrimView
+- (NSView *)hitTest:(NSPoint)point { return NSPointInRect([self convertPoint:point fromView:self.superview], self.bounds) ? self : nil; }
+- (void)mouseDown:(NSEvent *)event { DPHideLittle(DPLittle); }
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+@end
+
+// The window Little Dia opens over: the one in use, or Dia's frontmost when a link comes from another app.
+static NSWindow *DPLittleParent(void) {
+    NSMutableArray<NSWindow *> *candidates = [NSMutableArray arrayWithObject:NSApp.mainWindow ?: NSNull.null];
+    [candidates addObjectsFromArray:NSApp.orderedWindows];
+    for (id window in candidates)
+        if ([window isKindOfClass:NSWindow.class] && [window canBecomeMainWindow] && [window isVisible] && ![window isMiniaturized]
+            && ![DPLittleWindows containsObject:window]) return window;
+    return nil;
+}
+
+static void DPShowScrim(NSWindow *parent) {
+    NSView *frame = parent.contentView.superview;
+    if (!frame) return;
+    if (!DPScrim) {
+        DPScrim = [DPScrimView new];
+        DPScrim.wantsLayer = YES;
+        DPScrim.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPScrimOpacity].CGColor;
+        DPScrim.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    }
+    DPScrim.frame = frame.bounds;
+    DPScrim.alphaValue = 0;
+    [frame addSubview:DPScrim positioned:NSWindowAbove relativeTo:nil];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = DPScrimDuration;
+        DPScrim.animator.alphaValue = 1;
+    }];
+}
+
+// A child window rides along with the window it opened over and isn't listed as a window of its own.
+static void DPAttachLittle(NSWindow *window, NSWindow *parent) {
+    for (NSWindowButton type = NSWindowCloseButton; type <= NSWindowZoomButton; type++) [window standardWindowButton:type].hidden = YES;
+    if (!parent) return;
+    if (window.parentWindow != parent) {
+        [window.parentWindow removeChildWindow:window];
+        [parent addChildWindow:window ordered:NSWindowAbove];
+    }
+    DPShowScrim(parent);
+}
+
+// Hidden rather than closed, and emptied so nothing keeps playing behind the scenes.
+static void DPHideLittle(NSWindow *window) {
+    if (!DPLittleAlive(window) || !window.isVisible || DPLittleOpening) return;
+    NSString *windowID = DPLittleID(window);
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = DPLittleHideDuration;
+        window.animator.alphaValue = 0;
+        DPScrim.animator.alphaValue = 0;
+    } completionHandler:^{
+        if (DPLittleOpening) return;
+        [DPScrim removeFromSuperview];
+        [window.parentWindow removeChildWindow:window];
+        [window orderOut:nil];
+        DPDiaScript([NSString stringWithFormat:@"set URL of active tab of window id %@ to \"about:blank\"", DPQuoted(windowID)]);
+    }];
+}
+
 static void DPMoveToDia(NSWindow *little) {
     NSString *littleID = DPLittleID(little);
     if (!littleID) return;
@@ -706,7 +791,6 @@ static void DPMoveToDia(NSWindow *little) {
         "    exit repeat\n"
         "  end if\n"
         "end repeat\n"
-        "close lw\n"
         "if u is missing value then\n"
         "  if target is not missing value then focus active tab of target\n"
         "else if target is missing value then\n"
@@ -715,6 +799,7 @@ static void DPMoveToDia(NSWindow *little) {
         "  focus (make new tab at end of tabs of target with properties {URL:u})\n"
         "end if",
         DPQuoted(littleID), [ids componentsJoinedByString:@", "]]);
+    DPHideLittle(little);
 }
 
 @interface DPLittleTarget : NSObject
@@ -879,7 +964,9 @@ static CASpringAnimation *DPSpring(NSString *keyPath, id from, id to) {
         if (loading && !started) started = CACurrentMediaTime();
         // The tab can report idle before its navigation starts, so idle only counts once it has loaded or had a moment to.
         // A slow page is shown while it's still loading, the way a tab would show it, rather than kept behind the card.
-        BOOL loaded = [state descriptorAtIndex:1].stringValue && !loading && (started || elapsed > DPLittleLoadStartGrace);
+        NSString *current = [state descriptorAtIndex:1].stringValue;
+        BOOL navigated = current && ![current isEqualToString:@"about:blank"];
+        BOOL loaded = navigated && !loading && (started || elapsed > DPLittleLoadStartGrace);
         BOOL underway = started && CACurrentMediaTime() - started > DPLittleShowWhileLoading;
         if (!loaded && !underway && state && elapsed < DPLittleLoadTimeout) return;
         [timer invalidate];
@@ -914,6 +1001,7 @@ static void DPWhenLittleReady(NSWindow *window, NSString *windowID, NSURL *url, 
         if (!NSEqualRects(window.frame, frame)) [window setFrame:frame display:YES];
         if (DPSidebarHeader(window) && CACurrentMediaTime() - start < DPLittleReadyTimeout) return;
         [timer invalidate];
+        DPLittleOpening = NO;
         [transition windowReady:window id:windowID url:url];
     }];
 }
@@ -945,17 +1033,36 @@ static id DPWindow_initNoScreen(NSWindow *self, SEL _cmd, NSRect rect, NSWindowS
 // From the pointer for links, since that's where the click was; a small pop from the centre for the shortcut.
 static void DPOpenLittleDia(NSURL *url, BOOL fromPointer, void (^fallback)(void)) {
     NSPoint mouse = NSEvent.mouseLocation;
-    NSScreen *screen = NSScreen.mainScreen;
-    for (NSScreen *s in NSScreen.screens) if (NSMouseInRect(mouse, s.frame, NO)) screen = s;
-    NSRect visible = screen.visibleFrame;
-    NSSize size = NSMakeSize(MIN(DPLittleSize.width, NSWidth(visible) - 40), MIN(DPLittleSize.height, NSHeight(visible) - 40));
-    NSRect frame = NSMakeRect(round(NSMidX(visible) - size.width / 2), round(NSMidY(visible) - size.height / 2), size.width, size.height);
+    NSWindow *parent = DPLittleParent();
+    NSScreen *screen = parent.screen ?: NSScreen.mainScreen;
+    if (!parent) for (NSScreen *s in NSScreen.screens) if (NSMouseInRect(mouse, s.frame, NO)) screen = s;
+    // Over the window in use, like a popover; centred on the screen when Dia has no window to open over.
+    NSRect area = parent ? parent.frame : screen.visibleFrame;
+    NSSize size = parent ? NSMakeSize(MIN(round(NSWidth(area) * DPPopoverWidthFraction), DPPopoverMaxWidth), round(NSHeight(area) * DPPopoverHeightFraction))
+                         : NSMakeSize(MIN(DPLittleSize.width, NSWidth(area) - 40), MIN(DPLittleSize.height, NSHeight(area) - 40));
+    NSRect frame = NSMakeRect(round(NSMidX(area) - size.width / 2), round(NSMidY(area) - size.height / 2), size.width, size.height);
     NSPoint origin = fromPointer ? mouse : NSMakePoint(NSMidX(frame), NSMidY(frame));
     CGFloat scale = fromPointer ? DPLittleOriginWidth / size.width : DPLittlePopScale;
     DPLittleTransition *transition = [[DPLittleTransition alloc] initFrom:origin scale:scale to:frame on:screen label:url.host];
 
     // On the next turn, so the card is already moving while Dia builds the window.
     dispatch_async(dispatch_get_main_queue(), ^{
+        DPLittleOpening = YES;
+        // A link loads into the hidden Little Dia. The shortcut wants Dia's New Tab page, which only a new window opens on.
+        NSWindow *reuse = DPLittle;
+        if (url && DPLittleAlive(reuse)
+            && DPDiaScript([NSString stringWithFormat:@"set URL of active tab of window id %@ to %@", DPQuoted(DPLittleID(reuse)), DPQuoted(url.absoluteString)])) {
+            reuse.alphaValue = 0;
+            [reuse setFrame:frame display:YES];
+            DPAttachLittle(reuse, parent);
+            [NSApp activateIgnoringOtherApps:YES];
+            [reuse makeKeyAndOrderFront:nil];
+            DPWhenLittleReady(reuse, DPLittleID(reuse), url, frame, transition);
+            return;
+        }
+        for (NSWindow *old in DPLittleWindows.allObjects)
+            if (DPLittleID(old)) DPDiaScript([NSString stringWithFormat:@"close window id %@", DPQuoted(DPLittleID(old))]);
+
         NSSet<NSWindow *> *before = [NSSet setWithArray:NSApp.windows];
         DPWindowsMadeForLittle = [NSMutableArray new];
         NSString *body = url ? [NSString stringWithFormat:@"set w to make new window\nset URL of active tab of w to %@\nreturn id of w", DPQuoted(url.absoluteString)]
@@ -966,6 +1073,7 @@ static void DPOpenLittleDia(NSURL *url, BOOL fromPointer, void (^fallback)(void)
         for (NSWindow *w in DPWindowsMadeForLittle) if (w != window) w.alphaValue = 1;
         DPWindowsMadeForLittle = nil;
         if (!windowID || !window) {
+            DPLittleOpening = NO;
             [transition cancel];
             if (fallback) fallback();
             return;
@@ -973,8 +1081,11 @@ static void DPOpenLittleDia(NSURL *url, BOOL fromPointer, void (^fallback)(void)
         window.alphaValue = 0;
         objc_setAssociatedObject(window, &DPLittleIDKey, windowID, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [DPLittleWindows addObject:window];
+        DPLittle = window;
+        [DPDefaults setObject:windowID forKey:DPLittleWindowIDKey];
         [window setFrame:frame display:YES];
         DPAddMoveButton(window);
+        DPAttachLittle(window, parent);
         [NSApp activateIgnoringOtherApps:YES];
         [window makeKeyAndOrderFront:nil];
         DPCollapseSidebar(window);
@@ -1059,14 +1170,37 @@ static void DPInstallLittleDia(void) {
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         [DPLittleWindows removeObject:note.object];
     }];
+    // Like Peek, Little Dia goes away once you're back in another Dia window. Switching apps leaves it be.
+    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        NSWindow *window = note.object;
+        if (window != DPLittle && window.canBecomeMainWindow) DPHideLittle(DPLittle);
+    }];
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+        if (![DPLittleWindows containsObject:event.window]) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
-        if (mods != NSEventModifierFlagCommand || event.keyCode != kVK_ANSI_O || ![DPLittleWindows containsObject:event.window]) return event;
-        DPMoveToDia(event.window);
+        BOOL command = mods == NSEventModifierFlagCommand;
+        // Esc still reaches the address field, so it can cancel an edit there.
+        BOOL editing = [event.window.firstResponder isKindOfClass:NSText.class];
+        if (command && event.keyCode == kVK_ANSI_O) DPMoveToDia(event.window);
+        else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) DPHideLittle(event.window);
+        else return event;
         return nil;
     }];
     DPUpdateLittleDia();
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPLaunched = YES; });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        DPLaunched = YES;
+        // Dia restores windows it was showing when it quit, and isn't always quit in a way that lets Little Dia close
+        // first, so the last one is looked up by ID and closed once Dia has restored its windows.
+        NSString *leftover = [DPDefaults stringForKey:DPLittleWindowIDKey];
+        if (!leftover) return;
+        NSString *script = [NSString stringWithFormat:@"if (id of every window) contains %1$@ then\nclose window id %1$@\nreturn true\nend if\nreturn false", DPQuoted(leftover)];
+        __block int attempts = 0;
+        [NSTimer scheduledTimerWithTimeInterval:DPLeftoverPoll repeats:YES block:^(NSTimer *timer) {
+            if (![DPDiaScript(script) booleanValue] && ++attempts < DPLeftoverAttempts) return;
+            [timer invalidate];
+            if ([[DPDefaults stringForKey:DPLittleWindowIDKey] isEqualToString:leftover]) [DPDefaults removeObjectForKey:DPLittleWindowIDKey];
+        }];
+    });
 }
 
 // Little windows would otherwise come back as full windows the next time Dia opens.
@@ -1274,7 +1408,7 @@ static NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch
         {DPHideChatsButton, @"doc.plaintext", @"Hide Chats button", @"Hide the Chats button in the tab bar or sidebar."},
         {DPHideRecentTabsButton, @"clock.arrow.circlepath", @"Hide recent tabs button", @"Hide the recent tabs button in the tab bar or sidebar."},
         {DPOverlayScrollbars, @"scroll", @"Slim scrollbars", @"Use thin scrollbars that float over pages instead of taking up a gutter."},
-        {DPLittleDia, @"macwindow", @"Little Dia", @"Open links from other apps, and new-tab links to other sites, in a small window. Press ⌥⌘N anywhere for a quick one, and ⌘O to move it into Dia."},
+        {DPLittleDia, @"macwindow", @"Little Dia", @"Open links from other apps, and new-tab links to other sites, in a small window. Press ⌥⌘N anywhere for a quick one, ⌘O to move it into Dia, and Esc to dismiss it."},
     };
     NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor,
                                   NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemPinkColor, NSColor.systemGreenColor, NSColor.systemYellowColor];
