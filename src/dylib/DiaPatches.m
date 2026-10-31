@@ -56,6 +56,8 @@ void DPSetPatch(DPPatch *patch, BOOL on) {
 }
 
 __attribute__((constructor)) static void DPInit(void) {
+    DPBeginLaunch();
+    if (DPSafeMode == 2) return;
     DPDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     for (NSUInteger i = 0; i < DPPatchCount; i++) {
         DPPatch *patch = DPPatches[i];
@@ -64,10 +66,12 @@ __attribute__((constructor)) static void DPInit(void) {
         patch->progress = patch->on;
     }
 
-    for (NSUInteger i = 0; i < DPPatchCount; i++) if (DPPatches[i]->install) DPPatches[i]->install();
-    DPInstallButtons();
+    if (!DPSafeMode) {
+        for (NSUInteger i = 0; i < DPPatchCount; i++) if (DPPatches[i]->install) DPPatches[i]->install();
+        DPInstallButtons();
+        DPInstallGroupTabs();
+    }
     DPInstallSettings();
-    DPInstallGroupTabs();
 
     DPInstallUpdates();
 }

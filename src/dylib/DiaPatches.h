@@ -41,3 +41,8 @@ void DPInstallUpdates(void);
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output));
 void DPCheckForUpdates(void (^completion)(NSDictionary *status));
 void DPHandOffAndQuit(NSString *command);
+
+// 0: normal. 1: Dia died twice right after launching, so no patch or command hooks. 2: it kept dying, so nothing at all.
+extern NSInteger DPSafeMode;
+void DPBeginLaunch(void);
+void DPLeaveSafeMode(void);
