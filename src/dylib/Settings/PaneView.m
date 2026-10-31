@@ -14,7 +14,6 @@ static NSView *DPPatchRow(DPPatch *patch, NSSwitch *toggle) {
     leading.spacing = 10;
     leading.alignment = NSLayoutAttributeCenterY;
     toggle.controlSize = NSControlSizeSmall;
-    toggle.state = patch->on;
     return DPRow(leading, toggle);
 }
 
@@ -61,6 +60,7 @@ static NSView *DPPatchRow(DPPatch *patch, NSSwitch *toggle) {
     for (NSView *v in content.arrangedSubviews) [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     [self addScrollingContent:content];
     [self updateRows];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(patchesDidChange:) name:DPPatchesDidChangeNotification object:nil];
     return self;
 }
 

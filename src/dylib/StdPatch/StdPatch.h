@@ -43,8 +43,9 @@ DPPatch *DPRequired(DPPatch *patch);  // The patch named by `requires`, or NULL.
 void DPSetPatch(DPPatch *patch, BOOL on, BOOL save);  // save: NO changes it only until Dia quits (test mode).
 BOOL DPSavedOn(DPPatch *patch);
 void DPLoadPatches(void);     // Reads every DP_PATCH, what it needs and its saved switch.
-void DPInstallPatches(void);  // Runs the installs of the available ones.
+void DPInstallPatches(void);  // Runs the installs of the available ones, and from then on applies settings diatweaks saves.
 BOOL DPWriteManifest(NSString *path);  // patches.json, the patch list diatweaks shows. Reads no settings.
+extern NSNotificationName const DPPatchesDidChangeNotification;  // Posted after Dia applied settings diatweaks saved.
 
 #pragma mark Hooks
 
