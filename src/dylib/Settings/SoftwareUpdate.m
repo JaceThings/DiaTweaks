@@ -98,12 +98,13 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
                                          [NSButton buttonWithTitle:@"Check Now" target:self action:@selector(checkAgain:)])])];
     }
 
+    if (shown.count > 1) {
+        NSButton *both = [NSButton buttonWithTitle:@"Update Both" target:self action:@selector(updateAll:)];
+        both.enabled = ![updates downloading:DPDia] && ![updates downloading:DPTweaks];
+        [views addObject:DPGroup(@[DPRow(DPLine(@"Dia and DiaTweaks both have updates", 13, NSColor.labelColor), both)])];
+    }
     for (NSString *part in shown) {
-        if (part != shown.firstObject) {
-            NSStackView *header = [NSStackView stackViewWithViews:@[DPHeader(@"Also Available")]];
-            [header addView:[NSButton buttonWithTitle:@"Update All" target:self action:@selector(updateAll:)] inGravity:NSStackViewGravityTrailing];
-            [views addObject:header];
-        }
+        if (part != shown.firstObject) [views addObject:DPHeader(@"Also Available")];
         [views addObject:[self groupFor:part]];
     }
 
