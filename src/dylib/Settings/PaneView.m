@@ -4,7 +4,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 
 @implementation DPPaneView {
     NSScrollView *_overviewScroll, *_pageScroll;
-    DPPageView *_page;
+    NSView *_page;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -15,7 +15,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     [_searchItem.searchField.widthAnchor constraintEqualToConstant:218].active = YES;
     _overview = [DPOverviewView new];
     __weak DPPaneView *weakSelf = self;
-    _overview.open = ^(DPItem item) { [weakSelf openPage:item]; };
+    _overview.open = ^(NSString *title, NSView *page) { [weakSelf openPage:page title:title]; };
     _overviewScroll = [self scrollFor:_overview];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(patchesDidChange:) name:DPPatchesDidChangeNotification object:nil];
     return self;
@@ -52,16 +52,16 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     return scroll;
 }
 
-- (void)showPage:(DPPageView *)page {
+- (void)showPage:(NSView *)page {
     [_pageScroll removeFromSuperview];
     _page = page;
     _pageScroll = page ? [self scrollFor:page] : nil;
     _overviewScroll.hidden = page != nil;
 }
 
-- (void)openPage:(DPItem)item {
-    [self showPage:[[DPPageView alloc] initWithItem:item]];
-    self.titleChanged(item.title, YES);
+- (void)openPage:(NSView *)page title:(NSString *)title {
+    [self showPage:page];
+    self.titleChanged(title, YES);
 }
 
 - (BOOL)showsPage { return _page != nil; }
@@ -88,7 +88,7 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.allowsImplicitAnimation = YES;
         [self.overview syncWithQuery:self.searchItem.searchField.stringValue];
-        [self->_page sync];
+        if ([self->_page isKindOfClass:DPPageView.class]) [(DPPageView *)self->_page sync];
         [self layoutSubtreeIfNeeded];
     }];
 }

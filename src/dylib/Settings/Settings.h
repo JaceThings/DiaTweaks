@@ -54,11 +54,13 @@ NSURL *DPWikiURL(DPItem item);
 @end
 
 @interface DPOverviewView : NSStackView
-@property (nonatomic, copy) void (^open)(DPItem item);
+@property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
 @property (nonatomic, strong) NSMapTable<NSView *, NSString *> *searchText;
-@property (nonatomic, strong) NSTextField *status;
-@property (nonatomic, strong) NSButton *checkButton, *relaunchButton;
+@property (nonatomic, strong) NSTextField *updateSummary;
 - (void)syncWithQuery:(NSString *)query;
+@end
+
+@interface DPSoftwareUpdateView : NSStackView
 @end
 
 @interface DPOverviewView (Updates)

@@ -69,7 +69,7 @@ static const DPItem DPGroupTabsItem = {
     trailing.spacing = 10;
 
     __weak DPOverviewView *weakSelf = self;
-    NSView *row = DPLinkRow(DPRow(leading, trailing), item.title, ^{ weakSelf.open(item); });
+    NSView *row = DPLinkRow(DPRow(leading, trailing), item.title, ^{ weakSelf.open(item.title, [[DPPageView alloc] initWithItem:item]); });
     [self.searchText setObject:search forKey:row];
     return row;
 }

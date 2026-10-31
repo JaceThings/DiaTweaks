@@ -27,7 +27,24 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
             done.tail(3)
         )));
     }
-    spinner.stop(done.output.trim().lines().last().unwrap_or_default());
+    let done = spinner.check(diapatch.run(
+        &["apply", "--tweaks"],
+        OnInterrupt::Finish(FINISHING),
+        &spinner,
+    ))?;
+    if !done.status.success() {
+        return Err(spinner.fail(anyhow::anyhow!(
+            "Couldn't install DiaTweaks:\n{}",
+            done.tail(3)
+        )));
+    }
+    spinner.stop(
+        done.output
+            .trim()
+            .lines()
+            .last()
+            .unwrap_or("DiaTweaks is up to date"),
+    );
 
     let spinner = ui.spinner("Patching Dia and reopening it");
     let done = spinner.check(diapatch.run(

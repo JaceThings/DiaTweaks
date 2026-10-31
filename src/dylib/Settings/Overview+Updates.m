@@ -3,27 +3,24 @@
 @implementation DPOverviewView (Updates)
 
 - (NSArray<NSView *> *)makeUpdateRows {
-    self.status = DPLabel(@"", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
-    self.checkButton = [NSButton buttonWithTitle:@"Check for Updates" target:self action:@selector(checkForUpdates:)];
-    self.relaunchButton = [NSButton buttonWithTitle:@"Relaunch to Update" target:self action:@selector(relaunchToUpdate:)];
-    self.relaunchButton.bezelColor = NSColor.controlAccentColor;
-    self.relaunchButton.hidden = YES;
-    NSView *updateRow = DPRow(self.status, [NSStackView stackViewWithViews:@[self.relaunchButton, self.checkButton]]);
-    NSSwitch *automatic = [NSSwitch new];
-    automatic.controlSize = NSControlSizeSmall;
-    automatic.state = DPAutoUpdates();
-    automatic.target = self;
-    automatic.action = @selector(toggleAutoUpdates:);
-    automatic.accessibilityLabel = @"Install updates automatically";
-    NSView *automaticRow = DPRow(DPColumn(@[DPLabel(@"Install updates automatically", 13, NSFontWeightRegular, NSColor.labelColor),
-                                            DPLabel(@"Downloads new versions of Dia and DiaTweaks when Dia opens, and installs them when it quits.",
-                                                    11, NSFontWeightRegular, NSColor.secondaryLabelColor)], 2), automatic);
+    self.updateSummary = DPLabel(@"", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
+    NSStackView *leading = [NSStackView stackViewWithViews:@[
+        DPIconTile(@"gearshape.arrow.triangle.2.circlepath", NSColor.systemGrayColor),
+        DPLabel(@"Software Update", 13, NSFontWeightRegular, NSColor.labelColor),
+    ]];
+    leading.spacing = 10;
+    NSStackView *trailing = [NSStackView stackViewWithViews:@[self.updateSummary, DPSymbol(@"chevron.right", 11, NSColor.tertiaryLabelColor)]];
+    trailing.spacing = 10;
+    __weak DPOverviewView *weakSelf = self;
+    NSView *updateRow = DPLinkRow(DPRow(leading, trailing), @"Software Update", ^{
+        weakSelf.open(@"Software Update", [DPSoftwareUpdateView new]);
+    });
     NSView *restoreRow = DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor),
                                [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)]);
-    [self.searchText setObject:@"Check for updates version" forKey:updateRow];
-    [self.searchText setObject:@"Install updates automatically auto update download" forKey:automaticRow];
+    [self.searchText setObject:@"Software update check for updates download install automatic version" forKey:updateRow];
     [self.searchText setObject:@"Restore the original Dia without patches uninstall" forKey:restoreRow];
-    return @[updateRow, automaticRow, restoreRow];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updatesDidChange) name:DPUpdatesDidChangeNotification object:nil];
+    return @[updateRow, restoreRow];
 }
 
 - (NSView *)makeSafeModeRow {
@@ -33,46 +30,27 @@
     return row;
 }
 
-- (void)showStatus:(NSDictionary *)status {
-    NSString *running = [NSString stringWithFormat:@"Dia %@ (%@)",
-        [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
-        [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"]];
-    id release = status[@"release"];
-    if ([release isKindOfClass:NSString.class]) running = [running stringByAppendingFormat:@" · DiaTweaks %@", release];
-    NSString *pending = DPPendingUpdate(status);
-    self.status.stringValue = !status ? [running stringByAppendingString:@" · couldn’t check for updates"]
-                            : pending ? [pending stringByAppendingString:@" installs when you quit"]
-                                      : [running stringByAppendingString:@" · up to date"];
-    self.relaunchButton.hidden = !pending;
-    self.checkButton.enabled = YES;
-}
-
-- (void)checkForUpdates:(NSButton *)sender {
-    sender.enabled = NO;
-    self.status.stringValue = @"Checking for updates…";
-    __weak DPOverviewView *weakSelf = self;
-    DPCheckForUpdates(^(NSDictionary *status) { [weakSelf showStatus:status]; });
+- (void)updatesDidChange {
+    DPUpdates *updates = DPUpdates.shared;
+    NSUInteger available = 0, staged = 0;
+    for (NSString *part in @[DPDia, DPTweaks]) {
+        available += [updates available:part];
+        staged += [updates staged:part];
+    }
+    self.updateSummary.stringValue = staged ? @"Ready to install"
+        : available ? [NSString stringWithFormat:@"%lu update%@", available, available == 1 ? @"" : @"s"]
+        : updates.checking ? @"Checking…"
+        : updates.found ? @"Up to date" : @"";
 }
 
 - (void)refresh {
-    __weak DPOverviewView *weakSelf = self;
-    DPRunCLI(@[@"status", @"--json"], ^(NSString *output) {
-        id status = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
-        [weakSelf showStatus:[status isKindOfClass:NSDictionary.class] ? status : nil];
-    });
-}
-
-- (void)toggleAutoUpdates:(NSSwitch *)sender {
-    DPSetAutoUpdates(sender.state == NSControlStateValueOn);
-}
-
-- (void)relaunchToUpdate:(id)sender {
-    DPHandOffAndQuit(@"apply");
+    [self updatesDidChange];
+    [DPUpdates.shared check];
 }
 
 - (void)leaveSafeMode:(id)sender {
     DPLeaveSafeMode();
-    DPHandOffAndQuit(@"apply");
+    DPHandOffAndQuit(@[@"apply"]);
 }
 
 - (void)restore:(id)sender {
@@ -82,7 +60,7 @@
     [alert addButtonWithTitle:@"Restore and Relaunch"];
     [alert addButtonWithTitle:@"Cancel"];
     [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
-        if (response == NSAlertFirstButtonReturn) DPHandOffAndQuit(@"uninstall");
+        if (response == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[@"uninstall"]);
     }];
 }
 @end
