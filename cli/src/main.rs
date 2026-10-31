@@ -5,6 +5,7 @@ mod lock;
 mod manifest;
 mod menu;
 mod prefs;
+mod restore;
 mod signals;
 mod status;
 mod tweaks;
@@ -53,6 +54,12 @@ enum Command {
     Update,
     /// Download and patch a newer Dia
     UpdateDia,
+    /// Put the original Dia back
+    Restore {
+        /// Also delete DiaTweaks' files
+        #[arg(long)]
+        purge: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -98,5 +105,6 @@ fn run(command: Option<Command>, ui: &Ui) -> Result<()> {
         Command::Status => status::print(&env, ui),
         Command::Update => update::run(&env, ui),
         Command::UpdateDia => update_dia::run(&env, ui),
+        Command::Restore { purge } => restore::run(&env, ui, purge),
     }
 }

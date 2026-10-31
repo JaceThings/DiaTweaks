@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::{
     env::Env,
+    restore,
     signals::{self, Cancelled},
     status, tweaks,
     ui::{self, Ui},
@@ -14,6 +15,7 @@ enum Action {
     UpdateDia,
     UpdateDiaTweaks,
     Status,
+    Restore,
     Quit,
 }
 
@@ -30,6 +32,11 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
                 .item(Action::UpdateDia, "Update Dia", "")
                 .item(Action::UpdateDiaTweaks, "Update DiaTweaks", "")
                 .item(Action::Status, "Status", "")
+                .item(
+                    Action::Restore,
+                    "Restore original Dia",
+                    "remove the patches",
+                )
                 .item(Action::Quit, "Quit", "")
                 .initial_value(action)
                 .interact(),
@@ -39,11 +46,12 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
             Action::UpdateDia => update_dia::run(env, ui),
             Action::UpdateDiaTweaks => update::run(env, ui),
             Action::Status => status::show(env, ui),
+            Action::Restore => restore::run(env, ui, false),
             Action::Quit => break,
         };
         match result {
-            // The menu would carry on with the replaced binary.
-            Ok(()) if action == Action::UpdateDiaTweaks => break,
+            // The menu would carry on with the replaced binary or a Dia without DiaTweaks.
+            Ok(()) if matches!(action, Action::UpdateDiaTweaks | Action::Restore) => break,
             Ok(()) => {}
             Err(err) => match err.downcast_ref::<Cancelled>() {
                 Some(_) if signals::interrupted() => return Err(err),
