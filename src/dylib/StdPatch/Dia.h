@@ -1,0 +1,21 @@
+// Dia's private classes that patches hook or look for. When a Dia update renames one, fix it here;
+// DPHook logs every class or method it can't find, so `log stream --predicate 'process == "Dia"'` shows which.
+#define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
+#define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
+#define DPDiaSidebarHeader      "_TtC10TabSidebar17SidebarHeaderView"
+#define DPDiaSidebarFooter      "_TtC10TabSidebar26SidebarContainerFooterView"
+#define DPDiaSidebarController  "_TtC10TabSidebar30SidebarContainerViewController"
+#define DPDiaTabStripController "_TtC8TabStrip31TabStripContainerViewController"
+#define DPDiaLibraryButton      "_TtC10DiaLibrary17LibraryButtonView"
+#define DPDiaLibraryCell        "_TtC10TabSidebar15LibraryCellView"
+#define DPDiaContentPane        "_TtC11ContentPane15ContentPaneView"
+#define DPDiaContentContainer   "_TtC6Window20ContentContainerView"
+#define DPDiaShadowView         "_TtC5ARCUI10ShadowView"
+#define DPDiaBrowser            "ArcBrowser"
+#define DPDiaBrowserDelegate    "_TtC3ADK15ChromiumBrowser"
+#define DPDiaTabGroupProperties "ArcTabGroupProperties"
+#define DPDiaSettingsController "_TtC11Preferences38SidebarPreferencesWindowViewController"
+#define DPDiaSettingsSidebar    "_TtC11Preferences15SidebarListView"
+#define DPDiaSettingsSidebarCell "_TtC11PreferencesP33_4E27E2219272DF78406B73092738280415SidebarCellView"
+#define DPDiaOpenURLEventManager "_TtC13OpenURLClient19OpenURLEventManager"
+#define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // Resolves only once Swift's runtime is up: look it up after launch.

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Starts a patch: scripts/new-patch HideFooButton (or make patch NAME=HideFooButton).
+set -eu
+cd "$(dirname "$0")/.."
+name="${1:-}"
+case "$name" in
+    [ABCDEFGHIJKLMNOPQRSTUVWXYZ]*) ;;
+    *) echo "usage: make patch NAME=HideFooButton" >&2; exit 1 ;;
+esac
+dir="src/dylib/Patches/$name"
+[ -e "$dir" ] && { echo "$dir already exists" >&2; exit 1; }
+
+key="$(printf '%s' "$name" | cut -c1 | tr A-Z a-z)$(printf '%s' "$name" | cut -c2-)"
+order=$(grep -rhoE '\.order = [0-9]+' src/dylib/Patches | grep -oE '[0-9]+' | sort -n | tail -1)
+mkdir -p "$dir"
+cat > "$dir/$name.m" <<PATCH
+#import "StdPatch/StdPatch.h"
+
+// Find a label or class to match with Help > DiaPatches: Copy View Tree (see CONTRIBUTING.md).
+static BOOL DPIsTarget(NSView *view) { return DPHasLabel(view, @"TODO"); }
+
+DP_PATCH(DP$name) {
+    .key = @"$key",
+    .order = $(( ${order:-0} + 10 )),
+    .title = @"TODO",
+    .detail = @"TODO",
+    .symbol = @"questionmark.square",
+    .tint = @"systemGrayColor",
+    .hides = DPIsTarget,
+};
+PATCH
+echo "created $dir/$name.m"

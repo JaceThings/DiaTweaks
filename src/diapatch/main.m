@@ -6,13 +6,14 @@
 #include <mach-o/loader.h>
 #include <sys/clonefile.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 
 #define DYLIB "DiaPatches.dylib"
 static NSString *const kFeed = @"https://releases.diabrowser.com/BoostBrowser-updates.xml";
 static NSString *const kSparkle = @"http://www.andymatuschak.org/xml-namespaces/sparkle";
 static NSString *const kLocalIdentity = @"DiaPatches Local Signing";
 
-static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged;
+static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
 static const char *gCommand;
 static FILE *gLog;
 
@@ -59,6 +60,16 @@ static BOOL removeTree(NSString *path) {
     NSError *error;
     return [NSFileManager.defaultManager removeItemAtPath:path error:&error] || error.code == NSFileNoSuchFileError
         || fail(@"cannot remove %@: %@", path, error.localizedDescription);
+}
+
+// A delete that's cut short leaves part of a bundle; renamed into .trash first, it can't pass for a whole one.
+static BOOL discard(NSString *path) {
+    NSString *trash = inHome(@".trash");
+    if (!removeTree(trash)) return NO;
+    if (rename(path.fileSystemRepresentation, trash.fileSystemRepresentation) == 0) return removeTree(trash);
+    if (errno == ENOENT) return YES;
+    // Only update's download can be on another volume, and only update reads it.
+    return errno == EXDEV ? removeTree(path) : fail(@"cannot remove %@: %s", path, strerror(errno));
 }
 
 static int run(NSArray<NSString *> *argv, NSString **output) {
@@ -114,7 +125,7 @@ static BOOL moveBundle(NSString *from, NSString *to) {
                  error == EPERM ? @" (see System Settings > Privacy & Security > App Management)" : @"");
         return NO;
     }
-    return removeTree(incoming) && removeTree(from);
+    return removeTree(incoming) && discard(from);
 }
 
 #pragma mark - Apps
@@ -274,6 +285,19 @@ static BOOL sign(NSString *app) {
     return ok;
 }
 
+// A finished build records the inode of staged/Dia.app, which renames keep. Anything else found there, like the app a
+// stopped apply had just swapped out, is never installed.
+static NSString *stagedID(void) {
+    struct stat info;
+    return lstat(gStaged.fileSystemRepresentation, &info) == 0 ? @(info.st_ino).stringValue : nil;
+}
+
+static BOOL stagedReady(void) {
+    return [[NSString stringWithContentsOfFile:gReady encoding:NSUTF8StringEncoding error:NULL] isEqualToString:stagedID()];
+}
+
+static BOOL unstage(void) { return discard(gStaged) && removeTree(gReady); }
+
 static BOOL build(NSString *source) {
     NSString *executable = infoOf(source)[@"CFBundleExecutable"], *dylib = inHome(@DYLIB);
     if (!executable) return fail(@"no official Dia at %@; reinstall Dia from https://www.diabrowser.com", source);
@@ -283,7 +307,8 @@ static BOOL build(NSString *source) {
     BOOL ok = removeTree(work) && makeDir(gStaged.stringByDeletingLastPathComponent) && clone(source, work)
         && addLoadCommand([contents stringByAppendingPathComponent:[@"MacOS" stringByAppendingPathComponent:executable]], dylib)
         && configureInfo(work) && removeTree([contents stringByAppendingPathComponent:@"embedded.provisionprofile"])
-        && sign(work) && moveBundle(work, gStaged);
+        && sign(work) && moveBundle(work, gStaged)
+        && ([stagedID() writeToFile:gReady atomically:YES encoding:NSUTF8StringEncoding error:NULL] || fail(@"cannot write %@", gReady));
     if (!ok) removeTree(work);
     return ok;
 }
@@ -359,8 +384,9 @@ static Release *latest(int seconds, NSString **channel, NSString **problem) {
 
 static BOOL apply(void) {
     if (!exists(gStaged)) return YES;
+    if (!stagedReady()) return unstage() && fail(@"deleted %@: a stopped run left it there; run `diapatch build` to stage Dia again", gStaged);
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch apply`");
-    return moveBundle(gStaged, gApp) && say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
+    return moveBundle(gStaged, gApp) && removeTree(gReady) && say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
 }
 
 static BOOL install(BOOL relaunch) {
@@ -390,7 +416,7 @@ static BOOL update(void) {
     Release *release = latest(60, &channel, &problem);
     if (!release) return say(@"%@", problem);
     if (!newer(release.build, buildOf(gPristine))) {
-        if (exists(gStaged)) return say(@"Dia %@ is staged; relaunch Dia or run `diapatch apply` to install it", versionOf(gStaged));
+        if (stagedReady()) return say(@"Dia %@ is staged; relaunch Dia or run `diapatch apply` to install it", versionOf(gStaged));
         return say(@"Dia %@ is up to date", release.version);
     }
     NSString *work = [gCache stringByAppendingPathComponent:@"download"];
@@ -410,8 +436,21 @@ static BOOL update(void) {
 
 // Deletes only what DiaPatches creates, in case DIAPATCH_HOME points somewhere shared.
 static BOOL purge(void) {
-    for (NSString *name in @[ @"bin", @DYLIB, @"pristine", @"staged", @"identity", @"diapatch.log" ])
-        if (!removeTree(inHome(name))) return NO;
+    // install.sh links the diatweaks command into the first of these it can write to.
+    NSArray<NSString *> *linkDirs = env("DIATWEAKS_LINK_DIR") ? @[ env("DIATWEAKS_LINK_DIR") ]
+        : @[ @"/opt/homebrew/bin", @"/usr/local/bin", [NSHomeDirectory() stringByAppendingPathComponent:@".local/bin"] ];
+    for (NSString *dir in linkDirs) {
+        NSString *link = [dir stringByAppendingPathComponent:@"diatweaks"];
+        NSString *target = [NSFileManager.defaultManager destinationOfSymbolicLinkAtPath:link error:NULL];
+        if (![target hasPrefix:[gHome stringByAppendingString:@"/"]]) continue;
+        if (!removeTree(link)) return NO;
+        say(@"deleted %@", link);
+    }
+    for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
+                              @".diatweaks.lock", @".incoming" ])
+        if (!discard(inHome(name))) return NO;
+    for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
+        if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
     if (!removeTree([gCache stringByAppendingPathComponent:@"download"])) return NO;
     rmdir(gCache.fileSystemRepresentation);
     if (rmdir(gHome.fileSystemRepresentation) == 0) return say(@"deleted %@", gHome);
@@ -426,7 +465,7 @@ static BOOL uninstall(BOOL purgeFiles) {
         if (!removeTree(copy) || !clone(gPristine, copy) || !moveBundle(copy, gApp)) return removeTree(copy), NO;
     }
     say(@"%@ is the official Dia %@", gApp, versionOf(gApp));
-    return removeTree(gStaged) && (!purgeFiles || purge());
+    return unstage() && (!purgeFiles || purge());
 }
 
 static BOOL status(BOOL json) {
@@ -436,7 +475,7 @@ static BOOL status(BOOL json) {
         @"official" : versionOf(gPristine) ?: NSNull.null,
         @"installed" : versionOf(gApp) ?: NSNull.null,
         @"patched" : @(isPatched(gApp)),
-        @"staged" : versionOf(gStaged) ?: NSNull.null,
+        @"staged" : (stagedReady() ? versionOf(gStaged) : nil) ?: NSNull.null,
         @"feed" : release.version ?: NSNull.null,
         @"channel" : channel ?: @"stable",
     };
@@ -466,10 +505,10 @@ static const char kUsage[] =
     "  apply [--wait PID] [--relaunch]\n"
     "                   swap the staged build into place once PID and Dia have quit, then reopen Dia\n"
     "  uninstall [--wait PID] [--relaunch] [--purge]\n"
-    "                   put the official Dia back; --purge also deletes DiaPatches' files\n"
+    "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
-    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED\n";
+    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
@@ -479,6 +518,7 @@ int main(int argc, const char *argv[]) {
         gCache = env("DIAPATCH_CACHE") ?: [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/DiaPatches"];
         gPristine = inHome(@"pristine/Dia.app");
         gStaged = inHome(@"staged/Dia.app");
+        gReady = inHome(@"staged/ready");
 
         NSString *command = argc > 1 ? @(argv[1]) : @"";
         NSArray<NSString *> *allowed = @{
@@ -497,6 +537,8 @@ int main(int argc, const char *argv[]) {
             fputs(kUsage, help ? stdout : stderr);
             return help ? 0 : 2;
         }
+        // Tests patch a copy of Dia: opening it would share the real one's profile, and quitting by bundle ID can hit the real one.
+        if (env("DIAPATCH_NO_RELAUNCH")) [flags removeObject:@"--relaunch"];
         if ([command isEqualToString:@"status"]) return status([flags containsObject:@"--json"]) ? 0 : 1;
 
         if (pid) setsid();  // the caller (Dia) is about to quit: leave its process group
@@ -510,12 +552,17 @@ int main(int argc, const char *argv[]) {
             say(@"waiting for another diapatch run to finish");
             flock(fileno(gLog), LOCK_EX);
         }
+        removeTree(inHome(@".trash"));  // what a run stopped mid-delete left
         BOOL ok = [command isEqualToString:@"install"] ? install([flags containsObject:@"--relaunch"])
             : [command isEqualToString:@"build"]       ? build(gPristine) && say(@"staged patched Dia %@", versionOf(gStaged))
             : [command isEqualToString:@"update"]      ? update()
             : [command isEqualToString:@"apply"]       ? apply()
                                                        : uninstall([flags containsObject:@"--purge"]);
-        if ([flags containsObject:@"--relaunch"]) check(@[ @"/usr/bin/open", gApp ]);
+        // open sometimes fails with -600 right after Dia quits itself.
+        for (int i = 0; [flags containsObject:@"--relaunch"] && i < 20; i++) {
+            if (check(@[ @"/usr/bin/open", gApp ])) break;
+            usleep(500000);
+        }
         return ok ? 0 : 1;
     }
 }
