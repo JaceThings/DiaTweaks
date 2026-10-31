@@ -410,8 +410,21 @@ static BOOL update(void) {
 
 // Deletes only what DiaPatches creates, in case DIAPATCH_HOME points somewhere shared.
 static BOOL purge(void) {
-    for (NSString *name in @[ @"bin", @DYLIB, @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist" ])
+    // install.sh links the diatweaks command into the first of these it can write to.
+    NSArray<NSString *> *linkDirs = env("DIATWEAKS_LINK_DIR") ? @[ env("DIATWEAKS_LINK_DIR") ]
+        : @[ @"/opt/homebrew/bin", @"/usr/local/bin", [NSHomeDirectory() stringByAppendingPathComponent:@".local/bin"] ];
+    for (NSString *dir in linkDirs) {
+        NSString *link = [dir stringByAppendingPathComponent:@"diatweaks"];
+        NSString *target = [NSFileManager.defaultManager destinationOfSymbolicLinkAtPath:link error:NULL];
+        if (![target hasPrefix:[gHome stringByAppendingString:@"/"]]) continue;
+        if (!removeTree(link)) return NO;
+        say(@"deleted %@", link);
+    }
+    for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
+                              @".diatweaks.lock", @".incoming" ])
         if (!removeTree(inHome(name))) return NO;
+    for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
+        if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
     if (!removeTree([gCache stringByAppendingPathComponent:@"download"])) return NO;
     rmdir(gCache.fileSystemRepresentation);
     if (rmdir(gHome.fileSystemRepresentation) == 0) return say(@"deleted %@", gHome);
@@ -466,10 +479,10 @@ static const char kUsage[] =
     "  apply [--wait PID] [--relaunch]\n"
     "                   swap the staged build into place once PID and Dia have quit, then reopen Dia\n"
     "  uninstall [--wait PID] [--relaunch] [--purge]\n"
-    "                   put the official Dia back; --purge also deletes DiaPatches' files\n"
+    "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
-    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED\n";
+    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIATWEAKS_LINK_DIR\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
