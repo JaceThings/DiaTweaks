@@ -47,10 +47,11 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
 @end
 
 @implementation DPLinkRowView
-// Labels would take the click themselves; only real controls, like the switch, keep theirs.
+// Labels and icons would take the click themselves; only a working switch or button keeps its own.
 - (NSView *)hitTest:(NSPoint)point {
     NSView *hit = [super hitTest:point];
-    return !hit || ([hit isKindOfClass:NSControl.class] && ![hit isKindOfClass:NSTextField.class]) ? hit : self;
+    BOOL control = [hit isKindOfClass:NSSwitch.class] || [hit isKindOfClass:NSButton.class];
+    return !hit || (control && ((NSControl *)hit).enabled) ? hit : self;
 }
 - (void)mouseDown:(NSEvent *)event {}
 - (void)mouseUp:(NSEvent *)event {
