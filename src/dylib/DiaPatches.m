@@ -1,14 +1,15 @@
 #import <AppKit/AppKit.h>
+#import <Carbon/Carbon.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
 typedef NS_ENUM(NSInteger, DPTweak) {
     DPEdgeToEdge, DPHideToolbar, DPSquareSidebarCorners, DPAnimatedCount,
-    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideRecentTabsButton, DPTweakCount
+    DPHideChatButton = DPAnimatedCount, DPHideSidebarButton, DPHideChatsButton, DPHideRecentTabsButton, DPOverlayScrollbars, DPLittleDia, DPTweakCount
 };
 
-static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideRecentTabsButton"};
-static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO};
+static NSString *const DPKeys[DPTweakCount] = {@"edgeToEdge", @"hideToolbar", @"squareSidebarCorners", @"hideChatButton", @"hideSidebarButton", @"hideChatsButton", @"hideRecentTabsButton", @"overlayScrollbars", @"littleDia"};
+static const BOOL DPDefaultsOn[DPTweakCount] = {YES, NO, YES, NO, NO, NO, NO, NO, NO};
 static const CGFloat DPWindowPadding = 6;
 static const CFTimeInterval DPAnimationDuration = 0.25;
 
@@ -16,7 +17,7 @@ static BOOL DPOn[DPTweakCount];
 static CGFloat DPProgress[DPAnimatedCount];
 static NSUserDefaults *DPDefaults;
 static NSHashTable<NSView *> *DPContainers, *DPPanes, *DPBars, *DPSuppressed;
-static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPCollapsedKey, DPSearchItemKey;
+static char DPRequestedFrameKey, DPAssignedFrameKey, DPButtonKey, DPBaseRadiusKey, DPAssignedRadiusKey, DPFillsKey, DPChatKey, DPOriginalPathKey, DPAssignedPathKey, DPCollapsedKey, DPSearchItemKey, DPBackdropKey, DPLittleIDKey;
 
 static NSString *DPCLI(void) {
     return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -406,18 +407,68 @@ static Class DPToolbarClass(void) {
     return cls = cls ?: NSClassFromString(@"_TtC13NavigationBar17NavigationBarView");
 }
 
+// A hidden toolbar floats back over the page while the pointer is at the top edge or the address is being edited.
+// It's lifted with zPosition rather than reordered: moving the bar in the view tree would take focus from the address.
+static BOOL DPToolbarRevealed, DPRevealAnimating;
+
+static BOOL DPToolbarHidden(void) { return DPOn[DPHideToolbar] && !DPToolbarRevealed; }
+
 // The bar stays in Dia's layout: hiding it makes Dia reflow in ways it won't undo.
 static NSView *DPToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
-    return DPOn[DPHideToolbar] ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
+    return DPToolbarHidden() ? nil : DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
+}
+
+static NSView *DPToolbarIn(NSView *pane) {
+    for (NSView *sub in pane.subviews) if ([sub isKindOfClass:DPToolbarClass()]) return sub;
+    return nil;
+}
+
+// The bar's own background is see-through, so a floating bar needs something behind it.
+@interface DPBackdropView : NSVisualEffectView
+@end
+@implementation DPBackdropView
+- (NSView *)hitTest:(NSPoint)point { return nil; }
+@end
+
+static NSVisualEffectView *DPBackdrop(NSView *pane) {
+    NSVisualEffectView *backdrop = objc_getAssociatedObject(pane, &DPBackdropKey);
+    if (backdrop.superview == pane) return backdrop;
+    backdrop = backdrop ?: [DPBackdropView new];
+    backdrop.material = NSVisualEffectMaterialHeaderView;
+    backdrop.blendingMode = NSVisualEffectBlendingModeWithinWindow;
+    backdrop.state = NSVisualEffectStateActive;
+    backdrop.wantsLayer = YES;
+    backdrop.alphaValue = 0;
+    [pane addSubview:backdrop];
+    backdrop.layer.zPosition = 1;
+    objc_setAssociatedObject(pane, &DPBackdropKey, backdrop, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return backdrop;
+}
+
+// The lifted bar is drawn above the page but still sits under it in the view tree, so clicks are routed to it.
+static NSView *DPPane_hitTest(NSView *self, SEL _cmd, NSPoint point) {
+    NSView *bar = DPOn[DPHideToolbar] && DPToolbarRevealed ? DPToolbarIn(self) : nil;
+    NSPoint local = [self convertPoint:point fromView:self.superview];
+    NSView *hit = bar && NSPointInRect(local, bar.frame) ? [bar hitTest:local] : nil;
+    return hit ?: DPCallOriginal(NSView *(*)(id, SEL, NSPoint), self, _cmd, point);
 }
 
 static void DPApplyToolbar(NSView *pane) {
-    NSView *bar = nil;
-    for (NSView *sub in pane.subviews) if ([sub isKindOfClass:DPToolbarClass()]) { bar = sub; break; }
+    NSView *bar = DPToolbarIn(pane);
     if (!bar) return;
 
     CGFloat progress = DPProgress[DPHideToolbar];
-    bar.alphaValue = 1 - progress;
+    NSVisualEffectView *backdrop = DPBackdrop(pane);
+    backdrop.frame = bar.frame;
+    backdrop.hidden = progress < 1;
+    if (progress < 1) {
+        bar.alphaValue = 1 - progress;
+        bar.layer.zPosition = 0;
+    } else if (!DPRevealAnimating) {
+        // Dia's own layout passes can reset these, so they're reapplied after each one.
+        bar.alphaValue = backdrop.alphaValue = DPToolbarRevealed;
+        bar.layer.zPosition = DPToolbarRevealed ? 2 : 0;
+    }
     NSView *lowest = pane.subviews.firstObject;
     if (progress > 0 && lowest != bar) [pane addSubview:bar positioned:NSWindowBelow relativeTo:lowest];
     else if (progress == 0 && lowest == bar) [pane addSubview:bar positioned:NSWindowAbove relativeTo:nil];
@@ -427,7 +478,7 @@ static void DPApplyToolbar(NSView *pane) {
     CGFloat (^bottom)(NSRect) = ^CGFloat(NSRect r) { return flipped ? NSMaxY(r) : NSHeight(pane.bounds) - NSMinY(r); };
     CGFloat shift = NSHeight(bar.frame) * progress, edge = bottom(bar.frame);
     NSMutableArray<NSView *> *stack = [NSMutableArray new];
-    for (NSView *sub in pane.subviews) if (sub != bar) [stack addObject:sub];
+    for (NSView *sub in pane.subviews) if (sub != bar && sub != backdrop) [stack addObject:sub];
     [stack sortUsingComparator:^NSComparisonResult(NSView *a, NSView *b) {
         return [@(top(DPLaidOutFrame(a))) compare:@(top(DPLaidOutFrame(b)))];
     }];
@@ -494,11 +545,548 @@ static void DPAnimate(void) {
     [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
+#pragma mark - Toolbar reveal
+
+static const CGFloat DPRevealEdge = 6, DPRevealMargin = 12;
+static const NSTimeInterval DPRevealPollInterval = 1.0 / 30, DPHideDelay = 0.4, DPShowDuration = 0.16, DPHideDuration = 0.22;
+
+static BOOL DPEditingIn(NSView *bar) {
+    id responder = bar.window.firstResponder;
+    if ([responder isKindOfClass:NSText.class] && [responder isFieldEditor]) responder = [responder delegate];
+    return [responder isKindOfClass:NSView.class] && [responder isDescendantOf:bar];
+}
+
+static NSRect DPScreenRect(NSView *view) {
+    return [view.window convertRectToScreen:[view convertRect:view.bounds toView:nil]];
+}
+
+// Polled from NSEvent.mouseLocation rather than mouse events, which pages and other windows can swallow.
+static BOOL DPWantsToolbar(void) {
+    NSPoint mouse = NSEvent.mouseLocation;
+    NSInteger under = [NSWindow windowNumberAtPoint:mouse belowWindowWithWindowNumber:0];
+    NSWindow *underWindow = [NSApp windowWithWindowNumber:under];
+    for (NSView *pane in DPPanes) {
+        NSView *bar = DPToolbarIn(pane);
+        NSWindow *window = pane.window;
+        if (!bar || !window.isVisible || pane.isHiddenOrHasHiddenAncestor) continue;
+        if (DPEditingIn(bar)) return YES;
+        // Address suggestions, menus and popovers open from the bar in windows of their own.
+        if (DPToolbarRevealed && underWindow && underWindow != window
+            && (underWindow.parentWindow == window || underWindow.level > window.level)) return YES;
+        NSRect paneRect = DPScreenRect(pane), barRect = DPScreenRect(bar), frame = window.frame;
+        if (mouse.x < NSMinX(paneRect) || mouse.x > NSMaxX(paneRect)) continue;
+        // A window flush under the menu bar also reveals from the menu bar, so the pointer can be thrown at the edge.
+        BOOL overWindow = window.windowNumber == under && mouse.y <= NSMaxY(paneRect) + 2 * DPWindowPadding;
+        BOOL pastTop = mouse.y >= NSMaxY(frame) && mouse.y <= NSMaxY(window.screen.frame)
+                    && NSMaxY(frame) >= NSMaxY(window.screen.visibleFrame) - 1;
+        if (!overWindow && !pastTop) continue;
+        if (mouse.y >= (DPToolbarRevealed ? NSMinY(barRect) - DPRevealMargin : NSMaxY(paneRect) - DPRevealEdge)) return YES;
+    }
+    return NO;
+}
+
+static void DPSetToolbarRevealed(BOOL revealed) {
+    static NSUInteger generation;
+    if (DPToolbarRevealed == revealed) return;
+    DPToolbarRevealed = revealed;
+    if (DPProgress[DPHideToolbar] < 1) return;
+    NSUInteger current = ++generation;
+    DPRevealAnimating = YES;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = revealed ? DPShowDuration : DPHideDuration;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:revealed ? kCAMediaTimingFunctionEaseOut : kCAMediaTimingFunctionEaseInEaseOut];
+        for (NSView *pane in DPPanes) {
+            NSView *bar = DPToolbarIn(pane);
+            if (!bar) continue;
+            NSVisualEffectView *backdrop = DPBackdrop(pane);
+            backdrop.frame = bar.frame;
+            if (revealed) bar.layer.zPosition = 2;
+            bar.animator.alphaValue = revealed;
+            backdrop.animator.alphaValue = revealed;
+        }
+    } completionHandler:^{
+        if (current != generation) return;
+        DPRevealAnimating = NO;
+        for (NSView *pane in DPPanes) DPToolbarIn(pane).layer.zPosition = DPToolbarRevealed ? 2 : 0;
+    }];
+}
+
+static void DPPollToolbarReveal(void) {
+    static CFTimeInterval lastWanted;
+    CFTimeInterval now = CACurrentMediaTime();
+    // Mid-drag or while a menu is open, the toolbar stays as it is.
+    if (NSEvent.pressedMouseButtons || [NSRunLoop.currentRunLoop.currentMode isEqualToString:NSEventTrackingRunLoopMode]) {
+        lastWanted = now;
+        return;
+    }
+    if (DPWantsToolbar()) {
+        lastWanted = now;
+        DPSetToolbarRevealed(YES);
+    } else if (now - lastWanted >= DPHideDelay) DPSetToolbarRevealed(NO);
+}
+
+static void DPUpdateRevealPolling(void) {
+    static NSTimer *timer;
+    if (DPOn[DPHideToolbar] && !timer) {
+        timer = [NSTimer timerWithTimeInterval:DPRevealPollInterval repeats:YES block:^(NSTimer *_) { DPPollToolbarReveal(); }];
+        timer.tolerance = DPRevealPollInterval / 2;
+        [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+    } else if (!DPOn[DPHideToolbar] && timer) {
+        [timer invalidate];
+        timer = nil;
+    }
+}
+
+#pragma mark - Scrollbars
+
+// Dia's native views and its web pages both follow AppKit's preferred style, so overlay
+// scrollbars float over content without a gutter even with a mouse connected.
+static NSScrollerStyle DPScroller_preferredScrollerStyle(id self, SEL _cmd) {
+    return DPOn[DPOverlayScrollbars] ? NSScrollerStyleOverlay : DPCallOriginal(NSScrollerStyle (*)(id, SEL), self, _cmd);
+}
+
+#pragma mark - Little Dia
+
+// A small window for links from other apps and quick look-ups, like Arc's Little Arc. It's an ordinary Dia window
+// made through Dia's own AppleScript support, so pages share the profile's sign-ins.
+static const NSSize DPLittleSize = {860, 640};
+static const NSTimeInterval DPLittleReadyPoll = 1.0 / 60, DPLittleReadyTimeout = 0.6, DPLittleLoadPoll = 0.05, DPLittleLoadTimeout = 1,
+                            DPLittleLoadStartGrace = 0.4, DPLittleShowWhileLoading = 0.35, DPLittlePaintDelay = 0.08, DPLittleFadeDuration = 0.2,
+                            DPLittleShimmerDuration = 1.1;
+static const CGFloat DPLittleCornerRadius = 12, DPLittleOriginWidth = 160, DPLittlePopScale = 0.92;
+// A touch under critical damping: it lands quickly with a barely visible settle.
+static const CGFloat DPSpringMass = 1, DPSpringStiffness = 240, DPSpringDamping = 27;
+static const UInt32 DPLittleHotKeySignature = 0x44506C64;
+static NSHashTable<NSWindow *> *DPLittleWindows;
+static BOOL DPLaunched;
+
+static NSString *DPQuoted(NSString *text) {
+    text = [text stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+    return [NSString stringWithFormat:@"\"%@\"", [text stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""]];
+}
+
+// Events sent to Dia itself are handled in-process, so this needs no Automation permission.
+static NSAppleEventDescriptor *DPDiaScript(NSString *body) {
+    NSString *source = [NSString stringWithFormat:@"tell application id %@\n%@\nend tell", DPQuoted(NSBundle.mainBundle.bundleIdentifier), body];
+    NSDictionary *error = nil;
+    NSAppleEventDescriptor *result = [[[NSAppleScript alloc] initWithSource:source] executeAndReturnError:&error];
+    if (!result) NSLog(@"DiaPatches: Little Dia script failed: %@", error);
+    return result;
+}
+
+static NSString *DPLittleID(NSWindow *window) { return objc_getAssociatedObject(window, &DPLittleIDKey); }
+
+static NSView *DPSidebarHeader(NSWindow *window) {
+    NSView *header = DPFindView(window.contentView, ^BOOL(NSView *v) { return DPIsKind(v, @"_TtC10TabSidebar17SidebarHeaderView"); });
+    if (!header || header.isHiddenOrHasHiddenAncestor) return nil;
+    NSRect frame = [header convertRect:header.bounds toView:nil];
+    return NSWidth(frame) < 1 || NSMaxX(frame) <= 1 ? nil : header;
+}
+
+// Sent up the sidebar's own responder chain, so it works before the window becomes key.
+static void DPCollapseSidebar(NSWindow *window) {
+    NSView *header = DPSidebarHeader(window);
+    SEL toggle = NSSelectorFromString(@"toggleSidebar:");
+    if (header && ![header tryToPerform:toggle with:nil] && window.isKeyWindow) [NSApp sendAction:toggle to:nil from:nil];
+}
+
+static void DPMoveToDia(NSWindow *little) {
+    NSString *littleID = DPLittleID(little);
+    if (!littleID) return;
+    NSMutableArray<NSString *> *ids = [NSMutableArray new];
+    for (NSWindow *window in DPLittleWindows) if (DPLittleID(window)) [ids addObject:DPQuoted(DPLittleID(window))];
+    // Windows are listed front to back, so the first one that isn't little is the one last used.
+    DPDiaScript([NSString stringWithFormat:@
+        "set lw to window id %@\n"
+        "set u to URL of active tab of lw\n"
+        "set target to missing value\n"
+        "repeat with w in windows\n"
+        "  if {%@} does not contain (id of w) then\n"
+        "    set target to contents of w\n"
+        "    exit repeat\n"
+        "  end if\n"
+        "end repeat\n"
+        "close lw\n"
+        "if u is missing value then\n"
+        "  if target is not missing value then focus active tab of target\n"
+        "else if target is missing value then\n"
+        "  set URL of active tab of (make new window) to u\n"
+        "else\n"
+        "  focus (make new tab at end of tabs of target with properties {URL:u})\n"
+        "end if",
+        DPQuoted(littleID), [ids componentsJoinedByString:@", "]]);
+}
+
+@interface DPLittleTarget : NSObject
+@end
+
+@implementation DPLittleTarget
+- (void)moveToDia:(NSButton *)sender { DPMoveToDia(sender.window); }
+@end
+
+static void DPAddMoveButton(NSWindow *window) {
+    static DPLittleTarget *target;
+    target = target ?: [DPLittleTarget new];
+    NSButton *button = [NSButton buttonWithTitle:@"Open in Dia" image:[NSImage imageWithSystemSymbolName:@"arrow.up.forward.app" accessibilityDescription:nil]
+                                          target:target action:@selector(moveToDia:)];
+    button.bezelStyle = NSBezelStyleInline;
+    button.imagePosition = NSImageLeading;
+    button.controlSize = NSControlSizeSmall;
+    button.toolTip = @"Open in Dia (⌘O)";
+    NSVisualEffectView *pill = [NSVisualEffectView new];
+    pill.material = NSVisualEffectMaterialHUDWindow;
+    pill.state = NSVisualEffectStateActive;
+    pill.wantsLayer = YES;
+    pill.layer.cornerRadius = 12;
+    pill.layer.cornerCurve = kCACornerCurveContinuous;
+    pill.layer.masksToBounds = YES;
+    [pill addSubview:button];
+    NSView *content = window.contentView;
+    [content addSubview:pill];
+    for (NSView *v in @[pill, button]) v.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [button.leadingAnchor constraintEqualToAnchor:pill.leadingAnchor constant:4],
+        [button.trailingAnchor constraintEqualToAnchor:pill.trailingAnchor constant:-4],
+        [button.topAnchor constraintEqualToAnchor:pill.topAnchor constant:2],
+        [button.bottomAnchor constraintEqualToAnchor:pill.bottomAnchor constant:-2],
+        [pill.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-12],
+        [pill.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-12],
+    ]];
+}
+
+// A window-shaped card springs from the link to where Little Dia will be, while Dia builds the real window
+// underneath. Core Animation runs it out of process, so it stays smooth while Dia is busy creating the window.
+@interface DPLittleTransition : NSObject
+@property (nonatomic) NSWindow *overlay, *window;
+@property (nonatomic) NSString *windowID;
+@property (nonatomic) NSURL *url;
+@property (nonatomic) CALayer *card;
+@property (nonatomic) BOOL landed, ready;
+@end
+
+@implementation DPLittleTransition
+
+static NSMutableSet<DPLittleTransition *> *DPTransitions;
+
+static CASpringAnimation *DPSpring(NSString *keyPath, id from, id to) {
+    CASpringAnimation *spring = [CASpringAnimation animationWithKeyPath:keyPath];
+    spring.mass = DPSpringMass;
+    spring.stiffness = DPSpringStiffness;
+    spring.damping = DPSpringDamping;
+    spring.fromValue = from;
+    spring.toValue = to;
+    spring.duration = spring.settlingDuration;
+    return spring;
+}
+
+- (instancetype)initFrom:(NSPoint)origin scale:(CGFloat)scale to:(NSRect)frame on:(NSScreen *)screen label:(NSString *)label {
+    if (!(self = [super init])) return nil;
+    _overlay = [[NSWindow alloc] initWithContentRect:screen.frame styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
+    _overlay.releasedWhenClosed = NO;
+    _overlay.opaque = NO;
+    _overlay.backgroundColor = NSColor.clearColor;
+    _overlay.hasShadow = NO;
+    _overlay.ignoresMouseEvents = YES;
+    _overlay.level = NSFloatingWindowLevel;
+    _overlay.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorFullScreenAuxiliary;
+    NSView *root = _overlay.contentView;
+    root.wantsLayer = YES;
+
+    CALayer *card = _card = [CALayer layer];
+    card.frame = NSOffsetRect(frame, -NSMinX(screen.frame), -NSMinY(screen.frame));
+    card.cornerRadius = DPLittleCornerRadius;
+    card.cornerCurve = kCACornerCurveContinuous;
+    card.borderWidth = 0.5;
+    card.shadowOpacity = 0.28;
+    card.shadowRadius = 24;
+    card.shadowOffset = CGSizeMake(0, -10);
+    CATextLayer *text = [CATextLayer layer];
+    text.string = label ?: @"";
+    text.fontSize = 13;
+    text.alignmentMode = kCAAlignmentCenter;
+    text.contentsScale = screen.backingScaleFactor;
+    text.frame = CGRectMake(0, CGRectGetHeight(card.bounds) / 2 - 9, CGRectGetWidth(card.bounds), 18);
+    [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        card.backgroundColor = NSColor.windowBackgroundColor.CGColor;
+        card.borderColor = NSColor.separatorColor.CGColor;
+        text.foregroundColor = NSColor.secondaryLabelColor.CGColor;
+    }];
+    [card addSublayer:text];
+    // A thin bar sweeps along the top while the page loads behind the card.
+    if (label) {
+        CAGradientLayer *shimmer = [CAGradientLayer layer];
+        shimmer.frame = CGRectMake(DPLittleCornerRadius, CGRectGetHeight(card.bounds) - 2, CGRectGetWidth(card.bounds) - 2 * DPLittleCornerRadius, 2);
+        shimmer.startPoint = CGPointMake(0, 0.5);
+        shimmer.endPoint = CGPointMake(1, 0.5);
+        NSColor *accent = NSColor.controlAccentColor;
+        shimmer.colors = @[(__bridge id)[accent colorWithAlphaComponent:0].CGColor, (__bridge id)accent.CGColor, (__bridge id)[accent colorWithAlphaComponent:0].CGColor];
+        CABasicAnimation *sweep = [CABasicAnimation animationWithKeyPath:@"locations"];
+        sweep.fromValue = @[@-0.3, @-0.15, @0];
+        sweep.toValue = @[@1, @1.15, @1.3];
+        sweep.duration = DPLittleShimmerDuration;
+        sweep.repeatCount = HUGE_VALF;
+        sweep.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        [shimmer addAnimation:sweep forKey:@"sweep"];
+        [card addSublayer:shimmer];
+    }
+    [root.layer addSublayer:card];
+
+    // A uniform scale keeps the corners and label in proportion, so it reads as the window zooming out.
+    NSPoint start = NSMakePoint(origin.x - NSMinX(screen.frame), origin.y - NSMinY(screen.frame));
+    CASpringAnimation *move = DPSpring(@"position", [NSValue valueWithPoint:start], [NSValue valueWithPoint:NSPointFromCGPoint(card.position)]);
+    CASpringAnimation *grow = DPSpring(@"transform.scale", @(scale), @1);
+    CABasicAnimation *appear = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    appear.fromValue = @0;
+    appear.duration = 0.08;
+    [card addAnimation:move forKey:@"move"];
+    [card addAnimation:grow forKey:@"grow"];
+    [card addAnimation:appear forKey:@"appear"];
+    [_overlay orderFrontRegardless];
+    [CATransaction flush];
+
+    [DPTransitions addObject:self];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(MAX(move.duration, grow.duration) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.landed = YES;
+        [self finish];
+    });
+    return self;
+}
+
+- (void)windowReady:(NSWindow *)window id:(NSString *)windowID url:(NSURL *)url {
+    self.window = window;
+    self.windowID = windowID;
+    self.url = url;
+    self.ready = YES;
+    [self finish];
+}
+
+// Once the card covers the window's final frame, the window is shown under it: Dia doesn't draw pages in a
+// transparent window, and revealing one before it has painted shows black.
+- (void)finish {
+    if (!self.landed || !self.ready) return;
+    self.window.alphaValue = 1;
+    if (!self.url) {
+        [self revealAfterPaint];
+        return;
+    }
+    CFTimeInterval start = CACurrentMediaTime();
+    __block CFTimeInterval started = 0;
+    NSString *script = [NSString stringWithFormat:@"set t to active tab of window id %@\nreturn {URL of t, loading of t}", DPQuoted(self.windowID)];
+    [NSTimer scheduledTimerWithTimeInterval:DPLittleLoadPoll repeats:YES block:^(NSTimer *timer) {
+        CFTimeInterval elapsed = CACurrentMediaTime() - start;
+        NSAppleEventDescriptor *state = self.window.isVisible ? DPDiaScript(script) : nil;
+        BOOL loading = [state descriptorAtIndex:2].booleanValue;
+        if (loading && !started) started = CACurrentMediaTime();
+        // The tab can report idle before its navigation starts, so idle only counts once it has loaded or had a moment to.
+        // A slow page is shown while it's still loading, the way a tab would show it, rather than kept behind the card.
+        BOOL loaded = [state descriptorAtIndex:1].stringValue && !loading && (started || elapsed > DPLittleLoadStartGrace);
+        BOOL underway = started && CACurrentMediaTime() - started > DPLittleShowWhileLoading;
+        if (!loaded && !underway && state && elapsed < DPLittleLoadTimeout) return;
+        [timer invalidate];
+        [self revealAfterPaint];
+    }];
+}
+
+- (void)revealAfterPaint {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(DPLittlePaintDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = DPLittleFadeDuration;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+            self.overlay.animator.alphaValue = 0;
+        } completionHandler:^{
+            [self.overlay orderOut:nil];
+            [DPTransitions removeObject:self];
+        }];
+    });
+}
+
+- (void)cancel {
+    [self.overlay orderOut:nil];
+    [DPTransitions removeObject:self];
+}
+
+@end
+
+// Reveals the window once Dia has finished collapsing its sidebar, or after a moment if it never reports back.
+static void DPWhenLittleReady(NSWindow *window, NSString *windowID, NSURL *url, NSRect frame, DPLittleTransition *transition) {
+    CFTimeInterval start = CACurrentMediaTime();
+    [NSTimer scheduledTimerWithTimeInterval:DPLittleReadyPoll repeats:YES block:^(NSTimer *timer) {
+        if (!NSEqualRects(window.frame, frame)) [window setFrame:frame display:YES];
+        if (DPSidebarHeader(window) && CACurrentMediaTime() - start < DPLittleReadyTimeout) return;
+        [timer invalidate];
+        [transition windowReady:window id:windowID url:url];
+    }];
+}
+
+// Collects windows Dia creates while making a little window. They start out invisible: Dia orders new windows in
+// through paths that skip the public ordering methods, so hiding at creation is the only way no frame of the
+// full-size window, sidebar open, reaches the screen. Anything else made meanwhile, like a tooltip, is restored.
+static NSMutableArray<NSWindow *> *DPWindowsMadeForLittle;
+
+static id DPWindow_init(NSWindow *self, SEL _cmd, NSRect rect, NSWindowStyleMask style, NSBackingStoreType backing, BOOL defer, NSScreen *screen) {
+    NSWindow *window = DPCallOriginal(id (*)(id, SEL, NSRect, NSWindowStyleMask, NSBackingStoreType, BOOL, id), self, _cmd, rect, style, backing, defer, screen);
+    if (window && DPWindowsMadeForLittle) {
+        window.alphaValue = 0;
+        [DPWindowsMadeForLittle addObject:window];
+    }
+    return window;
+}
+
+// Swift subclasses may come in through either designated initializer.
+static id DPWindow_initNoScreen(NSWindow *self, SEL _cmd, NSRect rect, NSWindowStyleMask style, NSBackingStoreType backing, BOOL defer) {
+    NSWindow *window = DPCallOriginal(id (*)(id, SEL, NSRect, NSWindowStyleMask, NSBackingStoreType, BOOL), self, _cmd, rect, style, backing, defer);
+    if (window && DPWindowsMadeForLittle) {
+        window.alphaValue = 0;
+        if (![DPWindowsMadeForLittle containsObject:window]) [DPWindowsMadeForLittle addObject:window];
+    }
+    return window;
+}
+
+// From the pointer for links, since that's where the click was; a small pop from the centre for the shortcut.
+static void DPOpenLittleDia(NSURL *url, BOOL fromPointer, void (^fallback)(void)) {
+    NSPoint mouse = NSEvent.mouseLocation;
+    NSScreen *screen = NSScreen.mainScreen;
+    for (NSScreen *s in NSScreen.screens) if (NSMouseInRect(mouse, s.frame, NO)) screen = s;
+    NSRect visible = screen.visibleFrame;
+    NSSize size = NSMakeSize(MIN(DPLittleSize.width, NSWidth(visible) - 40), MIN(DPLittleSize.height, NSHeight(visible) - 40));
+    NSRect frame = NSMakeRect(round(NSMidX(visible) - size.width / 2), round(NSMidY(visible) - size.height / 2), size.width, size.height);
+    NSPoint origin = fromPointer ? mouse : NSMakePoint(NSMidX(frame), NSMidY(frame));
+    CGFloat scale = fromPointer ? DPLittleOriginWidth / size.width : DPLittlePopScale;
+    DPLittleTransition *transition = [[DPLittleTransition alloc] initFrom:origin scale:scale to:frame on:screen label:url.host];
+
+    // On the next turn, so the card is already moving while Dia builds the window.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSSet<NSWindow *> *before = [NSSet setWithArray:NSApp.windows];
+        DPWindowsMadeForLittle = [NSMutableArray new];
+        NSString *body = url ? [NSString stringWithFormat:@"set w to make new window\nset URL of active tab of w to %@\nreturn id of w", DPQuoted(url.absoluteString)]
+                             : @"return id of (make new window)";
+        NSString *windowID = DPDiaScript(body).stringValue;
+        NSWindow *window = nil;
+        for (NSWindow *w in NSApp.windows) if (![before containsObject:w] && w.canBecomeMainWindow) { window = w; break; }
+        for (NSWindow *w in DPWindowsMadeForLittle) if (w != window) w.alphaValue = 1;
+        DPWindowsMadeForLittle = nil;
+        if (!windowID || !window) {
+            [transition cancel];
+            if (fallback) fallback();
+            return;
+        }
+        window.alphaValue = 0;
+        objc_setAssociatedObject(window, &DPLittleIDKey, windowID, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [DPLittleWindows addObject:window];
+        [window setFrame:frame display:YES];
+        DPAddMoveButton(window);
+        [NSApp activateIgnoringOtherApps:YES];
+        [window makeKeyAndOrderFront:nil];
+        DPCollapseSidebar(window);
+        DPWhenLittleReady(window, windowID, url, frame, transition);
+    });
+}
+
+// Links that launch Dia open as usual, since its windows are still being restored.
+static BOOL DPWantsLittleDia(NSURL *url) {
+    return DPOn[DPLittleDia] && DPLaunched && [@[@"http", @"https"] containsObject:url.scheme.lowercaseString];
+}
+
+// Dia takes links from other apps in its own Apple Event handler rather than application:openURLs:.
+static void DPOpenURLEvent_handle(id self, SEL _cmd, NSAppleEventDescriptor *event, NSAppleEventDescriptor *reply) {
+    NSString *text = [event paramDescriptorForKeyword:keyDirectObject].stringValue;
+    NSURL *url = text ? [NSURL URLWithString:text] : nil;
+    if (event.eventClass != kInternetEventClass || event.eventID != kAEGetURL || !DPWantsLittleDia(url)) {
+        DPCallOriginal(void (*)(id, SEL, id, id), self, _cmd, event, reply);
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DPOpenLittleDia(url, YES, ^{ DPCallOriginal(void (*)(id, SEL, id, id), self, _cmd, event, reply); });
+    });
+}
+
+// Dia answers a navigation with where it should open (1 this tab, 2 a new tab in front, 3 a background tab), or 0 to drop it.
+static const NSInteger DPDropNavigation = 0, DPCurrentTab = 1, DPNewForegroundTab = 2;
+
+// The registrable part of a host, close enough to tell sites apart: "docs.google.com" and "google.com" match, as do "bbc.co.uk" hosts.
+static NSString *DPSite(NSString *host) {
+    NSArray<NSString *> *labels = [host.lowercaseString componentsSeparatedByString:@"."];
+    NSUInteger keep = labels.count >= 3 && labels.lastObject.length == 2 && labels[labels.count - 2].length <= 3 ? 3 : 2;
+    keep = MIN(keep, labels.count);
+    return [[labels subarrayWithRange:NSMakeRange(labels.count - keep, keep)] componentsJoinedByString:@"."];
+}
+
+// A link to another site that would open a new tab goes to Little Dia instead, like Little Arc.
+// Inside Little Dia it replaces the page, so the window keeps a single tab.
+static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id action) {
+    NSInteger disposition = DPCallOriginal(NSInteger (*)(id, SEL, id, id), self, _cmd, webContents, action);
+    if (!DPOn[DPLittleDia] || disposition != DPNewForegroundTab) return disposition;
+    NSURL *url = [action valueForKey:@"url"];
+    id page = [webContents valueForKey:@"url"];
+    if ([page isKindOfClass:NSString.class]) page = [NSURL URLWithString:page];
+    if (![url isKindOfClass:NSURL.class] || ![page isKindOfClass:NSURL.class] || ![@[@"http", @"https"] containsObject:url.scheme.lowercaseString]
+        || !url.host || !((NSURL *)page).host || [DPSite(url.host) isEqualToString:DPSite(((NSURL *)page).host)])
+        return disposition;
+    if ([DPLittleWindows containsObject:NSApp.keyWindow]) return DPCurrentTab;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DPOpenLittleDia(url, YES, ^{
+            DPDiaScript([NSString stringWithFormat:@"make new tab at end of tabs of window 1 with properties {URL:%@}", DPQuoted(url.absoluteString)]);
+        });
+    });
+    return DPDropNavigation;
+}
+
+static OSStatus DPLittleHotKeyPressed(EventHandlerCallRef next, EventRef event, void *data) {
+    dispatch_async(dispatch_get_main_queue(), ^{ DPOpenLittleDia(nil, NO, nil); });
+    return noErr;
+}
+
+static void DPUpdateLittleDia(void) {
+    static EventHotKeyRef hotKey;
+    static BOOL handlerInstalled;
+    if (DPOn[DPLittleDia] && !hotKey) {
+        if (!handlerInstalled) {
+            EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
+            handlerInstalled = InstallApplicationEventHandler(DPLittleHotKeyPressed, 1, &spec, NULL, NULL) == noErr;
+        }
+        RegisterEventHotKey(kVK_ANSI_N, cmdKey | optionKey, (EventHotKeyID){DPLittleHotKeySignature, 1}, GetApplicationEventTarget(), 0, &hotKey);
+    } else if (!DPOn[DPLittleDia] && hotKey) {
+        UnregisterEventHotKey(hotKey);
+        hotKey = NULL;
+    }
+}
+
+static void DPInstallLittleDia(void) {
+    DPLittleWindows = [NSHashTable weakObjectsHashTable];
+    DPTransitions = [NSMutableSet new];
+    DPHook(NSWindow.class, @selector(initWithContentRect:styleMask:backing:defer:screen:), (IMP)DPWindow_init);
+    DPHook(NSWindow.class, @selector(initWithContentRect:styleMask:backing:defer:), (IMP)DPWindow_initNoScreen);
+    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        [DPLittleWindows removeObject:note.object];
+    }];
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+        NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
+        if (mods != NSEventModifierFlagCommand || event.keyCode != kVK_ANSI_O || ![DPLittleWindows containsObject:event.window]) return event;
+        DPMoveToDia(event.window);
+        return nil;
+    }];
+    DPUpdateLittleDia();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPLaunched = YES; });
+}
+
+// Little windows would otherwise come back as full windows the next time Dia opens.
+static void DPCloseLittleWindows(void) {
+    for (NSWindow *window in DPLittleWindows.allObjects)
+        if (DPLittleID(window)) DPDiaScript([NSString stringWithFormat:@"close window id %@", DPQuoted(DPLittleID(window))]);
+}
+
 static void DPSetTweak(DPTweak tweak, BOOL on) {
     if (DPOn[tweak] == on) return;
     DPOn[tweak] = on;
     [DPDefaults setBool:on forKey:DPKeys[tweak]];
+    if (tweak == DPHideToolbar) {
+        DPToolbarRevealed = NO;
+        DPUpdateRevealPolling();
+    }
+    if (tweak == DPLittleDia) DPUpdateLittleDia();
     if (tweak < DPAnimatedCount) DPAnimate();
+    else if (tweak == DPOverlayScrollbars)
+        [NSNotificationCenter.defaultCenter postNotificationName:NSPreferredScrollerStyleDidChangeNotification object:nil];
     else {
         if (on) for (NSView *bar in DPBars.allObjects) DPEnforceButtons(bar);
         else DPRestoreButtons(tweak);
@@ -653,6 +1241,13 @@ static NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch
 - (BOOL)isFlipped { return YES; }
 @end
 
+// Always overlay, so a connected mouse or "Show scroll bars: Always" doesn't reserve a gutter.
+@interface DPOverlayScrollView : NSScrollView
+@end
+@implementation DPOverlayScrollView
+- (void)setScrollerStyle:(NSScrollerStyle)style { [super setScrollerStyle:NSScrollerStyleOverlay]; }
+@end
+
 @interface DPPaneView : NSView <NSSearchFieldDelegate>
 @property (nonatomic, strong) NSArray<NSSwitch *> *toggles;
 @property (nonatomic, strong) NSArray<NSArray *> *sections;  // header, group, rows
@@ -673,14 +1268,16 @@ static NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch
     static const struct { DPTweak tweak; __unsafe_unretained NSString *symbol, *title, *detail; } rows[] = {
         {DPEdgeToEdge, @"squareshape.squareshape.dotted", @"Edge-to-edge web content", @"Remove the padding between web pages and the window edge."},
         {DPSquareSidebarCorners, @"square", @"Square corners by the sidebar", @"Let web pages meet the sidebar with straight edges."},
-        {DPHideToolbar, @"menubar.rectangle", @"Hide toolbar", @"Remove the bar with the address, navigation buttons and extensions. Experimental."},
+        {DPHideToolbar, @"menubar.rectangle", @"Hide toolbar", @"Remove the bar with the address, navigation buttons and extensions. Point at the top edge to show it. Experimental."},
         {DPHideSidebarButton, @"sidebar.left", @"Hide sidebar button", @"Hide the sidebar toggle at the top left of the toolbar."},
         {DPHideChatButton, @"bubble.fill", @"Hide Chat button", @"Hide the Chat button at the top right of the toolbar."},
         {DPHideChatsButton, @"doc.plaintext", @"Hide Chats button", @"Hide the Chats button in the tab bar or sidebar."},
         {DPHideRecentTabsButton, @"clock.arrow.circlepath", @"Hide recent tabs button", @"Hide the recent tabs button in the tab bar or sidebar."},
+        {DPOverlayScrollbars, @"scroll", @"Slim scrollbars", @"Use thin scrollbars that float over pages instead of taking up a gutter."},
+        {DPLittleDia, @"macwindow", @"Little Dia", @"Open links from other apps, and new-tab links to other sites, in a small window. Press ⌥⌘N anywhere for a quick one, and ⌘O to move it into Dia."},
     };
     NSArray<NSColor *> *tints = @[NSColor.systemBlueColor, NSColor.systemIndigoColor, NSColor.systemGrayColor, NSColor.systemOrangeColor,
-                                  NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemPinkColor];
+                                  NSColor.systemPurpleColor, NSColor.systemTealColor, NSColor.systemPinkColor, NSColor.systemGreenColor, NSColor.systemYellowColor];
     _searchText = [NSMapTable strongToStrongObjectsMapTable];
     NSMutableArray<NSView *> *tweakRows = [NSMutableArray new];
     NSMutableArray<NSSwitch *> *toggles = [NSMutableArray new];
@@ -743,10 +1340,12 @@ static NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch
 
     // Dia's Settings window doesn't grow, so the pane scrolls below the window's title.
     DPFlippedView *document = [DPFlippedView new];
-    NSScrollView *scroll = [NSScrollView new];
+    NSScrollView *scroll = [DPOverlayScrollView new];
     scroll.drawsBackground = NO;
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;
+    scroll.scrollerStyle = NSScrollerStyleOverlay;
+    scroll.verticalScroller.controlSize = NSControlSizeSmall;
     scroll.automaticallyAdjustsContentInsets = NO;
     scroll.documentView = document;
     [document addSubview:content];
@@ -797,8 +1396,6 @@ static NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch
     NSString *query = self.searchItem.searchField.stringValue;
     NSArray<NSString *> *words = [query componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
     BOOL searching = [query stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet].length > 0;
-    for (NSSwitch *toggle in self.toggles)
-        if (toggle.tag == DPHideSidebarButton || toggle.tag == DPHideChatButton) toggle.enabled = !DPOn[DPHideToolbar];
     BOOL anything = NO;
     for (NSArray *section in self.sections) {
         BOOL any = NO;
@@ -1154,20 +1751,29 @@ __attribute__((constructor)) static void DPInit(void) {
         DPHook(DPContainerClass(), NSSelectorFromString(selector), (IMP)DPContainer_layoutOrUpdateLayer);
     DPHook(NSClassFromString(@"_TtC5ARCUI10ShadowView"), @selector(layout), (IMP)DPShadow_layout);
     DPHook(NSClassFromString(@"_TtC11ContentPane15ContentPaneView"), @selector(layout), (IMP)DPPane_layout);
+    DPHook(NSClassFromString(@"_TtC11ContentPane15ContentPaneView"), @selector(hitTest:), (IMP)DPPane_hitTest);
     for (NSString *bar in @[@"_TtC13NavigationBar17NavigationBarView", @"_TtC10TabSidebar17SidebarHeaderView", @"_TtC10TabSidebar26SidebarContainerFooterView"])
         DPHook(NSClassFromString(bar), @selector(layout), (IMP)DPBar_layout);
     DPHook(NSClassFromString(@"_TtC10TabSidebar30SidebarContainerViewController"), @selector(viewDidLayout), (IMP)DPSidebar_viewDidLayout);
     DPHook(NSClassFromString(@"_TtC8TabStrip31TabStripContainerViewController"), @selector(viewWillLayout), (IMP)DPTabStrip_viewWillLayout);
     DPHook(DPToolbarClass(), @selector(hitTest:), (IMP)DPToolbar_hitTest);
+    DPHook(NSClassFromString(@"_TtC13OpenURLClient19OpenURLEventManager"), @selector(handleEvent:withReplyEvent:), (IMP)DPOpenURLEvent_handle);
+    DPHook(object_getClass(NSScroller.class), @selector(preferredScrollerStyle), (IMP)DPScroller_preferredScrollerStyle);
     DPHook(NSClassFromString(DPSettingsControllerClass), @selector(viewDidAppear), (IMP)DPSettings_viewDidAppear);
     DPHook(NSClassFromString(DPSettingsControllerClass), @selector(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:), (IMP)DPSettings_toolbarItem);
 
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
         DPInstallUpdateMenuItem();
+        DPUpdateRevealPolling();
+        DPInstallLittleDia();
+        // Swift's readable class names only resolve once its runtime is up, so this one is looked up by its mangled name, late.
+        DPHook(NSClassFromString(@"_TtC3ADK18WebContentChromium"), NSSelectorFromString(@"webContents:decidePolicyForNavigationAction:"),
+               (IMP)DPWebContent_decidePolicy);
         DPRunCLI(@[@"update"], nil);
     }];
     [center addObserverForName:NSApplicationWillTerminateNotification object:nil queue:nil usingBlock:^(NSNotification *_) {
+        DPCloseLittleWindows();
         DPApplyStagedOnQuit();
     }];
 }

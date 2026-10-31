@@ -6,7 +6,7 @@ build/diapatch: src/diapatch/main.m | build
 	clang $(CFLAGS) -framework Foundation -o $@ $<
 
 build/DiaPatches.dylib: src/dylib/DiaPatches.m | build
-	clang $(CFLAGS) -dynamiclib -framework AppKit -framework QuartzCore -o $@ $<
+	clang $(CFLAGS) -dynamiclib -framework AppKit -framework Carbon -framework QuartzCore -o $@ $<
 
 build:
 	mkdir -p $@
