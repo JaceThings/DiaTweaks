@@ -27,4 +27,8 @@ extern NSNotificationName const DPUpdatesDidChangeNotification;
 - (double)progress:(NSString *)part;  // 0–1 while downloading, then -1 while it's verified and patched.
 - (void)download:(NSString *)part then:(void (^)(void))done;
 - (void)installAndRelaunch:(NSArray<NSString *> *)parts;
+
+// For the Debug menu: shows a made-up update for `part` that downloads in a few seconds and installs without relaunching.
+- (void)pretend:(NSString *)part;
+- (void)stopPretending;
 @end

@@ -53,6 +53,8 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     NSMutableArray *_checked;
     NSMutableSet<NSString *> *_failed;
     NSTimer *_progress;
+    NSDictionary *_found;
+    NSMutableDictionary<NSString *, id> *_pretend;  // part → @"available", the NSDate its download started, or @"staged"
 }
 
 + (instancetype)shared {
@@ -67,6 +69,7 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     _whenDownloaded = [NSMutableDictionary new];
     _checked = [NSMutableArray new];
     _failed = [NSMutableSet new];
+    _pretend = [NSMutableDictionary new];
     return self;
 }
 
@@ -88,12 +91,31 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     });
 }
 
+- (NSDictionary *)found {
+    if (!_pretend.count) return _found;
+    NSMutableDictionary *found = [_found mutableCopy] ?: [NSMutableDictionary new];
+    for (NSString *part in _pretend) {
+        BOOL staged = [_pretend[part] isEqual:@"staged"];
+        NSString *latest = [part isEqual:DPDia] ? @"1.56.0 (90000)" : @"v1.1.0";
+        NSMutableDictionary *entry = [found[part] ?: @{} mutableCopy];
+        [entry addEntriesFromDictionary:@{
+            @"latest" : latest, @"available" : @(!staged), @"staged" : staged ? latest : NSNull.null,
+            @"size" : [part isEqual:DPDia] ? @704038560 : @960161,
+            @"notes" : [part isEqual:DPDia] ? @"Dia 1.56.0 brings easier app connections, Google Chat access, and steadier Chat responses."
+                                            : @"Software Update in Settings, so Dia and DiaTweaks update on your terms.",
+        }];
+        found[part] = entry;
+    }
+    return found;
+}
+
 - (BOOL)available:(NSString *)part { return [self.found[part][@"available"] boolValue]; }
 - (BOOL)staged:(NSString *)part { return [self.found[part][@"staged"] isKindOfClass:NSString.class]; }
 - (BOOL)downloading:(NSString *)part { return _whenDownloaded[part] != nil; }
 - (BOOL)failed:(NSString *)part { return [_failed containsObject:part]; }
 
 - (double)progress:(NSString *)part {
+    if ([_pretend[part] isKindOfClass:NSDate.class]) return MIN(-[_pretend[part] timeIntervalSinceNow] / 3, 1);
     NSString *file = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
         stringByAppendingPathComponent:@"DiaPatches"] stringByAppendingPathComponent:[part isEqual:DPDia] ? @"download/Dia.zip" : @"release/DiaTweaks.zip"];
     double size = [self.found[part][@"size"] doubleValue];
@@ -108,24 +130,58 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     }
     _whenDownloaded[part] = done ? [NSMutableArray arrayWithObject:done] : [NSMutableArray new];
     [_failed removeObject:part];
-    if (!_progress) _progress = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *_) { [self changed]; }];
+    if (!_progress) _progress = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *_) { [self tick]; }];
     [self changed];
+    if (_pretend[part]) {
+        _pretend[part] = NSDate.date;
+        return;
+    }
     DPRunCLI(@[[part isEqual:DPDia] ? @"update" : @"self-update"], ^(NSString *output) {
         if (!output) [self->_failed addObject:part];
-        NSArray *waiting = self->_whenDownloaded[part];
-        [self->_whenDownloaded removeObjectForKey:part];
-        if (!self->_whenDownloaded.count) {
-            [self->_progress invalidate];
-            self->_progress = nil;
-        }
-        [self check:^{ for (void (^block)(void) in waiting) block(); }];
+        [self finishDownload:part];
     });
+}
+
+- (void)finishDownload:(NSString *)part {
+    NSArray *waiting = _whenDownloaded[part];
+    [_whenDownloaded removeObjectForKey:part];
+    if (!_whenDownloaded.count) {
+        [_progress invalidate];
+        _progress = nil;
+    }
+    if (_pretend[part]) {
+        _pretend[part] = @"staged";
+        [self changed];
+        for (void (^block)(void) in waiting) block();
+    } else {
+        [self check:^{ for (void (^block)(void) in waiting) block(); }];
+    }
+}
+
+- (void)tick {
+    for (NSString *part in _pretend.allKeys)
+        if ([_pretend[part] isKindOfClass:NSDate.class] && [self progress:part] >= 1) [self finishDownload:part];
+    [self changed];
 }
 
 - (void)installAndRelaunch:(NSArray<NSString *> *)parts {
     NSMutableArray *args = [NSMutableArray arrayWithObject:@"apply"];
-    for (NSString *part in parts) [args addObject:[part isEqual:DPDia] ? @"--dia" : @"--tweaks"];
-    DPHandOffAndQuit(args);
+    for (NSString *part in parts) {
+        if (_pretend[part]) [_pretend removeObjectForKey:part];
+        else [args addObject:[part isEqual:DPDia] ? @"--dia" : @"--tweaks"];
+    }
+    if (args.count > 1) DPHandOffAndQuit(args);
+    else [self changed];
+}
+
+- (void)pretend:(NSString *)part {
+    _pretend[part] = @"available";
+    [self changed];
+}
+
+- (void)stopPretending {
+    [_pretend removeAllObjects];
+    [self changed];
 }
 @end
 

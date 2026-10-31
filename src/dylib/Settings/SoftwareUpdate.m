@@ -132,7 +132,10 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
         menu.target = self;
         menu.action = @selector(automaticChanged:);
         menu.accessibilityLabel = [DPPartName(part) stringByAppendingString:@" updates"];
-        [automatic addObject:DPRow(DPLine(DPPartName(part), 13, NSColor.labelColor), menu)];
+        NSString *does = @[@"Only checks when you open this page", @"Checks when Dia opens and lists it here",
+                           @"Downloads it, then you choose when to install", @"Downloads it and installs when you quit Dia"][DPAutoLevelOf(part)];
+        NSView *text = DPColumn(@[DPLine(DPPartName(part), 13, NSColor.labelColor), DPLine(does, 11, NSColor.secondaryLabelColor)], 2);
+        [automatic addObject:DPRow(text, menu)];
     }
     [views addObjectsFromArray:@[DPHeader(@"Automatic Updates"), DPGroup(automatic)]];
 
