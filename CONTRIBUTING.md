@@ -39,7 +39,11 @@ CI fails if a patch has no wiki page or the sidebar doesn't link to it. Run `scr
 
 `make test` installs your build's dylib and reopens Dia in test mode. Dia tries the patches all off, all on, each on its own and in pairwise combinations without saving any of it, runs every patch's `verify` after each, then goes back to your settings. The script prints what failed and exits non-zero if anything did. It can't move the tabs between the sidebar and the top, so run it once in each layout. Square corners only get tested with the sidebar open.
 
-To try `install.sh`, `diapatch` or `diatweaks` without touching your own Dia, point `DIAPATCH_APP` at a copy of Dia, `DIAPATCH_HOME`, `DIAPATCH_CACHE` and `DIATWEAKS_LINK_DIR` at scratch folders and `DIATWEAKS_DOMAIN` at a settings domain of its own, and set `DIAPATCH_NO_RELAUNCH=1` so nothing quits or opens Dia. `DIATWEAKS_REPO=file://$PWD` makes `diatweaks update` clone your checkout's committed work instead of GitHub.
+To try `install.sh`, `diapatch` or `diatweaks` without touching your own Dia, point `DIAPATCH_APP` at a copy of Dia, `DIAPATCH_HOME`, `DIAPATCH_CACHE` and `DIATWEAKS_LINK_DIR` at scratch folders and `DIATWEAKS_DOMAIN` at a settings domain of its own, and set `DIAPATCH_NO_RELAUNCH=1` so nothing quits or opens Dia. `DIAPATCH_RELEASES` points `diapatch self-update` at a release JSON of your own, which can use `file://` links.
+
+## Releasing
+
+Push a tag like `v1.2.0`. The Release workflow builds `DiaTweaks.zip` with `scripts/package` and attaches it to that release, and every install picks it up the next time Dia opens. Installs compare the zip's digest, not the version, so to fix a release in place, run the workflow again by hand with the same tag: the new zip replaces the old one and counts as an update. Keep immutable releases off in the repo settings, or that stops working.
 
 ## Commits
 
