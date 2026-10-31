@@ -121,6 +121,11 @@ static Class DPSelectionOutlineClass(void) {
     return cls = cls ?: NSClassFromString(@"_TtC5TabUIP33_CFF5B89D7BC9743BBA6108D119E2E37020SelectionOutlineView");
 }
 
+static Class DPWindowBackgroundClass(void) {
+    static Class cls;
+    return cls = cls ?: NSClassFromString(@"_TtC15WindowTreatment20WindowBackgroundView");
+}
+
 static Class DPPinnedTabsClass(void) {
     static Class cls;
     return cls = cls ?: NSClassFromString(@"_TtC8TabStrip16TabStripDockView");
@@ -144,6 +149,7 @@ static NSInteger DPButtonTweak(NSView *view) {
                     : [view isKindOfClass:DPWindowControlsClass()]  ? DPHideWindowControls
                     : [view isKindOfClass:DPSelectionOutlineClass()] ? DPHidePinnedTabBorder
                     : [view isKindOfClass:DPDebossedClass()] && [view.superview isKindOfClass:DPPinnedTabsClass()] ? DPHidePinnedTabsBackground
+                    : [view isKindOfClass:DPWindowBackgroundClass()] && [NSStringFromClass(view.superview.superview.class) containsString:@"TabShapeView"] ? DPLiquidGlassBackground
                                                                     : -1;
     if (match >= 0) objc_setAssociatedObject(view, &DPButtonKey, @(match), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return match;
@@ -1361,6 +1367,8 @@ __attribute__((constructor)) static void DPInit(void) {
     DPHook(NSClassFromString(@"_TtC8TabStrip31TabStripContainerViewController"), @selector(viewWillLayout), (IMP)DPTabStrip_viewWillLayout);
     DPHook(DPPinnedTabsClass(), @selector(layout), (IMP)DPPinnedTabs_layout);
     DPHook(NSClassFromString(@"_TtC6Window24PlatformWindowThemeFrame"), @selector(layout), (IMP)DPWindowFrame_layout);
+    // The selected tab paints its own copy of the theme, which would stop it flowing into the page.
+    DPHook(NSClassFromString(@"_TtC5TabUI17TabBackgroundView"), @selector(layout), (IMP)DPBar_layout);
     DPHook(NSClassFromString(@"_TtC5TabUI15TabDockItemView"), @selector(layout), (IMP)DPPinnedTab_layout);
     DPHook(NSClassFromString(@"_TtC10TabSidebar30SidebarContainerViewController"), @selector(viewWillLayout), (IMP)DPSidebar_viewWillLayout);
     DPHook(DPSidebarFooterClass(), @selector(layout), (IMP)DPBar_layout);
