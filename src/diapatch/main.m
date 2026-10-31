@@ -515,7 +515,11 @@ int main(int argc, const char *argv[]) {
             : [command isEqualToString:@"update"]      ? update()
             : [command isEqualToString:@"apply"]       ? apply()
                                                        : uninstall([flags containsObject:@"--purge"]);
-        if ([flags containsObject:@"--relaunch"]) check(@[ @"/usr/bin/open", gApp ]);
+        // open sometimes fails with -600 right after Dia quits itself.
+        for (int i = 0; [flags containsObject:@"--relaunch"] && i < 20; i++) {
+            if (check(@[ @"/usr/bin/open", gApp ])) break;
+            usleep(500000);
+        }
         return ok ? 0 : 1;
     }
 }
