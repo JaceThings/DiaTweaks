@@ -803,6 +803,12 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
 
 - (void)redraw { self.needsDisplay = YES; }
 
+// Dia's sidebar labels get their dark ink from vibrancy, which this row can't get outside Dia's table, so it draws solid text in the plain appearance.
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.label.appearance = [NSAppearance appearanceNamed:[self.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]]];
+}
+
 - (void)layout {
     [super layout];
     _selection.frame = self.pillFrame;
@@ -821,7 +827,7 @@ static NSView *DPIconTile(NSString *symbol, NSColor *color) {
     BOOL key = self.window.isKeyWindow, emphasized = self.selected && key;
     _selection.hidden = !self.selected;
     _selection.emphasized = emphasized;
-    self.label.textColor = emphasized ? NSColor.alternateSelectedControlTextColor : key || self.selected ? NSColor.labelColor : NSColor.secondaryLabelColor;
+    self.label.textColor = emphasized ? NSColor.alternateSelectedControlTextColor : NSColor.textColor;
     NSFont *font = self.labelFont ?: self.label.font;
     NSFont *face = self.selected ? [NSFont systemFontOfSize:font.pointSize weight:NSFontWeightSemibold] : font;
     if (![self.label.font isEqual:face]) {
