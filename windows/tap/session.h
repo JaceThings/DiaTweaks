@@ -34,6 +34,10 @@ struct Context {
 #ifdef DIATWEAKS_SETTINGS
     std::unique_ptr<NativeSettings> settings;
     std::unique_ptr<NativeFeatures> nativeFeatures;
+    uint64_t settingsId = 0;
+    ULONGLONG nextSettingsAttempt = 0;
+    std::wstring settingsError;
+    void auto_settings();
 #endif
     void sync_feature();
     static LRESULT CALLBACK window_proc(HWND, UINT, WPARAM, LPARAM);
@@ -45,17 +49,20 @@ class Session final : public Microsoft::WRL::RuntimeClass<
     Handle mapping_, controller_;
     Shared* shared_ = nullptr;
     std::mutex mutex_;
+    std::mutex featureMutex_;
     std::map<std::pair<DWORD, InstanceHandle>, Node> nodes_;
     std::map<DWORD, std::unique_ptr<Context>> contexts_;
     uint64_t nextId_ = 1;
     bool overflow_ = false;
     void run() noexcept;
     HRESULT dispatch(Context*, Request, std::wstring&);
+    void set_mask(uint32_t);
 public:
     ~Session() { if (shared_) UnmapViewOfFile(shared_); }
     ComPtr<IVisualTreeService> service;
     ComPtr<IXamlDiagnostics> diagnostics;
     std::atomic<uint32_t> featureMask{0};
+    bool autoSettings = false;
     std::atomic<bool> stopping{false};
     HRESULT start(IUnknown*);
     HRESULT STDMETHODCALLTYPE OnVisualTreeChange(ParentChildRelation, VisualElement, VisualMutationType) noexcept override;
@@ -65,5 +72,6 @@ public:
     std::vector<Node> sidebar_nodes(DWORD thread);
     std::vector<Node> nodes_on_thread(DWORD thread);
     bool is_settings_navigation(uint64_t id);
+    void set_feature(FeatureId, bool);
 };
 }

@@ -110,6 +110,18 @@
       "source": "src/dylib/Patches/KeepWindowsActive/KeepWindowsActive.m"
     },
     {
+      "key": "passkeys",
+      "title": "Allow iCloud passkeys",
+      "detail": "Lets sites sign you in with passkeys saved in Apple Passwords, which a patched Dia can't reach. For each one, the original Dia that DiaTweaks keeps opens behind the Touch ID prompt, then quits. Your passkeys stay in Apple Passwords. Experimental.",
+      "section": "Passwords",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 100,
+      "defaultOn": true,
+      "source": "src/dylib/Patches/Passkeys/Passkeys.m"
+    },
+    {
       "key": "groupTabsByDomain",
       "title": "Group Tabs by Domain",
       "detail": "Group a window’s tabs by site.",

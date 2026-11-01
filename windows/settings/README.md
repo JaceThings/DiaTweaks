@@ -44,13 +44,14 @@ Patches follows IsPaneOpen so its label disappears in the native icon-only pane.
 Double-tapping its row toggles that same pane property. The button retains an
 accessible name in compact mode. Both hooks are removed on disconnect.
 
-The panel lists all nine patch definitions and the tab-grouping command from
+The panel lists the shared patch definitions and the tab-grouping command from
 `shared/features.json`. Switch availability comes from per-window adapter
 discovery. Prerequisites and disabled-by relationships use applied state, so a
 failed toolbar override does not suppress a working individual button patch.
 There are no preview videos or detail pages yet.
-No toggle preferences are saved: changes last only while this controller session
-is connected. Dia continues using its normal Windows updater.
+The tray launcher saves requested switches and reapplies them on the next launch.
+The developer probe remains session-only. Live changes restore when either
+controller disconnects. Dia continues using its normal Windows updater.
 
 Live status: the native entry and page opened in Dia 1.4.0.424. The user confirmed
 the sidebar button disappeared and returned through the Settings toggle, and
@@ -69,6 +70,7 @@ property readback confirmed both states. See [live-test.md](live-test.md).
 | Hide Chats button | Role-based adapter implemented; no matching control found in the tested Windows layout |
 | Hide recent tabs button | Role-based adapter implemented; no matching control found in the tested Windows layout |
 | Keep windows active | Windows caption-color adaptation built; live confirmation pending. OS shadow/backdrop remain system-managed |
+| Allow iCloud passkeys | macOS identity workaround; not needed when using the unmodified Windows Dia package |
 | Group Tabs by Domain | Needs access to Dia's tab/group command model |
 
 ## Build

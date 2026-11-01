@@ -28,7 +28,7 @@ PatchesPage::PatchesPage(const FeatureStates& states, FeatureChanged changed, st
     content.Children().Append(backButton);
     content.Children().Append(text(L"Patches", 26));
     content.Children().Append(text(L"DiaTweaks · Windows prototype", 13));
-    content.Children().Append(text(L"Changes apply while the controller is connected. Features awaiting a Windows implementation are unavailable.", 12));
+    content.Children().Append(text(L"Changes apply while DiaTweaks is running. Switch availability depends on this Windows Dia layout.", 12));
     search.PlaceholderText(L"Search patches");
     search.Name(L"DiaTweaksPatchSearch");
     content.Children().Append(search);
@@ -50,10 +50,12 @@ PatchesPage::PatchesPage(const FeatureStates& states, FeatureChanged changed, st
         labels.Spacing(4);
         labels.Children().Append(text(feature.title));
         const auto description = std::wstring(feature.key) == L"keepWindowsActive"
-            ? L"Keep the title-bar and window-button colors from dimming when Dia loses focus." : feature.detail;
+            ? L"Keep the title-bar and window-button colors from dimming when Dia loses focus."
+            : std::wstring(feature.key) == L"passkeys" ? L"Windows uses the installed Dia's normal passkey support. This macOS workaround is not needed." : feature.detail;
         auto detail = text(description, 12); detail.Opacity(0.75); labels.Children().Append(detail);
         const auto id = feature_id(feature.key);
-        auto note = text(id == FeatureId::Count ? L"Windows adapter not installed" : L"Detecting Windows controls…", 12);
+        auto note = text(std::wstring(feature.key) == L"passkeys" ? L"macOS-only workaround"
+            : id == FeatureId::Count ? L"Windows adapter not installed" : L"Detecting Windows controls…", 12);
         note.Opacity(0.7); labels.Children().Append(note);
         if (id != FeatureId::Count) notes.emplace(id, note);
         if (*feature.requiresKey) for (const auto& parent : Features) if (std::wstring(parent.key) == feature.requiresKey)

@@ -173,6 +173,10 @@ NativeSettings::NativeSettings(IXamlDiagnostics* d, IVisualTreeService* s, Insta
     catch (HRESULT hr) { throw SettingsError{hr, stage}; }
 }
 NativeSettings::~NativeSettings() = default;
+bool NativeSettings::alive() const noexcept {
+    try { return impl_->navigation.IsLoaded() && impl_->navigation.XamlRoot() && impl_->navigation.XamlRoot().IsHostVisible(); }
+    catch (...) { return false; }
+}
 void NativeSettings::remove() {
     try { impl_->remove(); } catch (const hresult_error& error) { throw static_cast<HRESULT>(error.code().value); }
 }

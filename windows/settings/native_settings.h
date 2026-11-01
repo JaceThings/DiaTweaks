@@ -15,5 +15,6 @@ public:
     void remove();
     void sync(const FeatureStates&);
     std::wstring status() const;
+    bool alive() const noexcept;
 };
 }

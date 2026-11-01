@@ -14,6 +14,9 @@ HRESULT Session::start(IUnknown* site) {
     shared_ = static_cast<Shared*>(MapViewOfFile(mapping_.value, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Shared)));
     if (!shared_) return last_error();
     if (shared_->version != ProtocolVersion || shared_->target != GetCurrentProcessId()) return E_INVALIDARG;
+    if ((shared_->options & ~AutoSettings) || (shared_->initialFeatureMask >> static_cast<uint32_t>(FeatureId::Count))) return E_INVALIDARG;
+    autoSettings = (shared_->options & AutoSettings) != 0;
+    set_mask(shared_->initialFeatureMask);
     controller_.value = OpenProcess(SYNCHRONIZE, FALSE, shared_->controller);
     if (!controller_) return last_error();
     // Retain for the process lifetime: callbacks and message windows own pointers
@@ -49,7 +52,7 @@ void Session::run() noexcept {
                     if (n) { std::lock_guard lock(mutex_); context = contexts_.at(n->thread).get(); }
                     hr = context ? dispatch(context, request, response) : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
                 } else if (request.command == Command::Restore || request.command == Command::SetSidebar || request.command == Command::SetFeature || request.command == Command::Features) {
-                    if (request.command == Command::Restore) featureMask = 0;
+                    if (request.command == Command::Restore) set_mask(0);
                     else if (request.command != Command::Features) {
                         if (request.command == Command::SetFeature && request.handle >= static_cast<uint64_t>(FeatureId::Count)) throw E_INVALIDARG;
                         const auto id = request.command == Command::SetSidebar ? FeatureId::Sidebar : static_cast<FeatureId>(request.handle);
@@ -57,7 +60,7 @@ void Session::run() noexcept {
 #ifndef DIATWEAKS_SETTINGS
                         if (id != FeatureId::Sidebar) throw E_NOTIMPL;
 #endif
-                        if (request.seconds) featureMask.fetch_or(feature_bit(id)); else featureMask.fetch_and(~feature_bit(id));
+                        set_feature(id, request.seconds != 0);
                     }
                     std::vector<Context*> contexts;
                     { std::lock_guard lock(mutex_); for (auto& [_, c] : contexts_) contexts.push_back(c.get()); }

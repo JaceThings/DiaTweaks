@@ -1,11 +1,13 @@
-param([ValidateSet('Debug', 'Release')][string]$Configuration = 'Release', [string]$DiaPath)
+param([ValidateSet('Debug', 'Release')][string]$Configuration = 'Release', [string]$DiaPath,
+    [string]$MetadataPath, [string]$BuildDirectory = (Join-Path $PSScriptRoot 'build/settings'))
 $ErrorActionPreference = 'Stop'
-if (!$DiaPath) {
+if (!$MetadataPath -and !$DiaPath) {
     $package = Get-AppxPackage -Name TheBrowserCompany.Dia | Sort-Object Version -Descending | Select-Object -First 1
     if (!$package) { throw 'Install Dia first or pass -DiaPath with its installed package directory.' }
     $DiaPath = $package.InstallLocation
 }
-$metadata = Join-Path $DiaPath 'Microsoft.UI.Xaml.winmd'
+if (!$MetadataPath) { $MetadataPath = $DiaPath }
+$metadata = Join-Path $MetadataPath 'Microsoft.UI.Xaml.winmd'
 if (!(Test-Path -LiteralPath $metadata)) { throw 'Microsoft.UI.Xaml.winmd was not found in the Dia package.' }
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -30,14 +32,15 @@ if (!(Test-Path -LiteralPath $coreMetadata)) {
         [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $coreMetadata, $true)
     } finally { $archive.Dispose() }
 }
-$projections = Join-Path $buildRoot 'settings-projections'
-& $cppwinrt -input $DiaPath -input $coreMetadata -reference sdk -output $projections
+$projections = Join-Path $BuildDirectory 'projections'
+New-Item -ItemType Directory -Path $projections -Force > $null
+& $cppwinrt -input $MetadataPath -input $coreMetadata -reference sdk -output $projections
 if ($LASTEXITCODE) { throw 'WinUI projection generation failed.' }
-$buildPath = Join-Path $buildRoot 'settings'
+$buildPath = $BuildDirectory
 & $cmakePath -S $PSScriptRoot -B $buildPath -A x64 "-DDIATWEAKS_WINUI_PROJECTIONS=$projections" -DBUILD_TESTING=ON
 if ($LASTEXITCODE) { throw 'CMake configuration failed.' }
 & $cmakePath --build $buildPath --config $Configuration --parallel 1 -- /nr:false
 if ($LASTEXITCODE) { throw 'Settings build failed.' }
 & (Join-Path (Split-Path $cmakePath) 'ctest.exe') --test-dir $buildPath -C $Configuration --output-on-failure
 if ($LASTEXITCODE) { throw 'Settings tests failed.' }
-Write-Host "Built: $buildPath\$Configuration\diatweaks-probe.exe"
+Write-Host "Built: $buildPath\$Configuration\DiaTweaks.exe"

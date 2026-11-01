@@ -71,7 +71,7 @@ static LRESULT CALLBACK fixture_proc(HWND window, UINT message, WPARAM wp, LPARA
     }
     return DefWindowProcW(window, message, wp, lp);
 }
-static void session_tests() {
+static void session_tests(bool background) {
     auto service = Microsoft::WRL::Make<FakeService>();
     service->numeric = true;
     WNDCLASSW wc{};
@@ -95,11 +95,18 @@ static void session_tests() {
         check(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
         {
             Channel channel(GetCurrentProcessId());
+            if (background) { channel.shared->options = AutoSettings; channel.shared->initialFeatureMask = feature_bit(FeatureId::Sidebar); }
             service->initialization = channel.name;
             check(tap->SetSite(static_cast<IVisualTreeService*>(service.Get())));
             const auto deadline = GetTickCount64() + 5000;
             while (!read_flag(channel.shared->ready) && GetTickCount64() < deadline) Sleep(10);
             require(read_flag(channel.shared->ready) == 1, "session handshake");
+            if (background) {
+                std::wstring response;
+                require(channel.call({Command::Features, 0, 0}, response) == S_OK && service->collapsed, "background startup applies saved switches");
+                require(static_cast<uint32_t>(read_flag(channel.shared->currentFeatureMask)) == feature_bit(FeatureId::Sidebar), "publish requested switches for persistence");
+                require(SUCCEEDED(channel.call({Command::Restore, 0, 0}, response)) && !service->collapsed, "background reset restores baseline");
+            }
             bool duplicateRejected = false;
             try { Channel duplicate(GetCurrentProcessId()); }
             catch (HRESULT hr) { duplicateRejected = hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS); }
@@ -119,6 +126,7 @@ static void session_tests() {
             require(channel.call({Command::SetFeature, UINT64_MAX, 1}, response) == E_INVALIDARG && !service->collapsed, "reject overflowing feature id without mutations");
             require(channel.call({Command::SetFeature, (1ULL << 32) + static_cast<uint64_t>(FeatureId::Sidebar), 1}, response) == E_INVALIDARG && !service->collapsed, "reject feature id before narrowing to its enum");
             require(channel.call({Command::SetFeature, static_cast<uint64_t>(FeatureId::Sidebar), 1}, response) == S_OK && service->collapsed, "generic feature IPC enables sidebar");
+            require(static_cast<uint32_t>(read_flag(channel.shared->currentFeatureMask)) == feature_bit(FeatureId::Sidebar), "publish UI/IPC switch state");
             require(channel.call({Command::SetFeature, static_cast<uint64_t>(FeatureId::Sidebar), 0}, response) == S_OK && !service->collapsed, "generic feature IPC restores sidebar");
             require(channel.call({Command::SetSidebar, 0, 1}, response) == S_OK && service->collapsed, "leave feature on before disconnect");
         }
@@ -144,7 +152,7 @@ int wmain(int argc, wchar_t** argv) {
             require(runtime.symbol("InitializeXamlDiagnosticsEx") != nullptr, "diagnostics export");
             std::cout << "PASS: diagnostics runtime loads; temporary staging=" << runtime.staged() << "; no target attachment attempted\n";
         } else {
-            dependency_tests(); property_tests(); session_tests();
+            dependency_tests(); property_tests(); session_tests(argc == 2 && wcscmp(argv[1], L"--background") == 0);
             std::cout << "PASS: restore policy, failure rollback, IPC, UI-thread dispatch, timer and disconnect\n";
         }
     } catch (HRESULT hr) { std::cerr << "HRESULT failure: " << std::hex << hr << '\n'; return 1; }

@@ -1,6 +1,17 @@
 #include "session.h"
 #include <set>
 namespace dt {
+void Session::set_mask(uint32_t mask) {
+    std::lock_guard lock(featureMutex_);
+    featureMask = mask;
+    if (shared_) InterlockedExchange(&shared_->currentFeatureMask, static_cast<LONG>(mask));
+}
+void Session::set_feature(FeatureId id, bool on) {
+    std::lock_guard lock(featureMutex_);
+    const auto mask = on ? featureMask.load() | feature_bit(id) : featureMask.load() & ~feature_bit(id);
+    featureMask = mask;
+    if (shared_) InterlockedExchange(&shared_->currentFeatureMask, static_cast<LONG>(mask));
+}
 std::vector<Node> Session::nodes_on_thread(DWORD thread) {
     std::lock_guard lock(mutex_);
     std::vector<Node> result;
@@ -37,6 +48,7 @@ void Context::sync_feature() {
     if (!nativeFeatures) nativeFeatures = std::make_unique<NativeFeatures>(session->diagnostics.Get(), session->service.Get());
     featureStates = nativeFeatures->tick(session->nodes_on_thread(thread), session->stopping ? 0 : session->featureMask.load());
     if (session->stopping) nativeFeatures->restore();
+    else if (session->autoSettings) auto_settings();
 #else
     const auto nodes = session->sidebar_nodes(thread);
     const bool enabled = requested(session->featureMask.load(), FeatureId::Sidebar) && !session->stopping;

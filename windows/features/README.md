@@ -1,8 +1,10 @@
 # Windows feature adapters
 
-`feature_state.h` assigns stable IPC ids to the nine toggle keys. The shared
+`feature_state.h` assigns stable IPC ids to the nine Windows toggle keys. The shared
 catalog still supplies titles, descriptions, ordering and relationships. New Mac
 catalog entries appear disabled until Windows provides an adapter for the key.
+The upstream passkeys workaround is marked macOS-only; Windows retains Dia's
+original package identity and normal passkey implementation.
 
 The Settings page, probe commands and UI-thread timer share requested state.
 `features` reports availability and actual application separately. Dependencies
@@ -39,8 +41,10 @@ if they still hold its values. It does not fake focus/activation. DWM shadow and
 backdrop policy remain Windows-managed; the Windows Settings description makes
 this scope explicit. Visual confirmation is pending.
 
-All changes are session-only. They restore on disable or controller disconnect.
-No Dia binary, profile database, preference, or extension is modified. No Dia
+All live overrides restore on disable or controller disconnect. The tray launcher
+persists requested switches in its own preferences file and watches file edits;
+the developer probe is session-only. No Dia binary, profile database, Dia
+preference, or extension is modified. No Dia
 files or recordings belong in source control. Probe `--log PATH` records
 unwrapped structural diagnostics for review; `layout ID` excludes content text
 and URLs. Generated metadata and logs remain under ignored `windows/build`.

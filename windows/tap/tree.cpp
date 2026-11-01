@@ -85,6 +85,9 @@ void Context::execute(Job& job) {
         std::wostringstream out;
         for (const auto& state : featureStates) out << FeatureKeys[static_cast<size_t>(state.id)]
             << L" available=" << state.available << L" requested=" << state.on << L" applied=" << state.applied << L" " << state.detail << L"\n";
+#ifdef DIATWEAKS_SETTINGS
+        if (session->autoSettings) out << L"Settings: " << (settings ? L"installed" : settingsError.empty() ? L"waiting for Settings" : settingsError) << L"\n";
+#endif
         job.response = out.str();
         return;
     }
@@ -98,8 +101,9 @@ void Context::execute(Job& job) {
         sync_feature();
         settings = std::make_unique<NativeSettings>(session->diagnostics.Get(), session->service.Get(),
             node->handle, featureStates, [s = session](FeatureId id, bool on) {
-                if (on) s->featureMask.fetch_or(feature_bit(id)); else s->featureMask.fetch_and(~feature_bit(id));
+                s->set_feature(id, on);
             });
+        settingsId = node->id;
         job.result = S_OK;
         job.response = L"Patches entry installed in Dia Settings. Keep this controller open while using it.\n";
 #else
