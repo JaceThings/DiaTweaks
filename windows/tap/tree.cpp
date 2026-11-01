@@ -73,13 +73,19 @@ void Context::execute(Job& job) {
 #endif
         job.result = lease.restore(session->service.Get());
         if (!featureOverrides.empty()) job.result = E_FAIL;
+#ifdef DIATWEAKS_SETTINGS
+        if (nativeFeatures && nativeFeatures->active()) job.result = E_FAIL;
+#endif
         job.response = lease.active() ? L"Restore failed; retrying on the UI thread.\n" : L"Restored (or no active override).\n";
         return;
     }
-    if (job.request.command == Command::SetSidebar) {
+    if (job.request.command == Command::SetSidebar || job.request.command == Command::SetFeature || job.request.command == Command::Features) {
         sync_feature();
         job.result = S_OK;
-        job.response = session->hideSidebar ? L"Sidebar-button feature requested on.\n" : L"Sidebar-button feature requested off.\n";
+        std::wostringstream out;
+        for (const auto& state : featureStates) out << FeatureKeys[static_cast<size_t>(state.id)]
+            << L" available=" << state.available << L" requested=" << state.on << L" applied=" << state.applied << L" " << state.detail << L"\n";
+        job.response = out.str();
         return;
     }
     if (session->stopping) { job.result = E_ABORT; return; }
@@ -89,13 +95,11 @@ void Context::execute(Job& job) {
 #ifdef DIATWEAKS_SETTINGS
         if (!session->is_settings_navigation(node->id)) { job.result = E_INVALIDARG; return; }
         if (settings) { job.result = S_FALSE; job.response = settings->status(); return; }
-        bool available = false;
-        for (const auto& target : session->sidebar_nodes(thread)) {
-            Visibility v;
-            if (SUCCEEDED(read_visibility(session->service.Get(), target.handle, v))) available = true;
-        }
+        sync_feature();
         settings = std::make_unique<NativeSettings>(session->diagnostics.Get(), session->service.Get(),
-            node->handle, available, session->hideSidebar.load(), [s = session](bool on) { s->hideSidebar = on; });
+            node->handle, featureStates, [s = session](FeatureId id, bool on) {
+                if (on) s->featureMask.fetch_or(feature_bit(id)); else s->featureMask.fetch_and(~feature_bit(id));
+            });
         job.result = S_OK;
         job.response = L"Patches entry installed in Dia Settings. Keep this controller open while using it.\n";
 #else
@@ -104,7 +108,14 @@ void Context::execute(Job& job) {
 #endif
         return;
     }
-    if (job.request.command == Command::Inspect) {
+    if (job.request.command == Command::Layout) {
+#ifdef DIATWEAKS_SETTINGS
+        if (!nativeFeatures) sync_feature();
+        job.response = nativeFeatures->layout(node->handle); job.result = S_OK;
+#else
+        job.result = E_NOTIMPL;
+#endif
+    } else if (job.request.command == Command::Inspect) {
         Visibility v;
         job.result = read_visibility(session->service.Get(), node->handle, v);
         if (SUCCEEDED(job.result)) job.response = L"Visibility=" + v.value + L"; type=" + v.type +
@@ -138,10 +149,14 @@ LRESULT CALLBACK Context::window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             context->sync_feature();
 #ifdef DIATWEAKS_SETTINGS
             if (context->session->stopping && context->settings) context->settings->remove();
-            else if (context->settings) context->settings->sync(context->session->hideSidebar.load());
+            else if (context->settings) context->settings->sync(context->featureStates);
 #endif
             if (context->lease.expired() || context->session->stopping) context->lease.restore(context->session->service.Get());
-            if (context->session->stopping && !context->lease.active() && context->featureOverrides.empty()) KillTimer(hwnd, 1);
+            bool restored = !context->lease.active() && context->featureOverrides.empty();
+#ifdef DIATWEAKS_SETTINGS
+            restored = restored && (!context->nativeFeatures || !context->nativeFeatures->active());
+#endif
+            if (context->session->stopping && restored) KillTimer(hwnd, 1);
             return 0;
         }
     } catch (...) { /* The next timer can retry restoration. */ }

@@ -8,8 +8,10 @@ toggle's Visible → Collapsed → Visible cycle was verified by live readback;
 visual confirmation and screenshots are still pending.
 
 An optional [native Patches panel prototype](settings/README.md) adds the shared
-feature catalog inside Dia Settings. It currently enables only Hide sidebar
-button; the remaining Windows implementations are unavailable.
+feature catalog inside Dia Settings. The feature-enabled build adds native
+edge-to-edge, square sidebar corners, toolbar hiding/hover reveal and toolbar
+button adapters. Availability follows the current Dia layout. See
+[feature adapters](features/README.md) for exact scope and verified behavior.
 
 ## Build
 
@@ -46,6 +48,9 @@ After attachment, the following commands are available:
 | `tree` | Print native XAML node IDs, owner thread, hierarchy, type and `x:Name` |
 | `tree Button` | Filter the structural snapshot by text |
 | `inspect 123` | Inspect node 123's Visibility and whether it has a local value |
+| `layout 123` | Inspect structural layout geometry in a feature-enabled build |
+| `features` | Report discovered, requested and applied feature states |
+| `enable KEY` / `disable KEY` | Request a session patch by shared catalog key |
 | `pulse 123 5` | Collapse that node for five seconds, then restore it |
 | `restore` | Restore active overrides immediately |
 | `quit` | Restore and end the controller session |
@@ -60,7 +65,7 @@ If Windows denies loading its diagnostics runtime from WindowsApps, the controll
 copies that one DLL into a unique temporary directory and loads those exact bytes
 locally. It attempts cleanup on exit; a file still in use may remain in the temp
 directory. Do not distribute this runtime DLL. The TAP changes an in-memory
-property only. The TAP DLL remains resident but inert
+properties and native controls only. The TAP DLL remains resident but inert
 after the session ends. **Restart Dia before attaching again or rebuilding a
 loaded DLL.** Keep other XAML diagnostic tools detached during this experiment.
 

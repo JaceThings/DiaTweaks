@@ -1,6 +1,12 @@
 #include "session.h"
 #include <set>
 namespace dt {
+std::vector<Node> Session::nodes_on_thread(DWORD thread) {
+    std::lock_guard lock(mutex_);
+    std::vector<Node> result;
+    for (const auto& [_, n] : nodes_) if (n.thread == thread) result.push_back(n);
+    return result;
+}
 std::vector<Node> Session::sidebar_nodes(DWORD thread) {
     std::lock_guard lock(mutex_);
     std::vector<Node> result;
@@ -27,8 +33,13 @@ bool Session::is_settings_navigation(uint64_t id) {
     return names.contains(L"account") && names.contains(L"tabs") && names.contains(L"advanced");
 }
 void Context::sync_feature() {
+#ifdef DIATWEAKS_SETTINGS
+    if (!nativeFeatures) nativeFeatures = std::make_unique<NativeFeatures>(session->diagnostics.Get(), session->service.Get());
+    featureStates = nativeFeatures->tick(session->nodes_on_thread(thread), session->stopping ? 0 : session->featureMask.load());
+    if (session->stopping) nativeFeatures->restore();
+#else
     const auto nodes = session->sidebar_nodes(thread);
-    const bool enabled = session->hideSidebar && !session->stopping;
+    const bool enabled = requested(session->featureMask.load(), FeatureId::Sidebar) && !session->stopping;
     std::set<uint64_t> current;
     for (const auto& n : nodes) current.insert(n.id);
     for (auto it = featureOverrides.begin(); it != featureOverrides.end();) {
@@ -42,5 +53,7 @@ void Context::sync_feature() {
         VisibilityLease value;
         if (value.enable(session->service.Get(), n.handle) == S_OK) featureOverrides.emplace(n.id, std::move(value));
     }
+    featureStates = {{FeatureId::Sidebar, !nodes.empty(), enabled, !featureOverrides.empty(), L"Probe-only sidebar adapter"}};
+#endif
 }
 }

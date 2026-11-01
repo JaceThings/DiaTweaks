@@ -18,7 +18,7 @@ static std::wstring lower(std::wstring value) {
     for (auto& c : value) c = static_cast<wchar_t>(std::towlower(c));
     return value;
 }
-PatchesPage::PatchesPage(bool available, bool on, std::function<void(bool)> changed, std::function<void()> back) {
+PatchesPage::PatchesPage(const FeatureStates& states, FeatureChanged changed, std::function<void()> back) {
     root.Name(L"DiaTweaksPatchesPage");
     StackPanel content;
     content.Spacing(16); content.Margin(Thickness{28, 24, 28, 24});
@@ -49,25 +49,26 @@ PatchesPage::PatchesPage(bool available, bool on, std::function<void(bool)> chan
         StackPanel labels;
         labels.Spacing(4);
         labels.Children().Append(text(feature.title));
-        auto detail = text(feature.detail, 12); detail.Opacity(0.75); labels.Children().Append(detail);
-        const bool supported = std::wstring(feature.key) == L"hideSidebarButton" && available;
-        if (!supported) {
-            auto note = text(L"Unavailable · Windows implementation pending", 12);
-            note.Opacity(0.6); labels.Children().Append(note);
-        } else labels.Children().Append(text(L"Live-tested adapter · this session only", 12));
+        const auto description = std::wstring(feature.key) == L"keepWindowsActive"
+            ? L"Keep the title-bar and window-button colors from dimming when Dia loses focus." : feature.detail;
+        auto detail = text(description, 12); detail.Opacity(0.75); labels.Children().Append(detail);
+        const auto id = feature_id(feature.key);
+        auto note = text(id == FeatureId::Count ? L"Windows adapter not installed" : L"Detecting Windows controls…", 12);
+        note.Opacity(0.7); labels.Children().Append(note);
+        if (id != FeatureId::Count) notes.emplace(id, note);
         if (*feature.requiresKey) for (const auto& parent : Features) if (std::wstring(parent.key) == feature.requiresKey)
             labels.Children().Append(text(hstring(L"Requires: " + std::wstring(parent.title)), 11));
         row.Children().Append(labels);
         if (std::wstring(feature.kind) == L"toggle") {
             ToggleSwitch toggle;
             toggle.Name(hstring(L"DiaTweaksToggle_" + std::wstring(feature.key)));
-            toggle.IsOn(supported && on); toggle.IsEnabled(supported);
+            toggle.IsOn(false); toggle.IsEnabled(false);
             toggle.VerticalAlignment(VerticalAlignment::Center);
             toggle.OnContent(box_value(L"On")); toggle.OffContent(box_value(L"Off"));
             Grid::SetColumn(toggle, 1);
-            if (supported) sidebarToggle = toggle;
-            if (supported) toggle.Toggled([changed](const winrt::Windows::Foundation::IInspectable& sender, auto&&) noexcept {
-                try { changed(sender.as<ToggleSwitch>().IsOn()); } catch (...) {}
+            toggles.emplace(id, toggle);
+            toggle.Toggled([this, changed, id](const winrt::Windows::Foundation::IInspectable& sender, auto&&) noexcept {
+                try { if (!synchronizing && id != FeatureId::Count) changed(id, sender.as<ToggleSwitch>().IsOn()); } catch (...) {}
             });
             row.Children().Append(toggle);
         } else {
@@ -87,11 +88,32 @@ PatchesPage::PatchesPage(bool available, bool on, std::function<void(bool)> chan
     scroll.Content(content); root.Children().Append(scroll);
     searchToken = search.TextChanged([this](auto&&, auto&&) noexcept { try { filter(); } catch (...) {} });
     loadedToken = root.Loaded([this](auto&&, auto&&) noexcept { if (entrancePending) play_entrance(); });
+    sync(states);
 }
 PatchesPage::~PatchesPage() {
     stop_entrance();
     if (search) search.TextChanged(searchToken);
     if (root) root.Loaded(loadedToken);
+}
+void PatchesPage::sync(const FeatureStates& states) {
+    synchronizing = true;
+    try {
+        uint32_t mask = 0;
+        for (const auto& state : states) if (state.applied) mask |= feature_bit(state.id);
+        for (const auto& state : states) {
+            if (!toggles.contains(state.id)) continue;
+            auto toggle = toggles.at(state.id);
+            if (toggle.IsOn() != state.on) toggle.IsOn(state.on);
+            bool enabled = state.available || state.on;
+            std::wstring detail = state.detail;
+            if (state.id == FeatureId::Square && !requested(mask, FeatureId::Edge)) { enabled = false; detail = L"Turn on Edge-to-edge web content first"; }
+            if (state.id == FeatureId::Hover && !requested(mask, FeatureId::Toolbar)) { enabled = false; detail = L"Turn on Hide toolbar first"; }
+            if ((state.id == FeatureId::Sidebar || state.id == FeatureId::Chat) && requested(mask, FeatureId::Toolbar)) { enabled = false; detail = L"Toolbar is already hidden"; }
+            if (toggle.IsEnabled() != enabled) toggle.IsEnabled(enabled);
+            if (notes.contains(state.id) && notes.at(state.id).Text() != detail) notes.at(state.id).Text(detail);
+        }
+    } catch (...) { synchronizing = false; throw; }
+    synchronizing = false;
 }
 void PatchesPage::filter() {
     const auto query = lower(std::wstring(search.Text()));

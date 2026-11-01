@@ -1,6 +1,7 @@
 #pragma once
 #include "protocol.h"
 #include "visibility.h"
+#include "feature_state.h"
 #include <ocidl.h>
 #include <atomic>
 #include <map>
@@ -9,6 +10,7 @@
 #include <vector>
 #ifdef DIATWEAKS_SETTINGS
 #include "native_settings.h"
+#include "native_features.h"
 #endif
 
 namespace dt {
@@ -28,8 +30,10 @@ struct Context {
     std::atomic<HWND> window{nullptr};
     VisibilityLease lease;
     std::map<uint64_t, VisibilityLease> featureOverrides;
+    FeatureStates featureStates;
 #ifdef DIATWEAKS_SETTINGS
     std::unique_ptr<NativeSettings> settings;
+    std::unique_ptr<NativeFeatures> nativeFeatures;
 #endif
     void sync_feature();
     static LRESULT CALLBACK window_proc(HWND, UINT, WPARAM, LPARAM);
@@ -51,7 +55,7 @@ public:
     ~Session() { if (shared_) UnmapViewOfFile(shared_); }
     ComPtr<IVisualTreeService> service;
     ComPtr<IXamlDiagnostics> diagnostics;
-    std::atomic<bool> hideSidebar{false};
+    std::atomic<uint32_t> featureMask{0};
     std::atomic<bool> stopping{false};
     HRESULT start(IUnknown*);
     HRESULT STDMETHODCALLTYPE OnVisualTreeChange(ParentChildRelation, VisualElement, VisualMutationType) noexcept override;
@@ -59,6 +63,7 @@ public:
     std::optional<Node> node(uint64_t);
     std::wstring tree();
     std::vector<Node> sidebar_nodes(DWORD thread);
+    std::vector<Node> nodes_on_thread(DWORD thread);
     bool is_settings_navigation(uint64_t id);
 };
 }

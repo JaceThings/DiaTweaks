@@ -43,14 +43,22 @@ void Session::run() noexcept {
             const auto request = shared_->request;
             try {
                 if (request.command == Command::Tree) { response = tree(); hr = S_OK; }
-                else if (request.command == Command::Inspect || request.command == Command::Pulse || request.command == Command::Settings) {
+                else if (request.command == Command::Inspect || request.command == Command::Pulse || request.command == Command::Settings || request.command == Command::Layout) {
                     auto n = node(request.handle);
                     Context* context = nullptr;
                     if (n) { std::lock_guard lock(mutex_); context = contexts_.at(n->thread).get(); }
                     hr = context ? dispatch(context, request, response) : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-                } else if (request.command == Command::Restore || request.command == Command::SetSidebar) {
-                    if (request.command == Command::SetSidebar && request.seconds > 1) throw E_INVALIDARG;
-                    hideSidebar = request.command == Command::SetSidebar && request.seconds == 1;
+                } else if (request.command == Command::Restore || request.command == Command::SetSidebar || request.command == Command::SetFeature || request.command == Command::Features) {
+                    if (request.command == Command::Restore) featureMask = 0;
+                    else if (request.command != Command::Features) {
+                        if (request.command == Command::SetFeature && request.handle >= static_cast<uint64_t>(FeatureId::Count)) throw E_INVALIDARG;
+                        const auto id = request.command == Command::SetSidebar ? FeatureId::Sidebar : static_cast<FeatureId>(request.handle);
+                        if (id >= FeatureId::Count || request.seconds > 1) throw E_INVALIDARG;
+#ifndef DIATWEAKS_SETTINGS
+                        if (id != FeatureId::Sidebar) throw E_NOTIMPL;
+#endif
+                        if (request.seconds) featureMask.fetch_or(feature_bit(id)); else featureMask.fetch_and(~feature_bit(id));
+                    }
                     std::vector<Context*> contexts;
                     { std::lock_guard lock(mutex_); for (auto& [_, c] : contexts_) contexts.push_back(c.get()); }
                     hr = S_OK;

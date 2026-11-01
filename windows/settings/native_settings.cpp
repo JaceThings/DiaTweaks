@@ -48,11 +48,12 @@ struct NativeSettings::Impl {
     bool doubleTapHooked = false;
     event_token invokedToken{}, selectionToken{};
     bool invokedHooked = false, selectionHooked = false;
-    bool installed = false, available, on;
-    std::function<void(bool)> changed;
+    bool installed = false;
+    FeatureStates states;
+    FeatureChanged changed;
     std::wstring stage, lastError;
-    Impl(IXamlDiagnostics* diagnostics, IVisualTreeService* s, InstanceHandle h, bool a, bool o, std::function<void(bool)> c, std::wstring& stage)
-        : service(s), handle(h), available(a), on(o), changed(std::move(c)) {
+    Impl(IXamlDiagnostics* diagnostics, IVisualTreeService* s, InstanceHandle h, const FeatureStates& values, FeatureChanged c, std::wstring& stage)
+        : service(s), handle(h), states(values), changed(std::move(c)) {
         stage = L"resolve Settings NavigationView";
         ComPtr<::IInspectable> raw;
         check(diagnostics->GetIInspectableFromHandle(handle, &raw));
@@ -121,9 +122,7 @@ struct NativeSettings::Impl {
         stage = L"find native Settings content presenter";
         if (!contentHost) contentHost = std::make_unique<SettingsContentHost>(navigation);
         stage = L"create native Patches page";
-        if (!page) page = std::make_unique<PatchesPage>(available, on, [this](bool value) {
-            on = value; changed(value);
-        }, [this] { back(); });
+        if (!page) page = std::make_unique<PatchesPage>(states, changed, [this] { back(); });
         stage = L"display native Patches page";
         contentHost->show(page->root);
         entryStyle->selected(true);
@@ -167,9 +166,9 @@ struct NativeSettings::Impl {
         entry.Click(clickToken); installed = false;
     }
 };
-NativeSettings::NativeSettings(IXamlDiagnostics* d, IVisualTreeService* s, InstanceHandle h, bool a, bool on, std::function<void(bool)> c) {
+NativeSettings::NativeSettings(IXamlDiagnostics* d, IVisualTreeService* s, InstanceHandle h, const FeatureStates& states, FeatureChanged c) {
     std::wstring stage = L"prepare native Settings integration";
-    try { impl_ = std::make_unique<Impl>(d, s, h, a, on, std::move(c), stage); }
+    try { impl_ = std::make_unique<Impl>(d, s, h, states, std::move(c), stage); }
     catch (const hresult_error& error) { throw SettingsError{static_cast<HRESULT>(error.code().value), stage + L": " + error.message().c_str()}; }
     catch (HRESULT hr) { throw SettingsError{hr, stage}; }
 }
@@ -177,10 +176,9 @@ NativeSettings::~NativeSettings() = default;
 void NativeSettings::remove() {
     try { impl_->remove(); } catch (const hresult_error& error) { throw static_cast<HRESULT>(error.code().value); }
 }
-void NativeSettings::sync(bool on) {
-    impl_->on = on;
-    if (impl_->page && impl_->page->sidebarToggle && impl_->page->sidebarToggle.IsOn() != on)
-        impl_->page->sidebarToggle.IsOn(on);
+void NativeSettings::sync(const FeatureStates& states) {
+    impl_->states = states;
+    if (impl_->page) impl_->page->sync(states);
 }
 std::wstring NativeSettings::status() const {
     return impl_->lastError.empty() ? L"Patches entry is installed. Click it in Dia Settings.\n" + impl_->entryStyle->placement() : impl_->lastError + L"\n";

@@ -115,3 +115,37 @@ The user then double-clicked the Patches row to collapse the pane and its icon
 to expand it, confirming that its label hides and returns with the other category
 labels. These confirmations supersede the pending visual checks above. The
 controller remains connected for continued use of this session prototype.
+
+## Windows feature adapters
+
+The user requested functional switches for the unavailable catalog rows. The
+feature build adds shared requested/applied state, dependency handling, guarded
+literal property transactions, and native toolbar/page adapters.
+
+In Dia 1.4.0.424 process 17640, the user confirmed all of the following:
+
+- Edge-to-edge removes the outside page inset.
+- Square sidebar corners makes the two left frame corners straight.
+- Hide toolbar removes the bar and expands the page into its space.
+- On example.com, hovering the page's top edge reveals the toolbar, and leaving
+  hides it again.
+- Hide Chat button removes the actual top-right Chat button on example.com.
+
+Readback verified margin `0,4,4,4` became `0,0,0,0`, the shell corners became
+`0,7,7,0`, and disabling edge-to-edge restored both original margin and corners
+even while the dependent square-corners request remained On. Toolbar page and
+overlay hosts changed from row 1/span 1 to row 0/span 2. Original ChatButtonHost
+Visibility was local Visible; disabling its override restored local Visible.
+The host id changed after navigation, exercising discovery of a replacement
+node rather than reusing a stale id.
+
+The combined feature build attached to a fresh process (9552), installed its
+Settings entry, and accepted the Windows caption-color override. Caption visual
+confirmation and broader tab-layout tests are pending. No matching Chats or
+Recent tabs control has been found in the inspected Windows layouts.
+
+Both CTest checks pass in the feature-enabled Debug and probe-only Release
+builds. Tests now include dependency behavior, generic feature IPC on/off,
+and rejection of overflowing ids before enum narrowing. Catalog freshness also
+passes. Generated headers, runtime copies, diagnostics logs and local recordings
+remain ignored and are not committed.

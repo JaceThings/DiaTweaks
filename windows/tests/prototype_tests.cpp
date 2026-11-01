@@ -8,6 +8,15 @@
 using namespace dt;
 using namespace dt::test;
 static void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
+static void dependency_tests() {
+    const auto square = feature_bit(FeatureId::Square), edge = feature_bit(FeatureId::Edge);
+    require(requested(square, FeatureId::Square) && !effective(square, FeatureId::Square), "child request waits for its parent");
+    require(effective(square | edge, FeatureId::Square), "parent enables child without discarding its requested state");
+    const auto hover = feature_bit(FeatureId::Hover), toolbar = feature_bit(FeatureId::Toolbar), sidebar = feature_bit(FeatureId::Sidebar);
+    require(!effective(hover, FeatureId::Hover) && effective(hover | toolbar, FeatureId::Hover), "hover requires hidden toolbar");
+    require(!effective(sidebar | toolbar, FeatureId::Sidebar) && effective(sidebar, FeatureId::Sidebar), "toolbar suppresses individual toggle and restores it afterwards");
+    require(feature_id(L"not-a-patch") == FeatureId::Count, "unknown feature key rejected");
+}
 static void property_tests() {
     auto service = Microsoft::WRL::Make<FakeService>();
     VisibilityLease lease;
@@ -107,6 +116,10 @@ static void session_tests() {
             require(SUCCEEDED(channel.call({Command::Restore, 0, 0}, response)) && !service->collapsed, "restore long pulse");
             require(channel.call({Command::SetSidebar, 0, 1}, response) == S_OK && service->collapsed, "enable session feature through IPC");
             require(channel.call({Command::SetSidebar, 0, 0}, response) == S_OK && !service->collapsed && !service->local, "disable feature restores source");
+            require(channel.call({Command::SetFeature, UINT64_MAX, 1}, response) == E_INVALIDARG && !service->collapsed, "reject overflowing feature id without mutations");
+            require(channel.call({Command::SetFeature, (1ULL << 32) + static_cast<uint64_t>(FeatureId::Sidebar), 1}, response) == E_INVALIDARG && !service->collapsed, "reject feature id before narrowing to its enum");
+            require(channel.call({Command::SetFeature, static_cast<uint64_t>(FeatureId::Sidebar), 1}, response) == S_OK && service->collapsed, "generic feature IPC enables sidebar");
+            require(channel.call({Command::SetFeature, static_cast<uint64_t>(FeatureId::Sidebar), 0}, response) == S_OK && !service->collapsed, "generic feature IPC restores sidebar");
             require(channel.call({Command::SetSidebar, 0, 1}, response) == S_OK && service->collapsed, "leave feature on before disconnect");
         }
         require(!service->collapsed && !service->local, "controller disconnect restores");
@@ -131,7 +144,7 @@ int wmain(int argc, wchar_t** argv) {
             require(runtime.symbol("InitializeXamlDiagnosticsEx") != nullptr, "diagnostics export");
             std::cout << "PASS: diagnostics runtime loads; temporary staging=" << runtime.staged() << "; no target attachment attempted\n";
         } else {
-            property_tests(); session_tests();
+            dependency_tests(); property_tests(); session_tests();
             std::cout << "PASS: restore policy, failure rollback, IPC, UI-thread dispatch, timer and disconnect\n";
         }
     } catch (HRESULT hr) { std::cerr << "HRESULT failure: " << std::hex << hr << '\n'; return 1; }

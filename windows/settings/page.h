@@ -7,12 +7,16 @@
 #include <winrt/Microsoft.UI.Xaml.Media.Animation.h>
 #include <functional>
 #include <vector>
+#include <map>
+#include "feature_state.h"
 namespace dt {
 struct PatchesPage {
     winrt::Microsoft::UI::Xaml::Controls::Grid root;
     winrt::Microsoft::UI::Xaml::Controls::TextBox search;
     winrt::Microsoft::UI::Xaml::Controls::TextBlock empty;
-    winrt::Microsoft::UI::Xaml::Controls::ToggleSwitch sidebarToggle{nullptr};
+    std::map<FeatureId, winrt::Microsoft::UI::Xaml::Controls::ToggleSwitch> toggles;
+    std::map<FeatureId, winrt::Microsoft::UI::Xaml::Controls::TextBlock> notes;
+    bool synchronizing = false;
     struct Row { winrt::Microsoft::UI::Xaml::FrameworkElement view; std::wstring text; size_t section; };
     std::vector<Row> rows;
     std::vector<winrt::Microsoft::UI::Xaml::Controls::TextBlock> headers;
@@ -21,9 +25,10 @@ struct PatchesPage {
     winrt::Microsoft::UI::Xaml::Media::Animation::Storyboard entrance{nullptr};
     winrt::Microsoft::UI::Xaml::Media::TranslateTransform motion{nullptr};
     bool entrancePending = false;
-    PatchesPage(bool available, bool on, std::function<void(bool)> changed, std::function<void()> back);
+    PatchesPage(const FeatureStates&, FeatureChanged changed, std::function<void()> back);
     ~PatchesPage();
     void filter();
+    void sync(const FeatureStates&);
     void enter() noexcept;
     void play_entrance() noexcept;
     void stop_entrance() noexcept;

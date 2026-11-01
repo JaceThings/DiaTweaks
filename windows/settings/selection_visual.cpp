@@ -19,7 +19,7 @@ struct SelectionVisual::Impl {
     Button entry;
     Grid pane{nullptr};
     Canvas layer;
-    Rectangle pill;
+    Shapes::Rectangle pill;
     TranslateTransform offset;
     Storyboard motion{nullptr};
     event_token completed{}, entered{}, exited{};
@@ -50,10 +50,10 @@ struct SelectionVisual::Impl {
             auto item = e.try_as<NavigationViewItem>(); return item && item.IsSelected();
         }).try_as<NavigationViewItem>();
     }
-    Rectangle indicator(const NavigationViewItem& item) {
+    Shapes::Rectangle indicator(const NavigationViewItem& item) {
         return find_visual(item, [](const FrameworkElement& e) {
-            return e.Name() == L"SelectionIndicator" && e.try_as<Rectangle>();
-        }).try_as<Rectangle>();
+            return e.Name() == L"SelectionIndicator" && e.try_as<Shapes::Rectangle>();
+        }).try_as<Shapes::Rectangle>();
     }
     void mask_indicators(const DependencyObject& node, unsigned depth = 0) {
         if (!node || depth > 64) return;

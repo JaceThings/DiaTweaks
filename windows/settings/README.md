@@ -45,8 +45,10 @@ Double-tapping its row toggles that same pane property. The button retains an
 accessible name in compact mode. Both hooks are removed on disconnect.
 
 The panel lists all nine patch definitions and the tab-grouping command from
-`shared/features.json`. Only Hide sidebar button is enabled. All other features
-are explicitly unavailable. There are no preview videos or detail pages yet.
+`shared/features.json`. Switch availability comes from per-window adapter
+discovery. Prerequisites and disabled-by relationships use applied state, so a
+failed toolbar override does not suppress a working individual button patch.
+There are no preview videos or detail pages yet.
 No toggle preferences are saved: changes last only while this controller session
 is connected. Dia continues using its normal Windows updater.
 
@@ -58,15 +60,15 @@ property readback confirmed both states. See [live-test.md](live-test.md).
 
 | Feature | Windows state |
 | --- | --- |
-| Edge-to-edge web content | Layout adapter not implemented |
-| Square corners by the sidebar | Needs edge-to-edge and a corners adapter |
-| Hide toolbar | Toolbar layout adapter not implemented |
-| Reveal toolbar on hover | Needs toolbar adapter and pointer/reveal handling |
+| Edge-to-edge web content | Native margin override and restoration verified live |
+| Square corners by the sidebar | Frame/sidebar corner override and restoration verified live; requires edge-to-edge |
+| Hide toolbar | Native row/span layout and toolbar opacity adapter verified live |
+| Reveal toolbar on hover | Native 8-pixel hotzone, focus/drag hold and delayed hiding verified live |
 | Hide sidebar button | Native Settings on/off verified live; session-scoped |
-| Hide Chat button | ChatButtonHost observed; visible control mapping not yet verified |
-| Hide Chats button | Control selector and adapter not implemented |
-| Hide recent tabs button | Control selector and adapter not implemented |
-| Keep windows active | Needs a Windows-specific appearance implementation |
+| Hide Chat button | ChatButtonHost collapse confirmed visually on example.com; original local Visible restored |
+| Hide Chats button | Role-based adapter implemented; no matching control found in the tested Windows layout |
+| Hide recent tabs button | Role-based adapter implemented; no matching control found in the tested Windows layout |
+| Keep windows active | Windows caption-color adaptation built; live confirmation pending. OS shadow/backdrop remain system-managed |
 | Group Tabs by Domain | Needs access to Dia's tab/group command model |
 
 ## Build

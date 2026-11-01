@@ -1,5 +1,6 @@
 #pragma once
 #include "visibility.h"
+#include "feature_state.h"
 #include <functional>
 #include <memory>
 namespace dt {
@@ -9,10 +10,10 @@ class NativeSettings {
     std::unique_ptr<Impl> impl_;
 public:
     NativeSettings(IXamlDiagnostics*, IVisualTreeService*, InstanceHandle,
-                   bool available, bool on, std::function<void(bool)> changed);
+                   const FeatureStates&, FeatureChanged changed);
     ~NativeSettings();
     void remove();
-    void sync(bool on);
+    void sync(const FeatureStates&);
     std::wstring status() const;
 };
 }
