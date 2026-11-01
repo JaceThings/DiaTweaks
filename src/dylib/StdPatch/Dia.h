@@ -17,3 +17,7 @@
 #define DPDiaSettingsController "_TtC11Preferences38SidebarPreferencesWindowViewController"
 #define DPDiaSettingsSidebar    "_TtC11Preferences15SidebarListView"
 #define DPDiaSettingsSidebarCell "_TtC11PreferencesP33_4E27E2219272DF78406B73092738280415SidebarCellView"
+#define DPDiaBrowserContext     "ArcBrowserContext"
+#define DPDiaWebContents        "ArcWebContents"
+#define DPDiaWebContentsConfiguration "ArcWebContentsConfiguration"
+#define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // Dia's delegate for each page. A Swift class: look it up after launch.
