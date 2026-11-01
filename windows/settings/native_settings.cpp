@@ -1,6 +1,7 @@
 #include "native_settings.h"
 #include "page.h"
 #include "entry_style.h"
+#include "content_host.h"
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <sstream>
@@ -39,9 +40,11 @@ struct NativeSettings::Impl {
     UIElement previousFooter{nullptr};
     std::unique_ptr<PatchesPage> page;
     std::unique_ptr<EntryStyle> entryStyle;
-    winrt::Windows::Foundation::IInspectable previousContent{nullptr};
-    Source footerSource{}, contentSource{};
+    std::unique_ptr<SettingsContentHost> contentHost;
+    Source footerSource{};
     event_token clickToken{};
+    event_token invokedToken{}, selectionToken{};
+    bool invokedHooked = false, selectionHooked = false;
     bool installed = false, available, on;
     std::function<void(bool)> changed;
     std::wstring stage, lastError;
@@ -82,8 +85,14 @@ struct NativeSettings::Impl {
             navigation.PaneFooter(footer);
             stage = L"place Patches below Advanced";
             entryStyle->place_inline();
+            stage = L"connect native Settings navigation";
+            invokedToken = navigation.ItemInvoked([this](auto&&, auto&&) noexcept { return_to_native(); });
+            invokedHooked = true;
+            selectionToken = navigation.SelectionChanged([this](auto&&, auto&&) noexcept { return_to_native(); });
+            selectionHooked = true;
             installed = true;
         } catch (...) {
+            unhook_navigation();
             try { entryStyle->restore(); } catch (...) {}
             try {
                 footer.Children().Clear();
@@ -98,16 +107,17 @@ struct NativeSettings::Impl {
     }
     void show() {
         if (!installed) return;
-        if (page && navigation.Content() == page->root) return;
-        stage = L"inspect Settings content source";
-        contentSource = source(service.Get(), handle, L"Content");
-        previousContent = navigation.Content();
+        if (contentHost && contentHost->active()) return;
+        stage = L"find native Settings content presenter";
+        if (!contentHost) contentHost = std::make_unique<SettingsContentHost>(navigation);
         stage = L"create native Patches page";
         if (!page) page = std::make_unique<PatchesPage>(available, on, [this](bool value) {
             on = value; changed(value);
         }, [this] { back(); });
         stage = L"display native Patches page";
-        navigation.Content(page->root);
+        contentHost->show(page->root);
+        entryStyle->selected(true);
+        page->enter();
     }
     void fail(HRESULT hr, const wchar_t* message) noexcept {
         try {
@@ -118,20 +128,31 @@ struct NativeSettings::Impl {
         } catch (...) {}
     }
     void back() {
-        if (!page || navigation.Content() != page->root) return;
-        if (contentSource.local) navigation.Content(previousContent);
-        else check(service->ClearProperty(handle, contentSource.index));
-        previousContent = nullptr;
+        if (page) page->stop_entrance();
+        if (contentHost) contentHost->hide();
+        entryStyle->selected(false);
+    }
+    void return_to_native() noexcept {
+        if (!installed) return;
+        try { back(); }
+        catch (const hresult_error& error) { stage = L"return to native Settings"; fail(static_cast<HRESULT>(error.code().value), error.message().c_str()); }
+        catch (...) { fail(E_FAIL, L"Could not return to native Settings"); }
+    }
+    void unhook_navigation() noexcept {
+        if (invokedHooked) { navigation.ItemInvoked(invokedToken); invokedHooked = false; }
+        if (selectionHooked) { navigation.SelectionChanged(selectionToken); selectionHooked = false; }
     }
     void remove() {
         if (!installed) return;
         back();
+        if (contentHost) contentHost->remove();
         entryStyle->restore();
         if (navigation.PaneFooter() == footer) {
             footer.Children().Clear();
             if (footerSource.local) navigation.PaneFooter(previousFooter);
             else check(service->ClearProperty(handle, footerSource.index));
         } else footer.Children().Clear();
+        unhook_navigation();
         entry.Click(clickToken); installed = false;
     }
 };

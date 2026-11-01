@@ -86,8 +86,13 @@ PatchesPage::PatchesPage(bool available, bool on, std::function<void(bool)> chan
     scroll.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
     scroll.Content(content); root.Children().Append(scroll);
     searchToken = search.TextChanged([this](auto&&, auto&&) noexcept { try { filter(); } catch (...) {} });
+    loadedToken = root.Loaded([this](auto&&, auto&&) noexcept { if (entrancePending) play_entrance(); });
 }
-PatchesPage::~PatchesPage() { if (search) search.TextChanged(searchToken); }
+PatchesPage::~PatchesPage() {
+    stop_entrance();
+    if (search) search.TextChanged(searchToken);
+    if (root) root.Loaded(loadedToken);
+}
 void PatchesPage::filter() {
     const auto query = lower(std::wstring(search.Text()));
     std::vector<bool> visible(headers.size(), false);

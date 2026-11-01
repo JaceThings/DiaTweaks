@@ -12,17 +12,32 @@ in that wrapper, and the template's menu row is sized to its content so Patches
 sits directly below Advanced. The original menu-row height is saved and restored
 on removal. An unfamiliar menu/footer template is refused.
 It does not append an unknown item to Dia's own navigation model or invoke its
-selection handlers. Clicking Patches places a native searchable panel into the
-NavigationView's content area. Back returns to the original content. Selecting
-a regular Dia category can replace the panel normally. On disconnect, the TAP
-restores its content/footer changes only if they still contain its own objects.
-Bound footer/content properties cause installation to be refused.
+selection handlers. Clicking Patches shows a native searchable panel over the
+template's content cell. Dia's original content object remains attached, so its
+category navigation continues updating the same host. ItemInvoked and
+SelectionChanged return to native content, including when the user clicks the
+already-selected category. The original presenter Visibility is restored on
+exit; a bound Visibility is refused. On disconnect, the TAP removes its overlay
+and restores its footer/layout changes. A bound footer is also refused.
 
 The row copies Advanced's live font, row height, margins and corner radius. It
-aligns its repair icon and label against the native item and uses NavigationView
+aligns its wand icon and label against the native item and uses NavigationView
 hover/pressed resources when available (otherwise native Button colors). It
 remains an independent button so Dia's own navigation handlers do not receive an
-unrecognized menu key. It does not yet have a native selected-item indicator.
+unrecognized menu key. The wand uses the complete 20-unit viewport inside a
+Viewbox, mirrored to point upper-left. The source asset is from Microsoft's
+[Fluent System Icons](https://github.com/microsoft/fluentui-system-icons), with
+its MIT license in `assets/LICENSE.fluent-icons`.
+
+The selection bridge copies the native blue marker's size, brush and radius,
+then animates it to Patches in 200 ms. While Patches is active, the native marker
+is temporarily clipped and its selected row uses the unselected visual state;
+Dia's SelectedItem, IsSelected and route keys remain untouched. Returning to a
+native category restores these visuals. The cached page also replays a 180 ms
+fade/slide on entry. Both animations respect Windows' animation setting.
+The bridge refuses unfamiliar template parts and reports the failure through
+the probe instead of changing the navigation model. The latest selection and
+wand refinements still require live visual confirmation.
 
 The panel lists all nine patch definitions and the tab-grouping command from
 `shared/features.json`. Only Hide sidebar button is enabled. All other features

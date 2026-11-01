@@ -60,3 +60,25 @@ The live tree subsequently showed `DiaTweaksPatchesPage` opened through the new
 entry, and a second readback still reported top/bottom 284 and fonts 14/14.
 Visual comparison of the new styling still needs user confirmation. No screenshot
 of the generated panel has been captured yet.
+
+## Navigation, wand and selection follow-up
+
+The user confirmed the inline placement, then reported that switching Settings
+categories did not work. The revised content host leaves Dia's original content
+object attached and displays Patches in a separate layer in the same template
+cell. The user confirmed that Apps opens normally after leaving Patches.
+
+The supplied November 1 screen recording (17:28:18) shows native category
+navigation working, but Advanced retains its selected background and blue marker
+when Patches opens. It also shows the wand pointing upper-right with clipped
+geometry. The follow-up build uses the full SVG viewport, mirrors it upper-left,
+and adds an animated visual selection bridge for the independent Patches button.
+It also replays the page entrance when returning to the cached page.
+
+The `settings-selection` Debug build completed without warnings after adding
+the WinUI input projection include. Both CTest checks passed (prototype-tests
+and controller-help), and the shared catalog freshness check passed. These
+checks cover the controller and override plumbing; they do not verify animation
+appearance. The final visual changes are awaiting a fresh-process live test.
+The recording and extracted frames stay in the ignored build directory and are
+not committed.
