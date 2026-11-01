@@ -3,6 +3,7 @@
   const create = credentials.create.bind(credentials);
   const get = credentials.get.bind(credentials);
   let nextId = 0;
+  let pending = false;
 
   const b64 = (buffer) => {
     const bytes = new Uint8Array(ArrayBuffer.isView(buffer) ? buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) : buffer);
@@ -48,12 +49,16 @@
     });
   };
 
+  // Like Chromium itself: one passkey request at a time per page.
   const ask = (kind, options) =>
     new Promise((resolve, reject) => {
+      if (pending) return reject(new DOMException('A request is already pending.', 'OperationError'));
+      pending = true;
       const id = ++nextId;
       const listen = (event) => {
         if (event.source !== window || event.data?.diaTweaksPasskey !== 'response' || event.data.id !== id) return;
         window.removeEventListener('message', listen);
+        pending = false;
         const { credential, error } = event.data.response ?? {};
         if (credential) resolve(toCredential(credential));
         else reject(new DOMException(error?.message ?? 'The passkey request failed.', error?.name ?? 'NotAllowedError'));
