@@ -21,6 +21,9 @@ static void property_tests() {
     require(lease.restore(service.Get()) == S_OK && service->local && !service->collapsed, "restore local literal");
     service->local = false; service->metadata = IsValueBindingExpression;
     require(lease.pulse(service.Get(), 42, 1) == E_NOTIMPL, "preserve binding");
+    const auto diagnostic = describe_visibility(service.Get(), 42);
+    require(diagnostic.find(L"metadata=0x10") != std::wstring::npos &&
+        diagnostic.find(L"Microsoft.UI.Xaml.Visibility") != std::wstring::npos, "describe refused visibility without changing it");
     service->metadata = 0; service->source = Animation;
     require(lease.pulse(service.Get(), 42, 1) == E_NOTIMPL, "preserve animation");
     service->source = BaseValueSourceDefault; service->type = L"UnexpectedEnum";

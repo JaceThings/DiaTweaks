@@ -2,8 +2,8 @@
 
 This branch adds an x64 developer probe alongside the existing macOS implementation.
 It builds a controller and a COM TAP DLL for WinUI XAML diagnostics. It is **not a
-working Windows release of the macOS tweaks yet**. No Windows selector for the
-Chat button has been verified in a live Dia session.
+working Windows release of the macOS tweaks yet**. Live attachment and native
+tree discovery work on Dia 1.4.0.424; real hide/restore is still unverified.
 
 ## Build
 
@@ -67,11 +67,12 @@ activation, shared-memory requests, UI-thread dispatch, readback, time-limited
 restoration, disconnect restoration, local/default value restoration, stale IDs,
 duplicate controllers, and refusal of bindings and animations.
 
-These tests do **not** prove attachment to Dia or the correctness of a real
-WinUI selector. Live attachment, native toolbar discovery, before/after/restored
-screenshots, both tab layouts, and multiple Dia windows remain to be tested.
-Computer Use rejected access to Dia during development, so no live proof is
-included. Test shared-memory access also requires running outside Codex's
+The first live attachment also succeeded, returning controls including
+`ChatButtonHost`, `SidebarToggleButton`, and navigation buttons. The initial
+visibility eligibility checks rejected the inspected controls as unsupported.
+See [live-probe.md](live-probe.md) for the results and remaining checks. Real
+hide/restore, screenshots, both tab layouts, and multiple windows remain
+unverified. Test shared-memory access requires running outside Codex's
 restricted sandbox; normal same-user terminal execution is the intended mode.
 
 The installed 1.4.0.424 diagnostics DLL was also checked separately: loading

@@ -75,6 +75,7 @@ void Context::execute(Job& job) {
         job.result = read_visibility(session->service.Get(), node->handle, v);
         if (SUCCEEDED(job.result)) job.response = L"Visibility=" + v.value + L"; type=" + v.type +
             (v.local ? L"; source=local\n" : L"; source=style/default\n");
+        else job.response = L"Override unavailable; diagnostics details follow.\n" + describe_visibility(session->service.Get(), node->handle);
     } else if (job.request.command == Command::Pulse) {
         job.result = lease.pulse(session->service.Get(), node->handle, job.request.seconds);
         job.response = job.result == S_OK ? L"Collapsed; automatic restore is armed.\n" : L"No new override applied.\n";

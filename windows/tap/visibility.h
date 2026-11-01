@@ -17,6 +17,7 @@ struct Visibility {
     bool local;
 };
 HRESULT read_visibility(IVisualTreeService*, InstanceHandle, Visibility&);
+std::wstring describe_visibility(IVisualTreeService*, InstanceHandle);
 class VisibilityLease {
     struct Saved { InstanceHandle handle; Visibility original; ULONGLONG deadline; };
     std::optional<Saved> saved_;
