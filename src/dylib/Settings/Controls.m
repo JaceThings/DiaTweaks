@@ -94,6 +94,8 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views) {
     for (NSView *view in views) {
         [stack addArrangedSubview:view];
         [view.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+        // Room after each group, so a section's title sits with the rows under it.
+        if ([view isMemberOfClass:DPFillView.class]) [stack setCustomSpacing:20 afterView:view];
     }
 }
 
