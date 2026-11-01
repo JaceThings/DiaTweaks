@@ -11,43 +11,35 @@ int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim
 
 static const int kSheetWidth = 480, kSheetHeight = 300;
 
-@interface DPDevTools : NSObject
-@end
+static FILE *gFromHelper, *gToHelper;
 
-@implementation DPDevTools {
-    FILE *_in, *_out;
-    int _nextId;
-}
-
-- (instancetype)initWithIn:(int)in out:(int)out {
-    _in = fdopen(in, "r");
-    _out = fdopen(out, "w");
-    return self;
-}
-
-- (NSDictionary *)read {
+static NSDictionary *readFromHelper(void) {
     NSMutableData *data = [NSMutableData data];
-    for (int c; (c = fgetc(_in)) != 0;) {
+    for (int c; (c = fgetc(gFromHelper)) != 0;) {
         if (c == EOF) return nil;
-        char byte = c;
-        [data appendBytes:&byte length:1];
+        [data appendBytes:&(char){ c } length:1];
     }
     return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
 }
 
-- (NSDictionary *)send:(NSString *)method params:(NSDictionary *)params session:(NSString *)session {
-    int id = ++_nextId;
+static NSDictionary *send(NSString *method, NSDictionary *params, NSString *session) {
+    static int lastId;
+    int id = ++lastId;
     NSMutableDictionary *message = [@{ @"id" : @(id), @"method" : method, @"params" : params ?: @{} } mutableCopy];
-    if (session) message[@"sessionId"] = session;
+    message[@"sessionId"] = session;
     NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
-    fwrite(data.bytes, 1, data.length, _out);
-    fputc(0, _out);
-    fflush(_out);
-    for (NSDictionary *reply; (reply = [self read]);)
+    fwrite(data.bytes, 1, data.length, gToHelper);
+    fputc(0, gToHelper);
+    fflush(gToHelper);
+    for (NSDictionary *reply; (reply = readFromHelper());)
         if ([reply[@"id"] intValue] == id) return reply;
     return nil;
 }
-@end
+
+static id evaluate(NSString *session, NSString *expression) {
+    NSDictionary *params = @{ @"expression" : expression, @"awaitPromise" : @YES, @"returnByValue" : @YES, @"userGesture" : @YES };
+    return send(@"Runtime.evaluate", params, session)[@"result"][@"result"][@"value"];
+}
 
 static NSDictionary *readMessage(void) {
     uint32_t length;
@@ -76,7 +68,7 @@ static NSArray *modificationDates(NSString *folder) {
     return dates;
 }
 
-// Dia's account store signs the copy in. Dia may be writing to it, so it's copied until a copy starts and ends on the same files.
+// Dia may be writing to its account store, so it's copied until the files hold still.
 static void signInAsDia(NSString *userData) {
     NSFileManager *files = NSFileManager.defaultManager;
     NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
@@ -155,13 +147,13 @@ static BOOL hasWindowOnScreen(pid_t pid) {
 typedef NS_ENUM(int, DPStartup) { DPStartupReady, DPStartupSignedOut, DPStartupFailed };
 
 // Signed out, Dia shows its intro: a window of its own that no tab lives in.
-static DPStartup waitForStartupTab(DPDevTools *tools, pid_t pid, int seconds, NSString **targetId, NSNumber **windowId) {
+static DPStartup waitForStartupTab(pid_t pid, int seconds, NSString **targetId, NSNumber **windowId) {
     for (int tries = 0, tablessWindow = 0; tries < seconds * 4; tries++, usleep(250000)) {
-        NSDictionary *targets = [tools send:@"Target.getTargets" params:nil session:nil];
+        NSDictionary *targets = send(@"Target.getTargets", nil, nil);
         if (!targets) return DPStartupFailed;
         for (NSDictionary *target in targets[@"result"][@"targetInfos"]) {
             if (![target[@"type"] isEqualToString:@"page"]) continue;
-            NSDictionary *window = [tools send:@"Browser.getWindowForTarget" params:@{ @"targetId" : target[@"targetId"] } session:nil][@"result"];
+            NSDictionary *window = send(@"Browser.getWindowForTarget", @{ @"targetId" : target[@"targetId"] }, nil)[@"result"];
             if (![window[@"bounds"][@"width"] intValue]) continue;
             *targetId = target[@"targetId"];
             *windowId = window[@"windowId"];
@@ -184,10 +176,9 @@ static NSString *page(NSString *title, NSString *detail) {
                                       [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
 }
 
-static BOOL atOrigin(DPDevTools *tools, NSString *session, NSString *origin) {
+static BOOL atOrigin(NSString *session, NSString *origin) {
     for (int tries = 0; tries < 50; tries++, usleep(100000)) {
-        NSDictionary *page = [tools send:@"Runtime.evaluate" params:@{ @"expression" : @"[location.origin, document.readyState]", @"returnByValue" : @YES } session:session];
-        NSArray *state = page[@"result"][@"result"][@"value"];
+        NSArray *state = evaluate(session, @"[location.origin, document.readyState]");
         if ([state.lastObject isEqual:@"complete"]) return [state.firstObject isEqual:origin];
     }
     return NO;
@@ -201,33 +192,31 @@ static void tellDia(NSString *what, pid_t helper) {
                                                      deliverImmediately:YES];
 }
 
-static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, NSString *origin, id options) {
+static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id options) {
     NSString *targetId;
     NSNumber *windowId;
-    DPStartup startup = waitForStartupTab(tools, pid, 60, &targetId, &windowId);
+    DPStartup startup = waitForStartupTab(pid, 60, &targetId, &windowId);
     if (startup == DPStartupSignedOut) {
         tellDia(@"signIn", pid);
-        startup = waitForStartupTab(tools, pid, 600, &targetId, &windowId);
+        startup = waitForStartupTab(pid, 600, &targetId, &windowId);
     }
     if (startup != DPStartupReady) return failure(@"The passkey copy of Dia didn't open.");
 
-    [tools send:@"Browser.setWindowBounds" params:@{ @"windowId" : windowId, @"bounds" : sheetBounds() } session:nil];
-
-    NSString *session = [tools send:@"Target.attachToTarget" params:@{ @"targetId" : targetId, @"flatten" : @YES } session:nil][@"result"][@"sessionId"];
+    send(@"Browser.setWindowBounds", @{ @"windowId" : windowId, @"bounds" : sheetBounds() }, nil);
+    NSString *session = send(@"Target.attachToTarget", @{ @"targetId" : targetId, @"flatten" : @YES }, nil)[@"result"][@"sessionId"];
     // Any page at the origin works, and robots.txt runs none of the site's scripts.
     for (NSString *path in @[ @"/robots.txt", @"/" ]) {
-        [tools send:@"Page.navigate" params:@{ @"url" : [origin stringByAppendingString:path] } session:session];
-        if (atOrigin(tools, session, origin)) break;
+        send(@"Page.navigate", @{ @"url" : [origin stringByAppendingString:path] }, session);
+        if (atOrigin(session, origin)) break;
     }
-    NSString *waiting = page(@"Use your passkey for {site}", @"DiaTweaks opened this window to reach Apple Passwords. It closes by itself.");
-    [tools send:@"Runtime.evaluate" params:@{ @"expression" : waiting } session:session];
+    evaluate(session, page(@"Use your passkey for {site}", @"DiaTweaks opened this window to reach Apple Passwords. It closes by itself."));
     tellDia(@"show", pid);
     // WebAuthn refuses a page without focus, which it only gets once Dia has brought the copy forward.
     for (int tries = 0; tries < 30; tries++, usleep(100000))
-        if ([[tools send:@"Runtime.evaluate" params:@{ @"expression" : @"document.hasFocus()", @"returnByValue" : @YES } session:session][@"result"][@"result"][@"value"] boolValue]) break;
+        if ([evaluate(session, @"document.hasFocus()") boolValue]) break;
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
-    // A picker left open would hold the copy, and every request queued behind it, forever.
+    // The timeout stops a picker left open from blocking every request after it.
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
                                                     "  const signal = AbortSignal.timeout(Math.min(options.timeout || 300000, 600000));"
                                                     "  try {"
@@ -238,10 +227,8 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
                                                     "  } catch (e) { return { error: { name: e.name === 'TimeoutError' ? 'NotAllowedError' : e.name, message: e.message } }; }"
                                                     "})(%@)",
                                                    [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
-    NSDictionary *result = [tools send:@"Runtime.evaluate"
-                                params:@{ @"expression" : script, @"awaitPromise" : @YES, @"returnByValue" : @YES, @"userGesture" : @YES }
-                               session:session][@"result"][@"result"][@"value"];
-    if (result[@"credential"]) [tools send:@"Runtime.evaluate" params:@{ @"expression" : page(@"Done", @"This window closes in a moment. Thanks for waiting.") } session:session];
+    NSDictionary *result = evaluate(session, script);
+    if (result[@"credential"]) evaluate(session, page(@"Done", @"This window closes in a moment. Thanks for waiting."));
     return result ?: failure(@"The passkey copy of Dia quit before answering.");
 }
 
@@ -258,10 +245,11 @@ int DPRunPasskeyHost(NSString *home) {
     close(toHelper[0]);
     close(fromHelper[1]);
 
-    DPDevTools *tools = [[DPDevTools alloc] initWithIn:fromHelper[0] out:toHelper[1]];
-    NSDictionary *result = runInHelper(tools, pid, request[@"kind"], request[@"origin"], request[@"options"]);
+    gFromHelper = fdopen(fromHelper[0], "r");
+    gToHelper = fdopen(toHelper[1], "w");
+    NSDictionary *result = runInHelper(pid, request[@"kind"], request[@"origin"], request[@"options"]);
     // Dia kills this process once it has the answer, so the copy has to quit before then.
-    [tools send:@"Browser.close" params:nil session:nil];
+    send(@"Browser.close", nil, nil);
     for (int i = 0; i < 50 && waitpid(pid, NULL, WNOHANG) == 0; i++) usleep(100000);
     kill(pid, SIGKILL);
     writeMessage(result);

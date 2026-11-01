@@ -11,7 +11,6 @@
   };
   const bytes = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)).buffer;
 
-  // The JSON form PublicKeyCredential.parse*OptionsFromJSON reads back.
   const toJSON = (value) => {
     if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return b64(value);
     if (Array.isArray(value)) return value.map(toJSON);
@@ -49,7 +48,6 @@
     });
   };
 
-  // Like Chromium itself: one passkey request at a time per page.
   const ask = (kind, options) =>
     new Promise((resolve, reject) => {
       if (pending) return reject(new DOMException('A request is already pending.', 'OperationError'));

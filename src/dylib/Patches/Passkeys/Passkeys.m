@@ -10,9 +10,8 @@ extern DPPatch DPPasskeys;
 
 static NSString *const kExtensionID = @"ljonmeeapeagnkmjklinbocjbjepecce";  // from the key in extension/manifest.json
 
-static NSString *DPSupportPath(NSString *name) {
-    return [[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches"] stringByAppendingPathComponent:name];
+static NSString *DPAppSupport(NSString *path) {
+    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:path];
 }
 
 static BOOL DPWriteExtension(NSString *folder) {
@@ -27,16 +26,13 @@ static BOOL DPWriteExtension(NSString *folder) {
 }
 
 // Dia's Chromium looks for native messaging hosts in Chrome's folder.
-static NSString *DPHostManifestPath(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"Google/Chrome/NativeMessagingHosts/com.diapatches.passkeys.json"];
-}
+static NSString *DPHostManifestPath(void) { return DPAppSupport(@"Google/Chrome/NativeMessagingHosts/com.diapatches.passkeys.json"); }
 
 static BOOL DPRegisterHost(void) {
     NSDictionary *manifest = @{
         @"name" : @"com.diapatches.passkeys",
         @"description" : @"DiaTweaks passkeys",
-        @"path" : DPSupportPath(@"bin/diapatch"),
+        @"path" : DPAppSupport(@"DiaPatches/bin/diapatch"),
         @"type" : @"stdio",
         @"allowed_origins" : @[ [NSString stringWithFormat:@"chrome-extension://%@/", kExtensionID] ],
     };
@@ -45,20 +41,13 @@ static BOOL DPRegisterHost(void) {
     return [json writeToFile:DPHostManifestPath() atomically:YES];
 }
 
-static NSString *DPExtensionFlag(void) { return [@"--load-extension=" stringByAppendingString:DPSupportPath(@"passkeys-extension")]; }
-
 static BOOL gExtensionLoaded;
 
-// Dia hands Chromium its command line through this configuration, so the flag joins it here.
+// Dia passes Chromium its command line here.
 static id DPConfiguration_init(id self, SEL _cmd, int argc, NSArray *argv, NSString *profilePath, NSUInteger applicationID, BOOL isProduction,
                                NSUInteger restorationPolicy, BOOL loadAllProfiles, BOOL quitRunLoop, NSString *suiteName) {
-    return DPCallOriginal(DPConfiguration_init, self, argc + 1, [argv arrayByAddingObject:DPExtensionFlag()], profilePath, applicationID, isProduction,
+    return DPCallOriginal(DPConfiguration_init, self, argc + 1, [argv arrayByAddingObject:[@"--load-extension=" stringByAppendingString:DPAppSupport(@"DiaPatches/passkeys-extension")]], profilePath, applicationID, isProduction,
                           restorationPolicy, loadAllProfiles, quitRunLoop, suiteName);
-}
-
-static void DPRemoveSetup(void) {
-    [NSFileManager.defaultManager removeItemAtPath:DPSupportPath(@"passkeys-extension") error:nil];
-    [NSFileManager.defaultManager removeItemAtPath:DPHostManifestPath() error:nil];
 }
 
 static void DPShowHelper(NSNotification *note) {
@@ -67,17 +56,20 @@ static void DPShowHelper(NSNotification *note) {
     if (![note.name hasSuffix:@"signIn"]) return show();
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Sign in to Dia once for passkeys";
-    alert.informativeText = @"Passkeys from Apple Passwords open in a second copy of Dia, and it needs you to sign in once. "
-                             "Sign in with your Dia email in the window that opens. "
-                             "Your passkey carries on after.";
+    alert.informativeText = @"Passkeys open in a second copy of Dia, which needs you to sign in with your Dia email once. Your passkey carries on after.";
     NSUInteger browser = [NSApp.orderedWindows indexOfObjectPassingTest:^BOOL(NSWindow *window, NSUInteger i, BOOL *stop) { return window.visible && window.canBecomeMainWindow; }];
     if (browser == NSNotFound) return (void)([alert runModal], show());
     [alert beginSheetModalForWindow:NSApp.orderedWindows[browser] completionHandler:^(NSModalResponse _) { show(); }];
 }
 
 static void DPInstallPasskeys(void) {
-    if (!DPPasskeys.on) return DPRemoveSetup();
-    if (!DPWriteExtension(DPSupportPath(@"passkeys-extension")) || !DPRegisterHost()) return (void)NSLog(@"DiaPatches: couldn't set up passkeys");
+    NSString *extension = DPAppSupport(@"DiaPatches/passkeys-extension");
+    if (!DPPasskeys.on) {
+        [NSFileManager.defaultManager removeItemAtPath:extension error:nil];
+        [NSFileManager.defaultManager removeItemAtPath:DPHostManifestPath() error:nil];
+        return;
+    }
+    if (!DPWriteExtension(extension) || !DPRegisterHost()) return (void)NSLog(@"DiaPatches: couldn't set up passkeys");
     DPHook("ArcBrowserApplicationConfiguration", @selector(init:argv:profilePath:applicationID:isProduction:sessionRestorationPolicy:shouldLoadAllProfilesAtStartup:quitRunLoopOnTermination:userDefaultsSuiteName:),
            (IMP)DPConfiguration_init);
     gExtensionLoaded = YES;
