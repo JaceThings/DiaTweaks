@@ -1,5 +1,6 @@
 #include "native_settings.h"
 #include "page.h"
+#include "entry_style.h"
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <sstream>
@@ -37,6 +38,7 @@ struct NativeSettings::Impl {
     StackPanel footer{nullptr};
     UIElement previousFooter{nullptr};
     std::unique_ptr<PatchesPage> page;
+    std::unique_ptr<EntryStyle> entryStyle;
     winrt::Windows::Foundation::IInspectable previousContent{nullptr};
     Source footerSource{}, contentSource{};
     event_token clickToken{};
@@ -58,6 +60,8 @@ struct NativeSettings::Impl {
         entry = Button{};
         entry.Name(L"DiaTweaksPatchesEntry"); entry.Content(box_value(L"Patches"));
         entry.HorizontalAlignment(HorizontalAlignment::Stretch); entry.Margin(Thickness{8, 8, 8, 8});
+        stage = L"match Advanced row layout and style";
+        entryStyle = std::make_unique<EntryStyle>(navigation, entry);
         clickToken = entry.Click([this](auto&&, auto&&) noexcept {
             try { show(); }
             catch (const hresult_error& error) { fail(static_cast<HRESULT>(error.code().value), error.message().c_str()); }
@@ -72,11 +76,15 @@ struct NativeSettings::Impl {
             // presenter before placing that same object inside our wrapper.
             navigation.PaneFooter(nullptr);
             navigation.UpdateLayout();
-            if (previousFooter) footer.Children().Append(previousFooter);
             footer.Children().Append(entry);
+            if (previousFooter) footer.Children().Append(previousFooter);
             stage = L"insert native Patches footer";
-            navigation.PaneFooter(footer); installed = true;
+            navigation.PaneFooter(footer);
+            stage = L"place Patches below Advanced";
+            entryStyle->place_inline();
+            installed = true;
         } catch (...) {
+            try { entryStyle->restore(); } catch (...) {}
             try {
                 footer.Children().Clear();
                 if (!navigation.PaneFooter() || navigation.PaneFooter() == footer) {
@@ -118,6 +126,7 @@ struct NativeSettings::Impl {
     void remove() {
         if (!installed) return;
         back();
+        entryStyle->restore();
         if (navigation.PaneFooter() == footer) {
             footer.Children().Clear();
             if (footerSource.local) navigation.PaneFooter(previousFooter);
@@ -142,6 +151,6 @@ void NativeSettings::sync(bool on) {
         impl_->page->sidebarToggle.IsOn(on);
 }
 std::wstring NativeSettings::status() const {
-    return impl_->lastError.empty() ? L"Patches entry is installed. Click it in Dia Settings.\n" : impl_->lastError + L"\n";
+    return impl_->lastError.empty() ? L"Patches entry is installed. Click it in Dia Settings.\n" + impl_->entryStyle->placement() : impl_->lastError + L"\n";
 }
 }

@@ -7,7 +7,10 @@ The prototype recognizes that host by type and three descendant names rather
 than by a hard-coded session handle.
 
 The Settings-enabled TAP wraps Dia's existing PaneFooter and adds a native
-Patches button alongside the original footer object.
+Patches button alongside the original footer object. The button is placed first
+in that wrapper, and the template's menu row is sized to its content so Patches
+sits directly below Advanced. The original menu-row height is saved and restored
+on removal. An unfamiliar menu/footer template is refused.
 It does not append an unknown item to Dia's own navigation model or invoke its
 selection handlers. Clicking Patches places a native searchable panel into the
 NavigationView's content area. Back returns to the original content. Selecting
@@ -15,16 +18,21 @@ a regular Dia category can replace the panel normally. On disconnect, the TAP
 restores its content/footer changes only if they still contain its own objects.
 Bound footer/content properties cause installation to be refused.
 
+The row copies Advanced's live font, row height, margins and corner radius. It
+aligns its repair icon and label against the native item and uses NavigationView
+hover/pressed resources when available (otherwise native Button colors). It
+remains an independent button so Dia's own navigation handlers do not receive an
+unrecognized menu key. It does not yet have a native selected-item indicator.
+
 The panel lists all nine patch definitions and the tab-grouping command from
 `shared/features.json`. Only Hide sidebar button is enabled. All other features
 are explicitly unavailable. There are no preview videos or detail pages yet.
 No toggle preferences are saved: changes last only while this controller session
 is connected. Dia continues using its normal Windows updater.
 
-Live status: the Settings host was found and validated. The first insertion was
-refused because Dia already had a footer. The updated build preserves that object
-inside a wrapper; this update still needs its live installation test. A compiled
-panel is not proof that it is visible or usable in Dia yet.
+Live status: the native entry and page opened in Dia 1.4.0.424. The user confirmed
+the sidebar button disappeared and returned through the Settings toggle, and
+property readback confirmed both states. See [live-test.md](live-test.md).
 
 ## Porting status
 
@@ -34,7 +42,7 @@ panel is not proof that it is visible or usable in Dia yet.
 | Square corners by the sidebar | Needs edge-to-edge and a corners adapter |
 | Hide toolbar | Toolbar layout adapter not implemented |
 | Reveal toolbar on hover | Needs toolbar adapter and pointer/reveal handling |
-| Hide sidebar button | Session adapter implemented; native Settings wiring needs live verification |
+| Hide sidebar button | Native Settings on/off verified live; session-scoped |
 | Hide Chat button | ChatButtonHost observed; visible control mapping not yet verified |
 | Hide Chats button | Control selector and adapter not implemented |
 | Hide recent tabs button | Control selector and adapter not implemented |
