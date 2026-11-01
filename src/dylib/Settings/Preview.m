@@ -5,18 +5,33 @@
 #define DP_PREVIEWS "https://raw.githubusercontent.com/wiki/JaceThings/DiaTweaks/previews/"
 #endif
 
+static NSNotificationName const DPTabLayoutMayHaveChanged = @"DPTabLayoutMayHaveChanged";
+
+// The sidebar footer only exists with vertical tabs.
+static void DPSidebarFooter_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPSidebarFooter_viewDidMoveToWindow, self);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:DPTabLayoutMayHaveChanged object:nil];
+    });
+}
+
+void DPInstallPreviews(void) {
+    DPHook(DPDiaSidebarFooter, @selector(viewDidMoveToWindow), (IMP)DPSidebarFooter_viewDidMoveToWindow);
+}
+
 @implementation DPPreviewView {
-    NSString *_key;
+    NSString *_key, *_layout;
+    NSArray<NSString *> *_names;
     CALayer *_media;
     AVPlayerLooper *_looper;
     NSTextField *_placeholder;
 }
 
-static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
+static NSURL *DPCachedPreview(NSString *name) {
     NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
     NSURL *dir = [caches URLByAppendingPathComponent:@"DiaPatches/previews" isDirectory:YES];
     [NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    return [dir URLByAppendingPathComponent:[key stringByAppendingPathExtension:ext]];
+    return [dir URLByAppendingPathComponent:name];
 }
 
 - (instancetype)initWithKey:(NSString *)key {
@@ -27,31 +42,46 @@ static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
     [self addSubview:_placeholder];
     [_placeholder.centerXAnchor constraintEqualToAnchor:self.centerXAnchor].active = YES;
     [_placeholder.centerYAnchor constraintEqualToAnchor:self.centerYAnchor].active = YES;
-    for (NSString *ext in @[@"mp4", @"png"])
-        if ([DPCachedPreview(key, ext) checkResourceIsReachableAndReturnError:nil]) {
-            [self show:DPCachedPreview(key, ext)];
-            break;
-        }
-    [self fetch:@[@"mp4", @"png"]];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(load) name:DPTabLayoutMayHaveChanged object:nil];
+    [self load];
     return self;
 }
 
-- (void)fetch:(NSArray<NSString *> *)exts {
-    if (!exts.count) return [self show:nil];
-    NSURL *cached = DPCachedPreview(_key, exts[0]);
-    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%s%@.%@", DP_PREVIEWS, _key, exts[0]]];
+- (void)load {
+    NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
+    if ([layout isEqual:_layout]) return;
+    _layout = layout;
+    NSMutableArray<NSString *> *names = [NSMutableArray new];
+    for (NSString *prefix in @[layout, other])
+        for (NSString *ext in @[@"mp4", @"png"]) [names addObject:[NSString stringWithFormat:@"%@-%@.%@", prefix, _key, ext]];
+    _names = names;
+    for (NSString *name in _names)
+        if ([DPCachedPreview(name) checkResourceIsReachableAndReturnError:nil]) {
+            [self show:DPCachedPreview(name)];
+            break;
+        }
+    [self fetch:_names];
+}
+
+- (void)fetch:(NSArray<NSString *> *)names {
+    if (!names.count) return [self show:nil];
+    NSURL *cached = DPCachedPreview(names[0]);
+    NSURL *url = [NSURL URLWithString:[@DP_PREVIEWS stringByAppendingString:names[0]]];
     __weak DPPreviewView *weakSelf = self;
+    NSArray<NSString *> *current = _names;
     [[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSInteger status = [(NSHTTPURLResponse *)response statusCode];
         dispatch_async(dispatch_get_main_queue(), ^{
+            DPPreviewView *view = weakSelf;
+            if (!view || view->_names != current) return;
             if (error || (status != 200 && status != 404)) return;
             if (status == 404) {
                 [NSFileManager.defaultManager removeItemAtURL:cached error:nil];
-                return [weakSelf fetch:[exts subarrayWithRange:NSMakeRange(1, exts.count - 1)]];
+                return [view fetch:[names subarrayWithRange:NSMakeRange(1, names.count - 1)]];
             }
             if ([[NSData dataWithContentsOfURL:cached] isEqualToData:data]) return;
             [data writeToURL:cached atomically:YES];
-            [weakSelf show:cached];
+            [view show:cached];
         });
     }] resume];
 }

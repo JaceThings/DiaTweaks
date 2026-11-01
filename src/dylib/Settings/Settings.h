@@ -4,6 +4,7 @@
 #import "SafeMode/SafeMode.h"
 
 void DPInstallSettings(void);
+void DPInstallPreviews(void);
 
 extern NSToolbarItemIdentifier const DPSearchItemIdentifier;
 
