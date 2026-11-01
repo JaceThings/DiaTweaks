@@ -1,4 +1,5 @@
 #import "Updates/Updates.h"
+#include <sys/xattr.h>
 
 NSString *const DPDia = @"dia", *const DPTweaks = @"tweaks";
 NSNotificationName const DPUpdatesDidChangeNotification = @"DPUpdatesDidChange";
@@ -254,7 +255,15 @@ static void DPUpdater_checkForUpdatesInBackground(id self, SEL _cmd) {
 // Sparkle's own schedule skips the methods above, and Dia's "Automatically update Dia" can turn it on.
 static BOOL DPUpdater_automaticallyChecksForUpdates(id self, SEL _cmd) { return NO; }
 
+// An older diapatch run from Dia left its updates quarantined under Dia's name, and macOS then won't run diapatch, for
+// updates or as the passkeys host. Loaded into Dia, this can still lift it.
+static void DPLiftQuarantine(void) {
+    for (NSString *name in @[ @"bin/diapatch", @"bin/diatweaks", @"DiaPatches.dylib", @"patches.json" ])
+        removexattr(DPSupport(name).fileSystemRepresentation, "com.apple.quarantine", 0);
+}
+
 void DPInstallUpdates(void) {
+    DPLiftQuarantine();
     DPHook("SPUUpdater", @selector(startUpdater:), (IMP)DPUpdater_startUpdater);
     DPHook("SPUUpdater", @selector(checkForUpdates), (IMP)DPUpdater_checkForUpdates);
     DPHook("SPUUpdater", @selector(checkForUpdatesInBackground), (IMP)DPUpdater_checkForUpdatesInBackground);

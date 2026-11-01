@@ -448,7 +448,9 @@ static BOOL stageTweaks(void) {
         return fail(@"cannot download DiaTweaks %@: %@", latest[@"tag"], output);
     }
     BOOL ok = ([sha256(zip) isEqual:latest[@"digest"]] || fail(@"the DiaTweaks %@ download doesn't match its digest", latest[@"tag"]))
-        && removeTree(building) && makeDir(building) && check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, building ]);
+        && removeTree(building) && makeDir(building) && check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, building ])
+        // Run from Dia, the download is quarantined under Dia's name, and macOS won't run a quarantined diapatch again.
+        && check(@[ @"/usr/bin/xattr", @"-cr", building ]);
     for (NSString *name in tweaksTargets())
         ok = ok && (exists([building stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@", latest[@"tag"], name));
     ok = ok && [@{ @"digest" : latest[@"digest"], @"tag" : latest[@"tag"] } writeToFile:[building stringByAppendingPathComponent:@"release.plist"] atomically:YES]
