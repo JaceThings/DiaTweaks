@@ -3,6 +3,7 @@
 
 #import <CommonCrypto/CommonDigest.h>
 #import <Foundation/Foundation.h>
+#import "Passkeys.h"
 #include <libproc.h>
 #include <mach-o/loader.h>
 #include <sys/clonefile.h>
@@ -648,6 +649,8 @@ int main(int argc, const char *argv[]) {
         gStaged = inHome(@"staged/Dia.app");
         gReady = inHome(@"staged/ready");
         gStagedTweaks = inHome(@"staged/DiaTweaks");
+        // Dia starts it as the Passkeys extension's native messaging host, passing the extension's origin.
+        if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) return DPRunPasskeyHost(gHome);
 
         NSString *command = argc > 1 ? @(argv[1]) : @"";
         NSArray<NSString *> *allowed = @{
