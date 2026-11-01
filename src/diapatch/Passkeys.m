@@ -1,5 +1,4 @@
-// diapatch as a native messaging host for the Passkeys tweak. A patched Dia can't reach Apple Passwords, so each request
-// runs in an unpatched copy, at the page's origin, in a window the size of the passkey sheet so the sheet covers it.
+// Each request runs in the unpatched Dia, in a window the size of the passkey sheet so the sheet hides it.
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
 #import <spawn.h>
@@ -7,7 +6,7 @@
 #import "Passkeys.h"
 
 extern char **environ;
-int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // libSystem: the helper answers for itself
+int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS then asks about the copy, not Dia
 
 static const int kSheetWidth = 480, kSheetHeight = 300;
 
@@ -35,19 +34,14 @@ static const int kSheetWidth = 480, kSheetHeight = 300;
     return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
 }
 
-- (void)write:(NSDictionary *)message {
-    NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
-    fwrite(data.bytes, 1, data.length, _out);
-    fputc(0, _out);
-    fflush(_out);
-}
-
-// Sends a command and waits for its answer, skipping events.
 - (NSDictionary *)send:(NSString *)method params:(NSDictionary *)params session:(NSString *)session {
     int id = ++_nextId;
     NSMutableDictionary *message = [@{ @"id" : @(id), @"method" : method, @"params" : params ?: @{} } mutableCopy];
     if (session) message[@"sessionId"] = session;
-    [self write:message];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+    fwrite(data.bytes, 1, data.length, _out);
+    fputc(0, _out);
+    fflush(_out);
     for (NSDictionary *reply; (reply = [self read]);)
         if ([reply[@"id"] intValue] == id) return reply;
     return nil;
@@ -72,30 +66,34 @@ static void writeMessage(NSDictionary *message) {
 
 static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name" : @"NotAllowedError", @"message" : message } }; }
 
-static void prepareProfile(NSString *userData) {
-    NSFileManager *files = NSFileManager.defaultManager;
-    // Dia's account store, fresh each time, keeps it signed in as Dia is.
+static void signInAsDia(NSString *userData) {
     NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
-    [files createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
+    [NSFileManager.defaultManager createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
     for (NSString *suffix in @[ @"", @"-wal", @"-shm" ]) {
         NSString *name = [@"global_key_value_store.db" stringByAppendingString:suffix];
-        [files removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
-        [files copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
+        [NSFileManager.defaultManager removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
+        [NSFileManager.defaultManager copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
     }
-    for (NSString *saved in @[ @"Default/Sessions", @"Default/Sessions_Encrypted", @"Default/tabs.db", @"Default/tabs.db-wal", @"Default/tabs.db-shm" ])  // or it reopens its last windows
-        [files removeItemAtPath:[userData stringByAppendingPathComponent:saved] error:nil];
+}
+
+static void forgetWindows(NSString *userData) {
+    for (NSString *saved in @[ @"Sessions", @"Sessions_Encrypted", @"tabs.db", @"tabs.db-wal", @"tabs.db-shm" ])
+        [NSFileManager.defaultManager removeItemAtPath:[userData stringByAppendingPathComponent:[@"Default" stringByAppendingPathComponent:saved]] error:nil];
 }
 
 static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
-    NSString *app = [home stringByAppendingPathComponent:@"pristine/Dia.app/Contents/MacOS/Dia"];
     NSString *data = [home stringByAppendingPathComponent:@"passkey-helper"];
+    NSString *userData = [data stringByAppendingPathComponent:@"ud/User Data"];
+    signInAsDia(userData);
+    forgetWindows(userData);
+
+    NSString *app = [home stringByAppendingPathComponent:@"pristine/Dia.app/Contents/MacOS/Dia"];
     NSString *profile = [@"--user-data-dir=" stringByAppendingString:[data stringByAppendingPathComponent:@"ud"]];
-    prepareProfile([data stringByAppendingPathComponent:@"ud/User Data"]);
     const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, "--remote-debugging-pipe", NULL };
 
     NSMutableArray<NSString *> *environment = [NSMutableArray array];
     for (char **e = environ; *e; e++) [environment addObject:@(*e)];
-    [environment addObject:[@"CFFIXED_USER_HOME=" stringByAppendingString:data]];  // its own preferences and Application Support
+    [environment addObject:[@"CFFIXED_USER_HOME=" stringByAppendingString:data]];
     const char **envp = calloc(environment.count + 1, sizeof *envp);
     for (NSUInteger i = 0; i < environment.count; i++) envp[i] = environment[i].UTF8String;
 
@@ -115,12 +113,11 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     return status == 0 ? pid : 0;
 }
 
-// The tab in the window Dia opens at launch: the only window it will have. Signed out, Dia shows its welcome window
-// instead, and tabs get no window until someone signs in there.
+// Signed out, Dia shows its intro instead, and tabs get no window until someone signs in there.
 static NSString *startupTab(DPDevTools *tools, int seconds, NSNumber **windowId) {
     for (int tries = 0; tries < seconds * 4; tries++, usleep(250000)) {
         NSDictionary *targets = [tools send:@"Target.getTargets" params:nil session:nil];
-        if (!targets) return nil;  // it quit
+        if (!targets) return nil;
         for (NSDictionary *target in targets[@"result"][@"targetInfos"]) {
             if (![target[@"type"] isEqualToString:@"page"]) continue;
             NSDictionary *window = [tools send:@"Browser.getWindowForTarget" params:@{ @"targetId" : target[@"targetId"] } session:nil][@"result"];
@@ -141,7 +138,7 @@ static BOOL atOrigin(DPDevTools *tools, NSString *session, NSString *origin) {
     return NO;
 }
 
-// Only the app in front can bring another forward, and that's Dia, so it does both from here on (Passkeys.m in the dylib).
+// Only the frontmost app can bring another forward, and that's Dia.
 static void tellDia(NSString *what, pid_t helper) {
     [NSDistributedNotificationCenter.defaultCenter postNotificationName:[@"com.diapatches.passkeys." stringByAppendingString:what]
                                                                  object:@(helper).stringValue
@@ -157,6 +154,7 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
         targetId = startupTab(tools, 600, &windowId);
     }
     if (!targetId) return failure(@"Sign in to the copy of Dia that opened, then try the passkey again.");
+
     CGRect screen = CGDisplayBounds(CGMainDisplayID());
     NSDictionary *bounds = @{
         @"left" : @((int)(CGRectGetMidX(screen) - kSheetWidth / 2)), @"top" : @((int)(CGRectGetMidY(screen) - kSheetHeight / 2 - 100)),
@@ -165,12 +163,12 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
     [tools send:@"Browser.setWindowBounds" params:@{ @"windowId" : windowId, @"bounds" : bounds } session:nil];
 
     NSString *session = [tools send:@"Target.attachToTarget" params:@{ @"targetId" : targetId, @"flatten" : @YES } session:nil][@"result"][@"sessionId"];
-    // Any page at the origin will do. robots.txt runs none of the site's scripts, unless it redirects elsewhere.
+    // Any page at the origin works, and robots.txt runs none of the site's scripts.
     for (NSString *path in @[ @"/robots.txt", @"/" ]) {
         [tools send:@"Page.navigate" params:@{ @"url" : [origin stringByAppendingString:path] } session:session];
         if (atOrigin(tools, session, origin)) break;
     }
-    tellDia(@"show", pid);  // or the sheet opens behind
+    tellDia(@"show", pid);
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
@@ -191,19 +189,19 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
 int DPRunPasskeyHost(NSString *home) {
     NSDictionary *request = readMessage();
     if (!request) return 1;
-    // One copy of Dia at a time: a second one started on the same data hands off to the first and quits.
-    int lock = open([home stringByAppendingPathComponent:@"passkey-helper.lock"].fileSystemRepresentation, O_CREAT | O_RDWR, 0600);
-    flock(lock, LOCK_EX);
+    // A second copy started on the same data hands off to the first and quits.
+    flock(open([home stringByAppendingPathComponent:@"passkey-helper.lock"].fileSystemRepresentation, O_CREAT | O_RDWR, 0600), LOCK_EX);
+
     int toHelper[2], fromHelper[2];
-    if (pipe(toHelper) || pipe(fromHelper)) return writeMessage(failure(@"Couldn't start the passkey copy of Dia.")), 1;
-    pid_t pid = launchHelper(home, toHelper, fromHelper);
+    pid_t pid = 0;
+    if (pipe(toHelper) || pipe(fromHelper) || !(pid = launchHelper(home, toHelper, fromHelper)))
+        return writeMessage(failure(@"Couldn't start the passkey copy of Dia.")), 1;
     close(toHelper[0]);
     close(fromHelper[1]);
-    if (!pid) return writeMessage(failure(@"Couldn't start the passkey copy of Dia.")), 1;
 
     DPDevTools *tools = [[DPDevTools alloc] initWithIn:fromHelper[0] out:toHelper[1]];
     NSDictionary *result = runInHelper(tools, pid, request[@"kind"], request[@"origin"], request[@"options"]);
-    // Dia ends this process as soon as it has the answer, so the copy quits first.
+    // Dia kills this process once it has the answer, so the copy has to quit before then.
     [tools send:@"Browser.close" params:nil session:nil];
     for (int i = 0; i < 50 && kill(pid, 0) == 0; i++) usleep(100000);
     kill(pid, SIGKILL);

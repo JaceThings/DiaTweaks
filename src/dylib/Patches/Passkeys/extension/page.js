@@ -1,5 +1,3 @@
-// Runs in each page. Dia can't reach Apple Passwords once it's patched, so passkey requests go out through bridge.js
-// and the page gets back a credential made by a copy of Dia that can.
 (() => {
   const credentials = navigator.credentials;
   const create = credentials.create.bind(credentials);
@@ -12,7 +10,7 @@
   };
   const bytes = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)).buffer;
 
-  // Options as JSON, binary fields as base64url: the form PublicKeyCredential.parse*OptionsFromJSON reads back.
+  // The JSON form PublicKeyCredential.parse*OptionsFromJSON reads back.
   const toJSON = (value) => {
     if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return b64(value);
     if (Array.isArray(value)) return value.map(toJSON);
@@ -64,7 +62,7 @@
       window.postMessage({ diaTweaksPasskey: 'request', id, kind, options: toJSON(options) }, '*');
     });
 
-  // Passkey autofill would start the other Dia on every page load, so sites fall back to a passkey button instead.
+  // Autofill would start the other Dia on every page load.
   credentials.create = (options) => (options?.publicKey ? ask('create', options.publicKey) : create(options));
   credentials.get = (options) => (options?.publicKey && options.mediation !== 'conditional' ? ask('get', options.publicKey) : get(options));
   PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false);

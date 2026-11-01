@@ -4,12 +4,12 @@
 #import <mach-o/getsect.h>
 #import <mach-o/ldsyms.h>
 
-// Patched, Dia loses the entitlement Apple Passwords asks of browsers. An extension (extension/, built into this dylib)
-// hands each page's passkey request to diapatch, which runs it in the unpatched copy kept in pristine/.
+// Patching costs Dia the entitlement Apple Passwords requires of browsers, so an extension hands each passkey request to
+// diapatch, which runs it in the unpatched Dia.
 
 extern DPPatch DPPasskeys;
 
-static NSString *const kExtensionID = @"ljonmeeapeagnkmjklinbocjbjepecce";
+static NSString *const kExtensionID = @"ljonmeeapeagnkmjklinbocjbjepecce";  // from the key in extension/manifest.json
 
 static NSString *DPSupportPath(NSString *name) {
     return [[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -17,19 +17,17 @@ static NSString *DPSupportPath(NSString *name) {
 }
 
 static BOOL DPWriteExtension(NSString *folder) {
-    NSDictionary<NSString *, NSString *> *files = @{
-        @"manifest.json" : @"__pk_manifest", @"page.js" : @"__pk_page", @"bridge.js" : @"__pk_bridge", @"worker.js" : @"__pk_worker",
-    };
     [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
-    for (NSString *name in files) {
+    for (NSString *name in @[ @"manifest.json", @"page.js", @"bridge.js", @"worker.js" ]) {
+        NSString *section = [@"__pk_" stringByAppendingString:name.stringByDeletingPathExtension];
         unsigned long size = 0;
-        uint8_t *bytes = getsectiondata(&_mh_dylib_header, "__TEXT", files[name].UTF8String, &size);
+        uint8_t *bytes = getsectiondata(&_mh_dylib_header, "__TEXT", section.UTF8String, &size);
         if (!bytes || ![[NSData dataWithBytes:bytes length:size] writeToFile:[folder stringByAppendingPathComponent:name] atomically:YES]) return NO;
     }
     return YES;
 }
 
-// Tells Dia it may start diapatch for the extension. Dia's Chromium looks for hosts where Chrome's do.
+// Dia's Chromium looks for native messaging hosts in Chrome's folder.
 static BOOL DPRegisterHost(void) {
     NSString *folder = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
         stringByAppendingPathComponent:@"Google/Chrome/NativeMessagingHosts"];
@@ -45,7 +43,7 @@ static BOOL DPRegisterHost(void) {
     return [json writeToFile:[folder stringByAppendingPathComponent:@"com.diapatches.passkeys.json"] atomically:YES];
 }
 
-// Dia's Chromium reads the command line it was started with, so Dia starts again in place, this time with the extension.
+// Chromium only reads the command line Dia started with, so Dia restarts in place with the extension added.
 static void DPLoadExtension(NSString *folder) {
     const char *flag = [@"--load-extension=" stringByAppendingString:folder].fileSystemRepresentation;
     int argc = *_NSGetArgc();
@@ -60,9 +58,7 @@ static void DPLoadExtension(NSString *folder) {
     free(next);
 }
 
-// diapatch can't bring the copy forward itself: macOS lets only the app in front do that, which is Dia while you sign in.
 static void DPShowHelper(NSNotification *note) {
-    NSRunningApplication *helper = [NSRunningApplication runningApplicationWithProcessIdentifier:[note.object intValue]];
     if ([note.name hasSuffix:@"signIn"]) {
         NSAlert *alert = [NSAlert new];
         alert.messageText = @"Sign in to Dia once for passkeys";
@@ -71,7 +67,8 @@ static void DPShowHelper(NSNotification *note) {
                                  "Your passkey carries on after.";
         [alert runModal];
     }
-    [helper activateFromApplication:NSRunningApplication.currentApplication options:NSApplicationActivateAllWindows];
+    [[NSRunningApplication runningApplicationWithProcessIdentifier:[note.object intValue]] activateFromApplication:NSRunningApplication.currentApplication
+                                                                                                         options:NSApplicationActivateAllWindows];
 }
 
 static void DPInstallPasskeys(void) {

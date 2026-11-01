@@ -1,7 +1,6 @@
 CFLAGS := -arch arm64 -mmacosx-version-min=14.0 -fobjc-arc -O2 -Wall -Wextra -Wno-unused-parameter
 DYLIB_SOURCES := $(shell find src/dylib -name '*.[hm]')
 PASSKEYS := src/dylib/Patches/Passkeys/extension
-# The Passkeys tweak's extension, built into the dylib, which writes it out at launch.
 EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectcreate,__TEXT,__pk_$(basename $(file)),$(PASSKEYS)/$(file))
 
 all: build/diapatch build/DiaPatches.dylib build/patches.json
