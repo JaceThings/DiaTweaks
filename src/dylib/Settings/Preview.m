@@ -7,7 +7,7 @@
 
 static NSNotificationName const DPTabLayoutMayHaveChanged = @"DPTabLayoutMayHaveChanged";
 
-// Dia adds the sidebar's footer to a window with vertical tabs and takes it away with horizontal ones.
+// The sidebar footer only exists with vertical tabs.
 static void DPSidebarFooter_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSidebarFooter_viewDidMoveToWindow, self);
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -47,7 +47,6 @@ static NSURL *DPCachedPreview(NSString *name) {
     return self;
 }
 
-// Previews are named for the tab layout they were recorded in. The one matching Dia's layout wins, then the other.
 - (void)load {
     NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
     if ([layout isEqual:_layout]) return;
@@ -74,7 +73,6 @@ static NSURL *DPCachedPreview(NSString *name) {
         NSInteger status = [(NSHTTPURLResponse *)response statusCode];
         dispatch_async(dispatch_get_main_queue(), ^{
             DPPreviewView *view = weakSelf;
-            // The layout changed while this was loading, and a fetch for the new one has started.
             if (!view || view->_names != current) return;
             if (error || (status != 200 && status != 404)) return;
             if (status == 404) {

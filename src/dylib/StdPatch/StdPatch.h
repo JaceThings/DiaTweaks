@@ -64,7 +64,7 @@ IMP DPOriginalIMP(id object, SEL sel, IMP replacement);
 
 NSView *DPFindView(NSView *root, BOOL (^match)(NSView *view));  // Depth first, root included.
 NSArray<NSView *> *DPFindViews(const char *className);          // In every visible window.
-NSString *DPTabLayout(void);                                    // @"vertical" (tabs in the sidebar) or @"horizontal".
+NSString *DPTabLayout(void);                                    // @"vertical" or @"horizontal".
 NSView *DPSubview(NSView *parent, const char *className);       // First direct subview of that class.
 BOOL DPIsKind(id object, const char *className);
 BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel);
