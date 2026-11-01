@@ -433,6 +433,10 @@ static BOOL tweaksAvailable(NSDictionary *latest) {
     return latest && ![installedRelease()[@"digest"] isEqual:latest[@"digest"]] && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
 }
 
+// Dia quarantines whatever it and its children write, including this run when Dia started it, and Gatekeeper then
+// refuses to run the unnotarized diapatch it installs ("diapatch Not Opened").
+static BOOL unquarantine(NSString *path) { return check(@[ @"/usr/bin/xattr", @"-dr", @"com.apple.quarantine", path ]); }
+
 static BOOL stageTweaks(void) {
     NSString *problem, *output;
     NSDictionary *latest = latestTweaks(30, &problem);
@@ -449,7 +453,7 @@ static BOOL stageTweaks(void) {
         return fail(@"cannot download DiaTweaks %@: %@", latest[@"tag"], output);
     }
     BOOL ok = ([sha256(zip) isEqual:latest[@"digest"]] || fail(@"the DiaTweaks %@ download doesn't match its digest", latest[@"tag"]))
-        && removeTree(building) && makeDir(building) && check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, building ]);
+        && removeTree(building) && makeDir(building) && check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, building ]) && unquarantine(building);
     for (NSString *name in tweaksTargets())
         ok = ok && (exists([building stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@", latest[@"tag"], name));
     ok = ok && [@{ @"digest" : latest[@"digest"], @"tag" : latest[@"tag"] } writeToFile:[building stringByAppendingPathComponent:@"release.plist"] atomically:YES]
@@ -463,7 +467,7 @@ static BOOL applyTweaks(void) {
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
     NSDictionary<NSString *, NSString *> *targets = tweaksTargets();
-    BOOL ok = makeDir(inHome(@"bin"));
+    BOOL ok = makeDir(inHome(@"bin")) && unquarantine(gStagedTweaks);
     for (NSString *name in targets) ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:name], targets[name]);
     ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:@"release.plist"], inHome(@"release.plist"));
     return ok && removeTree(gStagedTweaks) && say(@"installed DiaTweaks %@", tag);
