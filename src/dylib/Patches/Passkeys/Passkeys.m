@@ -1,7 +1,5 @@
 #import "StdPatch/StdPatch.h"
 #import "Updates/Updates.h"
-#import <crt_externs.h>
-#import <mach-o/dyld.h>
 #import <mach-o/getsect.h>
 #import <mach-o/ldsyms.h>
 
@@ -49,19 +47,13 @@ static BOOL DPRegisterHost(void) {
 
 static NSString *DPExtensionFlag(void) { return [@"--load-extension=" stringByAppendingString:DPSupportPath(@"passkeys-extension")]; }
 
-static BOOL DPExtensionLoaded(void) { return [NSProcessInfo.processInfo.arguments containsObject:DPExtensionFlag()]; }
+static BOOL gExtensionLoaded;
 
-// Chromium only reads the command line Dia started with, so Dia restarts in place with the extension added.
-static void DPLoadExtension(void) {
-    if (DPExtensionLoaded()) return;
-    int argc = *_NSGetArgc();
-    char **next = calloc(argc + 2, sizeof *next);
-    memcpy(next, *_NSGetArgv(), argc * sizeof *next);
-    next[argc] = (char *)DPExtensionFlag().fileSystemRepresentation;
-    char path[PATH_MAX];
-    uint32_t size = sizeof path;
-    if (_NSGetExecutablePath(path, &size) == 0) execv(path, next);
-    free(next);
+// Dia hands Chromium its command line through this configuration, so the flag joins it here.
+static id DPConfiguration_init(id self, SEL _cmd, int argc, NSArray *argv, NSString *profilePath, NSUInteger applicationID, BOOL isProduction,
+                               NSUInteger restorationPolicy, BOOL loadAllProfiles, BOOL quitRunLoop, NSString *suiteName) {
+    return DPCallOriginal(DPConfiguration_init, self, argc + 1, [argv arrayByAddingObject:DPExtensionFlag()], profilePath, applicationID, isProduction,
+                          restorationPolicy, loadAllProfiles, quitRunLoop, suiteName);
 }
 
 static void DPRemoveSetup(void) {
@@ -86,13 +78,15 @@ static void DPShowHelper(NSNotification *note) {
 static void DPInstallPasskeys(void) {
     if (!DPPasskeys.on) return DPRemoveSetup();
     if (!DPWriteExtension(DPSupportPath(@"passkeys-extension")) || !DPRegisterHost()) return (void)NSLog(@"DiaPatches: couldn't set up passkeys");
-    DPLoadExtension();
+    DPHook("ArcBrowserApplicationConfiguration", @selector(init:argv:profilePath:applicationID:isProduction:sessionRestorationPolicy:shouldLoadAllProfilesAtStartup:quitRunLoopOnTermination:userDefaultsSuiteName:),
+           (IMP)DPConfiguration_init);
+    gExtensionLoaded = YES;
     for (NSString *name in @[ @"com.diapatches.passkeys.show", @"com.diapatches.passkeys.signIn" ])
         [NSDistributedNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { DPShowHelper(note); }];
 }
 
 static void DPApplyPasskeys(DPPatch *patch) {
-    if (patch->on == DPExtensionLoaded()) return;
+    if (patch->on == gExtensionLoaded) return;
     NSAlert *alert = [NSAlert new];
     alert.messageText = patch->on ? @"Relaunch Dia to allow iCloud passkeys" : @"Relaunch Dia to stop using iCloud passkeys";
     [alert addButtonWithTitle:@"Relaunch"];
