@@ -11,5 +11,6 @@ DP_PATCH(DPHideRecentTabsButton) {
     .tint = @"systemPinkColor",
     .section = @"Sidebar and tab bar",
     .classes = DPClasses(DPDiaSidebarFooter, DPDiaTabStripController),
+    .previewPerLayout = YES,
     .hides = DPIsRecentTabsButton,
 };

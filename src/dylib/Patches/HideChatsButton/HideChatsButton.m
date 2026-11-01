@@ -12,5 +12,6 @@ DP_PATCH(DPHideChatsButton) {
     .tint = @"systemTealColor",
     .section = @"Sidebar and tab bar",
     .classes = DPClasses(DPDiaLibraryButton, DPDiaLibraryCell),
+    .previewPerLayout = YES,
     .hides = DPIsChatsButton,
 };

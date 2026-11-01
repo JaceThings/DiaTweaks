@@ -12,7 +12,8 @@
     _switches = [NSMutableArray new];
     _note = DPLabel(@"", 11, NSFontWeightRegular, NSColor.secondaryLabelColor);
 
-    DPPreviewView *preview = [[DPPreviewView alloc] initWithKey:item.key];
+    BOOL perLayout = item.patch && item.patch->previewPerLayout;
+    DPPreviewView *preview = [[DPPreviewView alloc] initWithKey:perLayout ? [NSString stringWithFormat:@"%@-%@", item.key, DPTabLayout()] : item.key];
     [preview.heightAnchor constraintEqualToAnchor:preview.widthAnchor multiplier:10.0 / 16].active = YES;
     NSStackView *heading = [NSStackView stackViewWithViews:@[
         DPIconTile(item.symbol, [NSColor valueForKey:item.tint]),

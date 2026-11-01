@@ -17,6 +17,7 @@ struct DPPatch {
     const char *const *classes;  // Dia classes it needs (DPClasses). If one is missing, it stays off and Settings says so.
     __unsafe_unretained NSString *requires;    // Key of a patch that must be on. Settings lists this one as an option on that patch's page.
     __unsafe_unretained NSString *disabledBy;  // Key of a patch that, while on, hides what this one changes. Settings marks it.
+    BOOL previewPerLayout;  // Its Settings preview is <key>-sidebar or <key>-top, whichever matches DPTabLayout.
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.
     void (*apply)(DPPatch *patch);  // Applies a toggle at once. Without it, `progress` eases toward `on` while every patch's `relayout` runs each frame.
@@ -64,6 +65,7 @@ IMP DPOriginalIMP(id object, SEL sel, IMP replacement);
 
 NSView *DPFindView(NSView *root, BOOL (^match)(NSView *view));  // Depth first, root included.
 NSArray<NSView *> *DPFindViews(const char *className);          // In every visible window.
+NSString *DPTabLayout(void);                                    // @"sidebar" or @"top": where Dia's tabs are.
 NSView *DPSubview(NSView *parent, const char *className);       // First direct subview of that class.
 BOOL DPIsKind(id object, const char *className);
 BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel);
