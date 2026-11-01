@@ -104,6 +104,7 @@ DP_PATCH(DPEdgeToEdge) {
     .detail = @"Remove the padding between web pages and the window edge.",
     .symbol = @"squareshape.squareshape.dotted",
     .tint = @"systemBlueColor",
+    .section = @"Page",
     .classes = DPClasses(DPDiaContentContainer, DPDiaShadowView),
     .install = DPInstallEdgeToEdge,
     .relayout = DPRelayoutContainers,

@@ -34,7 +34,7 @@ Run `diatweaks` on its own for a menu, or:
 | `diatweaks enable hideToolbar` | Turns a tweak on; Dia changes straight away |
 | `diatweaks disable hideToolbar` | Turns a tweak off |
 | `diatweaks status` | Shows Dia's version, safe mode and which tweaks are on |
-| `diatweaks update` | Gets the latest DiaTweaks and patches Dia again |
+| `diatweaks update` | Installs the latest DiaTweaks release and patches Dia again |
 | `diatweaks update-dia` | Downloads a newer Dia and patches it |
 | `diatweaks restore` | Puts the original Dia back |
 
@@ -42,8 +42,10 @@ Tweak names work as keys or titles, like `hideToolbar` or `"Hide toolbar"`. Add 
 
 ## Updating
 
-- **Dia:** Dia's own updater is switched off. DiaTweaks checks for new Dia versions when Dia opens and installs them, patched, when you quit it. `diatweaks update-dia` does it right away.
-- **DiaTweaks:** run `diatweaks update`.
+Dia's own updater is switched off. **Settings → Patches → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. Under **Automatic Updates**, pick for each of Dia and DiaTweaks: off, just show updates, download them, or download and install them when you quit (the default).
+
+- **Dia now:** `diatweaks update-dia`
+- **DiaTweaks now:** `diatweaks update`
 
 <details>
 <summary>Installed before <code>diatweaks</code> existed?</summary>

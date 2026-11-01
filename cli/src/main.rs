@@ -50,7 +50,7 @@ enum Command {
     },
     /// Show Dia's versions, safe mode and which tweaks are on
     Status,
-    /// Download and build the newest DiaTweaks, then patch Dia again
+    /// Install the latest DiaTweaks release, then patch Dia again
     Update,
     /// Download and patch a newer Dia
     UpdateDia,
