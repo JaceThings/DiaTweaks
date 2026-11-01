@@ -1,5 +1,6 @@
 #import "Settings.h"
 #import <AVFoundation/AVFoundation.h>
+#import <VideoToolbox/VideoToolbox.h>
 
 #ifndef DP_PREVIEWS
 #define DP_PREVIEWS "https://raw.githubusercontent.com/wiki/JaceThings/DiaTweaks/previews/"
@@ -59,7 +60,9 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     NSArray<NSString *> *_names;
     NSURL *_shown;
     CALayer *_media;
-    AVPlayerLooper *_looper;
+    AVPlayer *_player;
+    AVPlayerItemVideoOutput *_output;
+    CADisplayLink *_link;
     NSTextField *_placeholder;
 }
 
@@ -112,26 +115,63 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
 
 - (void)show:(NSURL *)file {
     [_media removeFromSuperlayer];
+    [_player pause];
+    _player = nil;
+    _output = nil;
+    [self updatePlayback];
     _media = nil;
-    _looper = nil;
     _shown = file;
     _placeholder.hidden = file != nil;
     if (!file) return;
-    if ([file.pathExtension isEqualToString:@"mp4"]) {
-        AVQueuePlayer *player = [AVQueuePlayer new];
-        player.muted = YES;
-        _looper = [AVPlayerLooper playerLooperWithPlayer:player templateItem:[AVPlayerItem playerItemWithURL:file]];
-        AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
-        layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-        _media = layer;
-        [player play];
-    } else {
-        _media = [CALayer layer];
-        _media.contents = [[NSImage alloc] initWithContentsOfURL:file];
-        _media.contentsGravity = kCAGravityResizeAspectFill;
-    }
+    _media = [CALayer layer];
+    _media.contentsGravity = kCAGravityResizeAspectFill;
     _media.frame = self.bounds;
     [self.layer addSublayer:_media];
+    if (![file.pathExtension isEqualToString:@"mp4"]) {
+        _media.contents = [[NSImage alloc] initWithContentsOfURL:file];
+        return;
+    }
+    // Not an AVPlayerLayer: macOS can hand that to the display hardware, which draws black bars at the preview's edges.
+    AVPlayerItem *item = [AVPlayerItem playerItemWithURL:file];
+    _output = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:@{(id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)}];
+    [item addOutput:_output];
+    _player = [AVPlayer playerWithPlayerItem:item];
+    _player.muted = YES;
+    _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(rewind:) name:AVPlayerItemDidPlayToEndTimeNotification object:item];
+    [self updatePlayback];
+}
+
+- (void)rewind:(NSNotification *)note {
+    [_player seekToTime:kCMTimeZero];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    [self updatePlayback];
+}
+
+- (void)updatePlayback {
+    [_link invalidate];
+    _link = nil;
+    if (!self.window || !_player) return [_player pause];
+    _link = [self displayLinkWithTarget:self selector:@selector(drawFrame)];
+    [_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    [_player play];
+}
+
+- (void)drawFrame {
+    CMTime time = [_output itemTimeForHostTime:CACurrentMediaTime()];
+    if (![_output hasNewPixelBufferForItemTime:time]) return;
+    CVPixelBufferRef buffer = [_output copyPixelBufferForItemTime:time itemTimeForDisplay:NULL];
+    if (!buffer) return;
+    CGImageRef image = NULL;
+    VTCreateCGImageFromCVPixelBuffer(buffer, NULL, &image);
+    CVPixelBufferRelease(buffer);
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _media.contents = (__bridge_transfer id)image;
+    [CATransaction commit];
 }
 
 - (void)updateLayer {
