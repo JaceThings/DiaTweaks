@@ -4,6 +4,7 @@
 #import "SafeMode/SafeMode.h"
 
 void DPInstallSettings(void);
+void DPInstallPreviews(void);  // Lets previews follow Dia's tab layout as it changes.
 
 extern NSToolbarItemIdentifier const DPSearchItemIdentifier;
 
