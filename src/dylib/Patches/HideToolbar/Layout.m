@@ -1,4 +1,5 @@
 #import "HideToolbar.h"
+#import "Patches/EdgeToEdge/EdgeToEdge.h"
 
 NSHashTable<NSView *> *DPPanes;
 static char DPFrameKey, DPFillsKey;
@@ -22,9 +23,20 @@ NSView *DPBookmarksUnder(NSView *pane, NSView *bar) {
     return nil;
 }
 
+// Docking the sidebar moves the window's content container, with every pane in it, to the sidebar's right. A sidebar
+// that only floats over the page while the pointer is at the window's edge leaves it in place.
+BOOL DPSidebarDocked(NSView *pane) {
+    for (NSView *view = pane.superview; view; view = view.superview)
+        if (DPIsKind(view, DPDiaContentContainer)) return DPBesideSidebar(view);
+    return NO;
+}
+
+// How hidden the toolbar is in its place: the sidebar brings it back there.
+static CGFloat DPHidden(DPToolbarHover *hover) { return DPHideToolbar.progress * (1 - hover.sidebarProgress); }
+
 // Hover animation changes opacity only; it never changes the page's reserved space.
 void DPApplyToolbarOpacity(DPToolbarHover *hover) {
-    CGFloat alpha = 1 - DPHideToolbar.progress * (1 - hover.progress);
+    CGFloat alpha = 1 - DPHidden(hover) * (1 - hover.progress);
     if (hover.bar && hover.bar.alphaValue != alpha) hover.bar.alphaValue = alpha;
     if (hover.bookmarks && hover.bookmarks.alphaValue != alpha) hover.bookmarks.alphaValue = alpha;
 }
@@ -39,7 +51,7 @@ void DPApplyToolbar(NSView *pane) {
     DPToolbarHover *hover = [DPToolbarHover attachToPane:pane];
     [hover updateForBar:bar bookmarks:bookmarks];
 
-    CGFloat progress = DPHideToolbar.progress;
+    CGFloat progress = DPHidden(hover);
     DPApplyToolbarOpacity(hover);
     NSIndexSet *slots = [pane.subviews indexesOfObjectsPassingTest:^BOOL(NSView *sub, NSUInteger i, BOOL *stop) { return [bars containsObject:sub]; }];
     BOOL onTop = slots.firstIndex == pane.subviews.count - bars.count, atBottom = slots.lastIndex == bars.count - 1;
