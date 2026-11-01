@@ -173,11 +173,16 @@ static DPStartup waitForStartupTab(DPDevTools *tools, pid_t pid, int seconds, NS
     return DPStartupFailed;
 }
 
-static NSString *const kWaitingPage =
-    @"<!doctype html><meta name=color-scheme content='light dark'><title>Passkey</title>"
-     "<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;text-align:center;font:13px -apple-system,sans-serif;"
-     "background:Canvas;color:CanvasText}b{display:block;font-size:15px;margin-bottom:6px}p{margin:0;opacity:.6}</style>"
-     "<div><b>Use your passkey for <span id=site></span></b><p>DiaTweaks opened this window to reach Apple Passwords. It closes by itself.</p></div>";
+static NSString *page(NSString *title, NSString *detail) {
+    NSString *html = [NSString stringWithFormat:
+        @"<!doctype html><meta name=color-scheme content='light dark'><title>Passkey</title>"
+         "<style>html,body{height:100%%;margin:0}body{display:grid;place-items:center;text-align:center;font:13px -apple-system,sans-serif;"
+         "background:Canvas;color:CanvasText}b{display:block;font-size:15px;margin-bottom:6px}p{margin:0;opacity:.6}</style>"
+         "<div><b>%@</b><p>%@</p></div>", title, detail];
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@[ html ] options:0 error:nil];
+    return [NSString stringWithFormat:@"document.open(); document.write(%@[0].replace('{site}', location.host)); document.close()",
+                                      [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
+}
 
 static BOOL atOrigin(DPDevTools *tools, NSString *session, NSString *origin) {
     for (int tries = 0; tries < 50; tries++, usleep(100000)) {
@@ -214,10 +219,8 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
         [tools send:@"Page.navigate" params:@{ @"url" : [origin stringByAppendingString:path] } session:session];
         if (atOrigin(tools, session, origin)) break;
     }
-    NSData *html = [NSJSONSerialization dataWithJSONObject:@[ kWaitingPage ] options:0 error:nil];
-    NSString *page = [NSString stringWithFormat:@"document.open(); document.write(%@[0]); document.close(); site.textContent = location.host",
-                                                 [[NSString alloc] initWithData:html encoding:NSUTF8StringEncoding]];
-    [tools send:@"Runtime.evaluate" params:@{ @"expression" : page } session:session];
+    NSString *waiting = page(@"Use your passkey for {site}", @"DiaTweaks opened this window to reach Apple Passwords. It closes by itself.");
+    [tools send:@"Runtime.evaluate" params:@{ @"expression" : waiting } session:session];
     tellDia(@"show", pid);
     // WebAuthn refuses a page without focus, which it only gets once Dia has brought the copy forward.
     for (int tries = 0; tries < 30; tries++, usleep(100000))
@@ -236,6 +239,7 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
     NSDictionary *result = [tools send:@"Runtime.evaluate"
                                 params:@{ @"expression" : script, @"awaitPromise" : @YES, @"returnByValue" : @YES, @"userGesture" : @YES }
                                session:session][@"result"][@"result"][@"value"];
+    if (result[@"credential"]) [tools send:@"Runtime.evaluate" params:@{ @"expression" : page(@"Done", @"This window closes in a moment. Thanks for waiting.") } session:session];
     return result ?: failure(@"The passkey copy of Dia quit before answering.");
 }
 
