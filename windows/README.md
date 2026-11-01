@@ -3,7 +3,9 @@
 This branch adds an x64 developer probe alongside the existing macOS implementation.
 It builds a controller and a COM TAP DLL for WinUI XAML diagnostics. It is **not a
 working Windows release of the macOS tweaks yet**. Live attachment and native
-tree discovery work on Dia 1.4.0.424; real hide/restore is still unverified.
+tree discovery and a timed Visibility override work on Dia 1.4.0.424. The sidebar
+toggle's Visible → Collapsed → Visible cycle was verified by live readback;
+visual confirmation and screenshots are still pending.
 
 ## Build
 
@@ -71,10 +73,10 @@ The first live attachment also succeeded, returning controls including
 `ChatButtonHost`, `SidebarToggleButton`, and navigation buttons. The initial
 visibility eligibility checks rejected the inspected controls as unsupported.
 Further inspection identified numeric enum serialization as the cause; the
-adapter now accepts the observed `0`/`1` Visibility values. A live pulse using
-that fix still needs verification.
+adapter now accepts the observed `0`/`1` Visibility values. A live five-second
+sidebar-toggle pulse passed, including readback and restoration of its local value.
 See [live-probe.md](live-probe.md) for the results and remaining checks. Real
-hide/restore, screenshots, both tab layouts, and multiple windows remain
+visual behavior, screenshots, both tab layouts, and multiple windows remain
 unverified. Test shared-memory access requires running outside Codex's
 restricted sandbox; normal same-user terminal execution is the intended mode.
 
