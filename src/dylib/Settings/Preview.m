@@ -63,7 +63,6 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     AVPlayer *_player;
     AVPlayerItemVideoOutput *_output;
     CADisplayLink *_link;
-    id _loop;
     NSTextField *_placeholder;
 }
 
@@ -116,7 +115,10 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
 
 - (void)show:(NSURL *)file {
     [_media removeFromSuperlayer];
-    [self stopVideo];
+    [_player pause];
+    _player = nil;
+    _output = nil;
+    [self updatePlayback];
     _media = nil;
     _shown = file;
     _placeholder.hidden = file != nil;
@@ -129,33 +131,27 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
         _media.contents = [[NSImage alloc] initWithContentsOfURL:file];
         return;
     }
-    // An AVPlayerLayer can be handed straight to the display hardware, which flashes black bars at the preview's
-    // edges and never shows up in screen recordings. Drawing each frame as an image keeps it in the window.
+    // Not an AVPlayerLayer: macOS can hand that to the display hardware, which draws black bars at the preview's edges.
     AVPlayerItem *item = [AVPlayerItem playerItemWithURL:file];
     _output = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:@{(id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)}];
     [item addOutput:_output];
     _player = [AVPlayer playerWithPlayerItem:item];
     _player.muted = YES;
     _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-    __weak AVPlayer *player = _player;
-    _loop = [NSNotificationCenter.defaultCenter addObserverForName:AVPlayerItemDidPlayToEndTimeNotification object:item queue:NSOperationQueue.mainQueue
-                                                        usingBlock:^(NSNotification *_) { [player seekToTime:kCMTimeZero]; }];
-    [self viewDidMoveToWindow];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(rewind:) name:AVPlayerItemDidPlayToEndTimeNotification object:item];
+    [self updatePlayback];
 }
 
-- (void)stopVideo {
-    [_link invalidate];
-    _link = nil;
-    if (_loop) [NSNotificationCenter.defaultCenter removeObserver:_loop];
-    _loop = nil;
-    [_player pause];
-    _player = nil;
-    _output = nil;
+- (void)rewind:(NSNotification *)note {
+    [_player seekToTime:kCMTimeZero];
 }
 
-// Plays only while the page is on screen.
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    [self updatePlayback];
+}
+
+- (void)updatePlayback {
     [_link invalidate];
     _link = nil;
     if (!self.window || !_player) return [_player pause];
@@ -176,10 +172,6 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [CATransaction setDisableActions:YES];
     _media.contents = (__bridge_transfer id)image;
     [CATransaction commit];
-}
-
-- (void)dealloc {
-    [self stopVideo];
 }
 
 - (void)updateLayer {
