@@ -134,6 +134,13 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [self.layer addSublayer:_media];
 }
 
+// A border drawn over the media, so a light video doesn't blend into a light window.
+- (void)updateLayer {
+    [super updateLayer];
+    self.layer.borderWidth = 1;
+    self.layer.borderColor = NSColor.separatorColor.CGColor;
+}
+
 - (void)layout {
     [super layout];
     [CATransaction begin];
