@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eu
+cd "$(dirname "$0")/.."
+mkdir -p build
+clang -arch arm64 -mmacosx-version-min=14.0 -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter \
+    -Isrc/dylib -framework AppKit -framework QuartzCore tests/peek.m \
+    src/dylib/Patches/Peek/{Peek,Open,Controller,Overlay,Animation,ABI}.m \
+    src/dylib/StdPatch/{Views,Hook,App}.m -o build/peek-tests
+build/peek-tests
