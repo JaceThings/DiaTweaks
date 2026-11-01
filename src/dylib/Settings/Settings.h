@@ -34,17 +34,10 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 - (void)sync;
 @end
 
-// A patch, or a command when `patch` is NULL.
-typedef struct {
-    DPPatch *patch;
-    __unsafe_unretained NSString *key, *title, *detail, *symbol, *tint, *where;
-} DPItem;
-
-DPItem DPPatchItem(DPPatch *patch);
 void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option));
 NSString *DPWhyDisabled(DPPatch *patch);
 NSString *DPWhyHidden(DPPatch *patch);
-NSURL *DPWikiURL(DPItem item);
+NSURL *DPWikiURL(DPPatch *patch);
 
 @interface DPPreviewView : DPFillView
 - (instancetype)initWithKey:(NSString *)key;
@@ -52,7 +45,7 @@ NSURL *DPWikiURL(DPItem item);
 @end
 
 @interface DPPageView : NSStackView
-- (instancetype)initWithItem:(DPItem)item;
+- (instancetype)initWithPatch:(DPPatch *)patch;
 - (void)sync;
 @end
 
