@@ -1,5 +1,6 @@
 #include "fake_service.h"
 #include "channel.h"
+#include "runtime.h"
 #include <future>
 #include <iostream>
 #include <filesystem>
@@ -106,11 +107,17 @@ static void session_tests() {
     check(tap->SetSite(nullptr));
     // Like diagnostics, retain the module until process exit, even after stop.
 }
-int main() {
+int wmain(int argc, wchar_t** argv) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     try {
-        property_tests(); session_tests();
-        std::cout << "PASS: restore policy, failure rollback, IPC, UI-thread dispatch, timer and disconnect\n";
+        if (argc == 3 && wcscmp(argv[1], L"--runtime") == 0) {
+            RuntimeLibrary runtime(argv[2]);
+            require(runtime.symbol("InitializeXamlDiagnosticsEx") != nullptr, "diagnostics export");
+            std::cout << "PASS: diagnostics runtime loads; temporary staging=" << runtime.staged() << "; no target attachment attempted\n";
+        } else {
+            property_tests(); session_tests();
+            std::cout << "PASS: restore policy, failure rollback, IPC, UI-thread dispatch, timer and disconnect\n";
+        }
     } catch (HRESULT hr) { std::cerr << "HRESULT failure: " << std::hex << hr << '\n'; return 1; }
       catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
     CoUninitialize();

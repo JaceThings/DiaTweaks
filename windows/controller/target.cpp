@@ -1,4 +1,5 @@
 #include "target.h"
+#include "runtime.h"
 #include <tlhelp32.h>
 #include <appmodel.h>
 #include <vector>
@@ -59,20 +60,20 @@ Target find_target(DWORD requestedPid) {
 
 HRESULT attach(const Target& target, const std::filesystem::path& dll, const std::wstring& initialization) {
     // Load the exact diagnostics runtime already loaded by this Dia process.
-    HMODULE framework = LoadLibraryExW(target.framework.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!framework) return last_error();
+    RuntimeLibrary framework(target.framework);
+    if (framework.staged()) std::wcout << L"Loaded an exact temporary copy of the installed diagnostics runtime.\n";
     using Initialize = HRESULT(WINAPI*)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR, CLSID, LPCWSTR);
-    auto initialize = reinterpret_cast<Initialize>(GetProcAddress(framework, "InitializeXamlDiagnosticsEx"));
+    auto initialize = reinterpret_cast<Initialize>(framework.symbol("InitializeXamlDiagnosticsEx"));
     HRESULT hr = HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
     if (initialize) {
         const auto deadline = GetTickCount64() + 10000;
         for (int i = 1; i <= 10000 && GetTickCount64() < deadline; ++i) {
             auto endpoint = L"WinUIVisualDiagConnection" + std::to_wstring(i);
             hr = initialize(endpoint.c_str(), target.pid, L"", dll.c_str(), TapClsid, initialization.c_str());
+            if (hr != HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) std::wcerr << L"Diagnostics endpoint " << endpoint << L" returned 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << L'\n';
             if (hr != HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) break;
         }
     }
-    FreeLibrary(framework);
     return hr;
 }
 }

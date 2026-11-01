@@ -30,8 +30,10 @@ int wmain(int argc, wchar_t** argv) {
     }
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     int exitCode = 0;
+    const wchar_t* stage = L"initialize COM";
     try {
         check(com);
+        stage = L"find Dia UI process";
         const auto target = find_target(requestedPid);
         std::wcout << L"Dia UI process: " << target.pid << L"\nDiagnostics: " << target.framework.c_str() << L'\n';
         if (!checkOnly) {
@@ -39,8 +41,11 @@ int wmain(int argc, wchar_t** argv) {
             if (!GetModuleFileNameW(nullptr, executable, 32768)) throw last_error();
             auto dll = std::filesystem::path(executable).parent_path() / L"DiaTweaksTap.dll";
             if (!std::filesystem::is_regular_file(dll)) throw HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+            stage = L"create controller IPC channel";
             Channel channel(target.pid);
+            stage = L"attach WinUI diagnostics TAP";
             check(attach(target, dll, channel.name));
+            stage = L"wait for TAP handshake";
             const auto deadline = GetTickCount64() + 10000;
             while (read_flag(channel.shared->ready) == 0 && GetTickCount64() < deadline) Sleep(25);
             if (read_flag(channel.shared->ready) != 1) {
@@ -84,8 +89,9 @@ int wmain(int argc, wchar_t** argv) {
             std::wcout << L"Session ending. Restart Dia before attaching another probe build.\n";
         }
     } catch (HRESULT hr) {
-        std::wcerr << L"Probe failed: 0x" << std::hex << static_cast<unsigned long>(hr)
-            << L"\nOpen Dia first; close other probes/debuggers. If already attached, restart Dia.\n";
+        std::wcerr << L"Probe failed during " << stage << L": 0x" << std::hex << static_cast<unsigned long>(hr) << L'\n';
+        if (hr == E_ACCESSDENIED) std::wcerr << L"Access denied. The process was found, but the operation above was refused.\n";
+        else if (hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) std::wcerr << L"Close other probes and restart Dia before attaching again.\n";
         exitCode = 1;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; exitCode = 1; }
     if (SUCCEEDED(com)) CoUninitialize();

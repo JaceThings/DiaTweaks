@@ -49,8 +49,12 @@ are session-scoped and deliberately distinct from addresses. Inspect and visuall
 identify the intended native control before pulsing it. Pulse accepts 1–30
 seconds and at most one active override per UI thread. It has no saved settings.
 
-The probe changes an in-memory property only. It does not copy, patch, re-sign,
-replace or update the installed Dia package. The DLL remains resident but inert
+The probe does not patch, re-sign, replace or update the installed Dia package.
+If Windows denies loading its diagnostics runtime from WindowsApps, the controller
+copies that one DLL into a unique temporary directory and loads those exact bytes
+locally. It attempts cleanup on exit; a file still in use may remain in the temp
+directory. Do not distribute this runtime DLL. The TAP changes an in-memory
+property only. The TAP DLL remains resident but inert
 after the session ends. **Restart Dia before attaching again or rebuilding a
 loaded DLL.** Keep other XAML diagnostic tools detached during this experiment.
 
@@ -69,6 +73,19 @@ screenshots, both tab layouts, and multiple Dia windows remain to be tested.
 Computer Use rejected access to Dia during development, so no live proof is
 included. Test shared-memory access also requires running outside Codex's
 restricted sandbox; normal same-user terminal execution is the intended mode.
+
+The installed 1.4.0.424 diagnostics DLL was also checked separately: loading
+directly from WindowsApps returns Access denied, while loading the exact staged
+bytes succeeds and exposes `InitializeXamlDiagnosticsEx`. This check does not
+attach to Dia. To repeat it:
+
+```powershell
+.\windows\build\Release\prototype-tests.exe --runtime 'C:\Program Files\WindowsApps\TheBrowserCompany.Dia_1.4.0.424_x64__ttt1ap7aakyb4\Microsoft.Internal.FrameworkUdk.dll'
+```
+
+Probe failures now name their stage. Only enter commands such as `tree Button`
+after the probe prints `Attached` and its `>` prompt. At a PowerShell `PS ...>`
+prompt, `tree` is Windows' folder-listing command.
 
 ## Limits
 
