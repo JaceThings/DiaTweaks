@@ -50,7 +50,7 @@ DP_PATCH(DPKeepWindowsActive) {
     .key = @"keepWindowsActive",
     .order = 90,
     .title = @"Keep windows active",
-    .detail = @"Keep a window’s deep shadow and sidebar colour after you click into another app.",
+    .detail = @"Keep a window’s deep shadow and sidebar colour after you click into another app. Experimental.",
     .symbol = @"macwindow",
     .tint = @"systemIndigoColor",
     .section = @"Window",
