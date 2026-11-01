@@ -1,0 +1,32 @@
+name: Windows review build
+on:
+  pull_request:
+    paths: ['windows/**', 'shared/**', 'scripts/sync-feature-catalog.py', '.github/workflows/windows.yml']
+  push:
+    branches: ['codex/windows-winui-prototype']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: python scripts/sync-feature-catalog.py --check
+      - name: Obtain pinned SDK metadata
+        shell: pwsh
+        run: ./windows/prepare-sdk.ps1
+      - name: Build portable launcher and test adapters
+        shell: pwsh
+        run: ./windows/build-settings.ps1 -MetadataPath "$PWD/windows/build/public-sdk"
+      - name: Package tester ZIP
+        shell: pwsh
+        run: ./windows/package.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiaTweaks-Windows-x64
+          path: windows/build/DiaTweaks-Windows-x64.zip
+          if-no-files-found: error

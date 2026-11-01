@@ -1,0 +1,4 @@
+LIBRARY DiaTweaksTap
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

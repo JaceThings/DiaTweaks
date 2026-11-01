@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "features": [
+    {
+      "key": "edgeToEdge",
+      "title": "Edge-to-edge web content",
+      "detail": "Remove the padding between web pages and the window edge.",
+      "section": "Page",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 10,
+      "defaultOn": true,
+      "source": "src/dylib/Patches/EdgeToEdge/EdgeToEdge.m"
+    },
+    {
+      "key": "squareSidebarCorners",
+      "title": "Square corners by the sidebar",
+      "detail": "Let web pages meet the sidebar with straight edges.",
+      "section": "Page",
+      "requires": "edgeToEdge",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 20,
+      "defaultOn": true,
+      "source": "src/dylib/Patches/EdgeToEdge/SquareCorners.m"
+    },
+    {
+      "key": "hideToolbar",
+      "title": "Hide toolbar",
+      "detail": "Remove the bar with the address, navigation buttons and extensions. Experimental.",
+      "section": "Toolbar",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 30,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/HideToolbar/HideToolbar.m"
+    },
+    {
+      "key": "revealToolbarOnHover",
+      "title": "Reveal toolbar on hover",
+      "detail": "Show the hidden toolbar while the pointer is at the top of the page.",
+      "section": "Toolbar",
+      "requires": "hideToolbar",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 40,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/HideToolbar/RevealOnHover.m"
+    },
+    {
+      "key": "hideSidebarButton",
+      "title": "Hide sidebar button",
+      "detail": "Hide the sidebar toggle at the top left of the toolbar.",
+      "section": "Toolbar",
+      "requires": "",
+      "disabledBy": "hideToolbar",
+      "kind": "toggle",
+      "order": 50,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/HideSidebarButton/HideSidebarButton.m"
+    },
+    {
+      "key": "hideChatButton",
+      "title": "Hide Chat button",
+      "detail": "Hide the Chat button at the top right of the toolbar.",
+      "section": "Toolbar",
+      "requires": "",
+      "disabledBy": "hideToolbar",
+      "kind": "toggle",
+      "order": 60,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/HideChatButton/HideChatButton.m"
+    },
+    {
+      "key": "hideChatsButton",
+      "title": "Hide Chats button",
+      "detail": "Hide the Chats button in the tab bar or sidebar.",
+      "section": "Sidebar and tab bar",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 70,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/HideChatsButton/HideChatsButton.m"
+    },
+    {
+      "key": "hideRecentTabsButton",
+      "title": "Hide recent tabs button",
+      "detail": "Hide the recent tabs button in the tab bar or sidebar.",
+      "section": "Sidebar and tab bar",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 80,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/HideRecentTabsButton/HideRecentTabsButton.m"
+    },
+    {
+      "key": "keepWindowsActive",
+      "title": "Keep windows active",
+      "detail": "Keep a window’s deep shadow, sidebar colour and window buttons after you click into another app. Experimental.",
+      "section": "Window",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 90,
+      "defaultOn": false,
+      "source": "src/dylib/Patches/KeepWindowsActive/KeepWindowsActive.m"
+    },
+    {
+      "key": "passkeys",
+      "title": "Allow iCloud passkeys",
+      "detail": "Lets sites sign you in with passkeys saved in Apple Passwords, which a patched Dia can't reach. For each one, the original Dia that DiaTweaks keeps opens behind the Touch ID prompt, then quits. Your passkeys stay in Apple Passwords. Experimental.",
+      "section": "Passwords",
+      "requires": "",
+      "disabledBy": "",
+      "kind": "toggle",
+      "order": 100,
+      "defaultOn": true,
+      "source": "src/dylib/Patches/Passkeys/Passkeys.m"
+    },
+    {
+      "key": "groupTabsByDomain",
+      "title": "Group Tabs by Domain",
+      "detail": "Group a window’s tabs by site.",
+      "section": "Commands",
+      "kind": "command",
+      "order": 100,
+      "requires": "",
+      "disabledBy": "",
+      "defaultOn": false,
+      "source": "src/dylib/Settings/Overview.m"
+    }
+  ]
+}
