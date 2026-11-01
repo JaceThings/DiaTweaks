@@ -123,6 +123,9 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
         _looper = [AVPlayerLooper playerLooperWithPlayer:player templateItem:[AVPlayerItem playerItemWithURL:file]];
         AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
         layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        // A fully opaque video can be handed straight to the display, which ignores the rounded clip and flashes black
+        // bars at the edges. Not quite opaque keeps it composited with the rest of the window.
+        layer.opacity = 0.999;
         _media = layer;
         [player play];
     } else {
