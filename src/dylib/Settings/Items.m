@@ -1,9 +1,5 @@
 #import "Settings.h"
 
-DPItem DPPatchItem(DPPatch *patch) {
-    return (DPItem){patch, patch->key, patch->title, patch->detail, patch->symbol, patch->tint, nil};
-}
-
 void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option)) {
     for (NSUInteger i = 0; i < DPPatchCount; i++)
         if (DPRequired(DPPatches[i]) == patch) body(DPPatches[i]);
@@ -20,8 +16,8 @@ NSString *DPWhyHidden(DPPatch *patch) {
     return patch->on && disabler && disabler->on ? [NSString stringWithFormat:@"Hidden while %@ is on", disabler->title] : nil;
 }
 
-NSURL *DPWikiURL(DPItem item) {
-    NSString *page = [item.title stringByReplacingOccurrencesOfString:@" " withString:@"-"];
+NSURL *DPWikiURL(DPPatch *patch) {
+    NSString *page = [patch->title stringByReplacingOccurrencesOfString:@" " withString:@"-"];
     return [NSURL URLWithString:[@"https://github.com/JaceThings/DiaTweaks/wiki/" stringByAppendingString:page]];
 }
 
