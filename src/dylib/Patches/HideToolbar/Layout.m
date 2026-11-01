@@ -25,14 +25,38 @@ NSView *DPBookmarksUnder(NSView *pane, NSView *bar) {
 
 // Docking the sidebar moves the window's content container, with every pane in it, to the sidebar's right. A sidebar
 // that only floats over the page while the pointer is at the window's edge leaves it in place.
-BOOL DPSidebarDocked(NSView *pane) {
+static BOOL DPSidebarDocked(NSView *pane) {
     for (NSView *view = pane.superview; view; view = view.superview)
         if (DPIsKind(view, DPDiaContentContainer)) return DPBesideSidebar(view);
     return NO;
 }
 
-// How hidden the toolbar is in its place: the sidebar brings it back there.
-static CGFloat DPHidden(DPToolbarHover *hover) { return DPHideToolbar.progress * (1 - hover.sidebarProgress); }
+// Dia puts its new tab page in the pane, inside a view that handles swipes.
+static BOOL DPShowsNewTab(NSView *pane) {
+    for (NSView *sub in pane.subviews)
+        for (NSView *page in sub.subviews)
+            if (DPIsKind(page, DPDiaNewTabPage) && !page.hiddenOrHasHiddenAncestor) return YES;
+    return NO;
+}
+
+BOOL DPKeptInPlace(NSView *pane) {
+    return (DPShowToolbarWithSidebar.on && DPSidebarDocked(pane)) || (DPShowToolbarOnNewTab.on && DPShowsNewTab(pane));
+}
+
+NSString *DPVerifyKeptInPlace(DPPatch *patch) {
+    for (NSView *pane in DPFindViews(DPDiaContentPane)) {
+        DPToolbarHover *hover = [DPToolbarHover forPane:pane];
+        NSView *bar = DPSubview(pane, DPDiaToolbar);
+        if (!DPHideToolbar.on || !bar || bar.hiddenOrHasHiddenAncestor || hover.revealed) continue;
+        BOOL kept = DPKeptInPlace(pane);
+        if (kept && bar.alphaValue < 0.99) return @"toolbar stays hidden where an option keeps it";
+        if (!kept && bar.alphaValue > 0.01) return @"toolbar shows where nothing keeps it";
+    }
+    return nil;
+}
+
+// How hidden the toolbar is in its place, which an option can bring it back to.
+static CGFloat DPHidden(DPToolbarHover *hover) { return DPHideToolbar.progress * (1 - hover.inPlaceProgress); }
 
 // Hover animation changes opacity only; it never changes the page's reserved space.
 void DPApplyToolbarOpacity(DPToolbarHover *hover) {

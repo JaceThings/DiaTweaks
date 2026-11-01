@@ -2,6 +2,8 @@
 // DPHook logs every class or method it can't find, so `log stream --predicate 'process == "Dia"'` shows which.
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
+#define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
+#define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
 #define DPDiaSidebarHeader      "_TtC10TabSidebar17SidebarHeaderView"
 #define DPDiaSidebarFooter      "_TtC10TabSidebar26SidebarContainerFooterView"
 #define DPDiaSidebarController  "_TtC10TabSidebar30SidebarContainerViewController"
@@ -10,6 +12,7 @@
 #define DPDiaLibraryCell        "_TtC10TabSidebar15LibraryCellView"
 #define DPDiaContentPane        "_TtC11ContentPane15ContentPaneView"
 #define DPDiaContentContainer   "_TtC6Window20ContentContainerView"
+#define DPDiaNewTabPage         "NewTabPage.NewTabPageContentView"
 #define DPDiaShadowView         "_TtC5ARCUI10ShadowView"
 #define DPDiaBrowser            "ArcBrowser"
 #define DPDiaBrowserDelegate    "_TtC3ADK15ChromiumBrowser"

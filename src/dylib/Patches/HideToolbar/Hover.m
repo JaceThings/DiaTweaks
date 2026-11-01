@@ -41,7 +41,7 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
 - (void)dealloc {
     [_animation invalidate];
     [_hideTimer invalidate];
-    [_sidebarAnimation invalidate];
+    [_inPlaceAnimation invalidate];
     if (_tracking) [_pane removeTrackingArea:_tracking];
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
@@ -91,17 +91,17 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     DPApplyToolbar(self.pane);
 }
 
-// Unlike a hover reveal, the sidebar brings the toolbar back into its place, so the page moves down with each frame.
-- (void)setForSidebar:(BOOL)forSidebar {
-    if (_forSidebar == forSidebar) return;
-    _forSidebar = forSidebar;
-    [self.sidebarAnimation invalidate];
+// Unlike a hover reveal, this brings the toolbar back into its place, so the page moves down with each frame.
+- (void)setInPlace:(BOOL)inPlace {
+    if (_inPlace == inPlace) return;
+    _inPlace = inPlace;
+    [self.inPlaceAnimation invalidate];
     __weak DPToolbarHover *weakSelf = self;
-    self.sidebarAnimation = DPEase(self.sidebarProgress, forSidebar, ^(CGFloat value, BOOL done) {
+    self.inPlaceAnimation = DPEase(self.inPlaceProgress, inPlace, ^(CGFloat value, BOOL done) {
         DPToolbarHover *me = weakSelf;
         if (!me.pane) return;
-        me.sidebarProgress = value;
-        if (done) me.sidebarAnimation = nil;
+        me.inPlaceProgress = value;
+        if (done) me.inPlaceAnimation = nil;
         DPApplyToolbar(me.pane);
     });
 }
@@ -130,10 +130,10 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
 - (void)updateForBar:(NSView *)bar bookmarks:(NSView *)bookmarks {
     self.bar = bar;
     self.bookmarks = bookmarks;
-    self.forSidebar = DPShowToolbarWithSidebar.on && DPSidebarDocked(self.pane);
+    self.inPlace = DPKeptInPlace(self.pane);
     NSRect rect = NSZeroRect;
-    // Nothing to reveal while the sidebar already shows the toolbar.
-    if (DPHideToolbar.on && DPRevealToolbarOnHover.on && !self.forSidebar && !bar.hiddenOrHasHiddenAncestor) {
+    // Nothing to reveal while the toolbar is already in its place.
+    if (DPHideToolbar.on && DPRevealToolbarOnHover.on && !self.inPlace && !bar.hiddenOrHasHiddenAncestor) {
         rect = DPLaidOutFrame(bar);
         if (bookmarks) rect = NSUnionRect(rect, DPLaidOutFrame(bookmarks));
         rect = NSIntersectionRect(rect, self.pane.bounds);
