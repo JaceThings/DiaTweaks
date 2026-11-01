@@ -59,11 +59,11 @@ static void writeMessage(NSDictionary *message) {
 
 static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name" : @"NotAllowedError", @"message" : message } }; }
 
-static NSArray<NSString *> *const kAccountStore = @[ @"global_key_value_store.db", @"global_key_value_store.db-wal", @"global_key_value_store.db-shm" ];
+static NSArray<NSString *> *accountStore(void) { return @[ @"global_key_value_store.db", @"global_key_value_store.db-wal", @"global_key_value_store.db-shm" ]; }
 
 static NSArray *modificationDates(NSString *folder) {
     NSMutableArray *dates = [NSMutableArray array];
-    for (NSString *name in kAccountStore)
+    for (NSString *name in accountStore())
         [dates addObject:[NSFileManager.defaultManager attributesOfItemAtPath:[folder stringByAppendingPathComponent:name] error:nil].fileModificationDate ?: NSNull.null];
     return dates;
 }
@@ -75,7 +75,7 @@ static void signInAsDia(NSString *userData) {
     [files createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
     for (int tries = 0; tries < 5; tries++) {
         NSArray *before = modificationDates(dia);
-        for (NSString *name in kAccountStore) {
+        for (NSString *name in accountStore()) {
             [files removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
             [files copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
         }
