@@ -46,8 +46,12 @@ NSURL *DPWikiURL(DPPatch *patch) {
 }
 
 - (NSView *)withHiddenIcon {
-    NSStackView *stack = [NSStackView stackViewWithViews:@[self.hiddenIcon, self]];
+    NSStackView *stack = [NSStackView new];
     stack.spacing = 8;
+    // Keeps the eye in place while hidden, so it doesn't slide in when it shows. Set before adding it, since sync may have hidden it already.
+    stack.detachesHiddenViews = NO;
+    [stack addArrangedSubview:self.hiddenIcon];
+    [stack addArrangedSubview:self];
     return stack;
 }
 

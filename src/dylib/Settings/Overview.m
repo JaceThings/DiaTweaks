@@ -50,6 +50,7 @@
             NSImageView *eye = DPSymbol(@"eye.slash", 12, NSColor.secondaryLabelColor);
             [self.sectionEyes setObject:eye forKey:title];
             NSStackView *row = [NSStackView new];
+            row.detachesHiddenViews = NO;  // As in -[DPPatchSwitch withHiddenIcon].
             [row addView:header inGravity:NSStackViewGravityLeading];
             [row addView:eye inGravity:NSStackViewGravityTrailing];
             header = row;
