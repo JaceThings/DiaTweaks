@@ -14,7 +14,7 @@ public:
     LONGLONG metadata = 0;
     BaseValueSource source = BaseValueSourceDefault;
     std::wstring type = L"Microsoft.UI.Xaml.Visibility";
-    bool ignoreWrites = false, failWriteOnce = false;
+    bool ignoreWrites = false, failWriteOnce = false, numeric = false;
     int clears = 0, sets = 0;
     HRESULT STDMETHODCALLTYPE AdviseVisualTreeChange(IVisualTreeServiceCallback* callback) override {
         SendMessageW(ui, WM_APP + 1, 0, reinterpret_cast<LPARAM>(callback)); return S_OK;
@@ -32,7 +32,7 @@ public:
         (*sources)->Source = local ? BaseValueSourceLocal : source;
         auto& p = **values;
         p.Index = 17; p.Type = SysAllocString(type.c_str()); p.PropertyName = SysAllocString(L"Visibility");
-        p.Value = SysAllocString(collapsed ? L"Collapsed" : L"Visible"); p.MetadataBits = metadata;
+        p.Value = SysAllocString(numeric ? (collapsed ? L"1" : L"0") : (collapsed ? L"Collapsed" : L"Visible")); p.MetadataBits = metadata;
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE CreateInstance(BSTR, BSTR text, InstanceHandle* result) override {

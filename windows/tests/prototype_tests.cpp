@@ -19,6 +19,12 @@ static void property_tests() {
     service->local = true;
     require(lease.pulse(service.Get(), 42, 1) == S_OK, "collapse local literal");
     require(lease.restore(service.Get()) == S_OK && service->local && !service->collapsed, "restore local literal");
+    service->numeric = true;
+    require(lease.pulse(service.Get(), 42, 1) == S_OK && service->collapsed, "collapse numeric local visibility");
+    require(lease.restore(service.Get()) == S_OK && service->local && !service->collapsed, "restore numeric local visibility");
+    service->local = false;
+    require(lease.pulse(service.Get(), 42, 1) == S_OK && service->collapsed, "collapse numeric default visibility");
+    require(lease.restore(service.Get()) == S_OK && !service->local && !service->collapsed, "clear numeric default override");
     service->local = false; service->metadata = IsValueBindingExpression;
     require(lease.pulse(service.Get(), 42, 1) == E_NOTIMPL, "preserve binding");
     const auto diagnostic = describe_visibility(service.Get(), 42);
@@ -56,6 +62,7 @@ static LRESULT CALLBACK fixture_proc(HWND window, UINT message, WPARAM wp, LPARA
 }
 static void session_tests() {
     auto service = Microsoft::WRL::Make<FakeService>();
+    service->numeric = true;
     WNDCLASSW wc{};
     wc.lpfnWndProc = fixture_proc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"DiaTweaks.TestFixture";
     require(RegisterClassW(&wc) != 0, "register fixture");

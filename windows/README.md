@@ -70,6 +70,9 @@ duplicate controllers, and refusal of bindings and animations.
 The first live attachment also succeeded, returning controls including
 `ChatButtonHost`, `SidebarToggleButton`, and navigation buttons. The initial
 visibility eligibility checks rejected the inspected controls as unsupported.
+Further inspection identified numeric enum serialization as the cause; the
+adapter now accepts the observed `0`/`1` Visibility values. A live pulse using
+that fix still needs verification.
 See [live-probe.md](live-probe.md) for the results and remaining checks. Real
 hide/restore, screenshots, both tab layouts, and multiple windows remain
 unverified. Test shared-memory access requires running outside Codex's
@@ -97,7 +100,7 @@ prompt, `tree` is Windows' folder-listing command.
   arbitrary properties; structural names can still be app supplied.
 - Only literal `Visibility` values from local, default, built-in style or style
   sources are eligible. Bindings, expressions, handles, animation and unfamiliar
-  enum representations are refused.
+  enum representations other than Visible/Collapsed or their `0`/`1` values are refused.
 - Restoration runs on the owning UI thread. A hung UI delays it. A changed app
   value is preserved when detectable; an app writing the same `Collapsed` value
   cannot be distinguished from the probe's override.

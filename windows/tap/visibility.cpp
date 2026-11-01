@@ -38,6 +38,10 @@ HRESULT read_visibility(IVisualTreeService* service, InstanceHandle handle, Visi
     }
     if (!found) return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
     if (result.type != L"Microsoft.UI.Xaml.Visibility" && result.type != L"Windows.UI.Xaml.Visibility") return E_NOTIMPL;
+    // WinUI diagnostics can serialize this enum as its underlying integer.
+    // Normalize only the two defined values after validating the enum type.
+    if (result.value == L"0") result.value = L"Visible";
+    else if (result.value == L"1") result.value = L"Collapsed";
     if (result.value != L"Visible" && result.value != L"Collapsed") return E_NOTIMPL;
     return S_OK;
 }
