@@ -48,6 +48,7 @@ NSURL *DPWikiURL(DPItem item);
 
 @interface DPPreviewView : DPFillView
 - (instancetype)initWithKey:(NSString *)key;
++ (void)preload;
 @end
 
 @interface DPPageView : NSStackView

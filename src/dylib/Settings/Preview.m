@@ -19,14 +19,6 @@ void DPInstallPreviews(void) {
     DPHook(DPDiaSidebarFooter, @selector(viewDidMoveToWindow), (IMP)DPSidebarFooter_viewDidMoveToWindow);
 }
 
-@implementation DPPreviewView {
-    NSString *_key, *_layout;
-    NSArray<NSString *> *_names;
-    CALayer *_media;
-    AVPlayerLooper *_looper;
-    NSTextField *_placeholder;
-}
-
 static NSURL *DPCachedPreview(NSString *name) {
     NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
     NSURL *dir = [caches URLByAppendingPathComponent:@"DiaPatches/previews" isDirectory:YES];
@@ -34,11 +26,60 @@ static NSURL *DPCachedPreview(NSString *name) {
     return [dir URLByAppendingPathComponent:name];
 }
 
+static NSArray<NSString *> *DPPreviewNames(NSString *key) {
+    NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
+    NSMutableArray<NSString *> *names = [NSMutableArray new];
+    for (NSString *prefix in @[layout, other])
+        for (NSString *ext in @[@"mp4", @"png"]) [names addObject:[NSString stringWithFormat:@"%@-%@.%@", prefix, key, ext]];
+    return names;
+}
+
+// Calls `done` with the first of `names` the wiki has, cached, or nil if it has none or the download failed.
+static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file, BOOL changed)) {
+    if (!names.count) return done(nil, NO);
+    NSURL *cached = DPCachedPreview(names[0]);
+    NSURL *url = [NSURL URLWithString:[@DP_PREVIEWS stringByAppendingString:names[0]]];
+    [[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSInteger status = [(NSHTTPURLResponse *)response statusCode];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error || (status != 200 && status != 404)) return done(nil, NO);
+            if (status == 404) {
+                [NSFileManager.defaultManager removeItemAtURL:cached error:nil];
+                return DPFetchPreview([names subarrayWithRange:NSMakeRange(1, names.count - 1)], done);
+            }
+            BOOL changed = ![[NSData dataWithContentsOfURL:cached] isEqualToData:data];
+            if (changed) [data writeToURL:cached atomically:YES];
+            done(cached, changed);
+        });
+    }] resume];
+}
+
+@implementation DPPreviewView {
+    NSString *_key, *_layout;
+    NSArray<NSString *> *_names;
+    NSURL *_shown;
+    CALayer *_media;
+    AVPlayerLooper *_looper;
+    NSTextField *_placeholder;
+}
+
++ (void)preload {
+    static NSMutableSet<NSString *> *started;
+    if (!started) started = [NSMutableSet new];
+    for (NSUInteger i = 0; i < DPPatchCount; i++) {
+        NSArray<NSString *> *names = DPPreviewNames(DPPatches[i]->key);
+        if ([started containsObject:names[0]]) continue;
+        [started addObject:names[0]];
+        DPFetchPreview(names, ^(NSURL *file, BOOL changed) {});
+    }
+}
+
 - (instancetype)initWithKey:(NSString *)key {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _key = key;
     _placeholder = DPLabel(@"No preview yet", 12, NSFontWeightRegular, NSColor.tertiaryLabelColor);
     _placeholder.translatesAutoresizingMaskIntoConstraints = NO;
+    _placeholder.hidden = YES;
     [self addSubview:_placeholder];
     [_placeholder.centerXAnchor constraintEqualToAnchor:self.centerXAnchor].active = YES;
     [_placeholder.centerYAnchor constraintEqualToAnchor:self.centerYAnchor].active = YES;
@@ -48,48 +89,32 @@ static NSURL *DPCachedPreview(NSString *name) {
 }
 
 - (void)load {
-    NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
+    NSString *layout = DPTabLayout();
     if ([layout isEqual:_layout]) return;
     _layout = layout;
-    NSMutableArray<NSString *> *names = [NSMutableArray new];
-    for (NSString *prefix in @[layout, other])
-        for (NSString *ext in @[@"mp4", @"png"]) [names addObject:[NSString stringWithFormat:@"%@-%@.%@", prefix, _key, ext]];
-    _names = names;
-    for (NSString *name in _names)
+    NSArray<NSString *> *names = _names = DPPreviewNames(_key);
+    for (NSString *name in names)
         if ([DPCachedPreview(name) checkResourceIsReachableAndReturnError:nil]) {
             [self show:DPCachedPreview(name)];
             break;
         }
-    [self fetch:_names];
-}
-
-- (void)fetch:(NSArray<NSString *> *)names {
-    if (!names.count) return [self show:nil];
-    NSURL *cached = DPCachedPreview(names[0]);
-    NSURL *url = [NSURL URLWithString:[@DP_PREVIEWS stringByAppendingString:names[0]]];
     __weak DPPreviewView *weakSelf = self;
-    NSArray<NSString *> *current = _names;
-    [[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSInteger status = [(NSHTTPURLResponse *)response statusCode];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            DPPreviewView *view = weakSelf;
-            if (!view || view->_names != current) return;
-            if (error || (status != 200 && status != 404)) return;
-            if (status == 404) {
-                [NSFileManager.defaultManager removeItemAtURL:cached error:nil];
-                return [view fetch:[names subarrayWithRange:NSMakeRange(1, names.count - 1)]];
-            }
-            if ([[NSData dataWithContentsOfURL:cached] isEqualToData:data]) return;
-            [data writeToURL:cached atomically:YES];
-            [view show:cached];
-        });
-    }] resume];
+    DPFetchPreview(names, ^(NSURL *file, BOOL changed) {
+        DPPreviewView *view = weakSelf;
+        if (!view || view->_names != names) return;
+        if (!file) {
+            if (!view->_shown) [view show:nil];
+        } else if (changed || ![file isEqual:view->_shown]) {
+            [view show:file];
+        }
+    });
 }
 
 - (void)show:(NSURL *)file {
     [_media removeFromSuperlayer];
     _media = nil;
     _looper = nil;
+    _shown = file;
     _placeholder.hidden = file != nil;
     if (!file) return;
     if ([file.pathExtension isEqualToString:@"mp4"]) {
