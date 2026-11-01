@@ -56,7 +56,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
         if (!singleton || GetLastError() == ERROR_ALREADY_EXISTS) return 0;
         WNDCLASSW wc{}; wc.lpfnWndProc = window_proc; wc.hInstance = instance; wc.lpszClassName = L"DiaTweaks.Tray";
         if (!RegisterClassW(&wc)) throw last_error();
-        runner.window = CreateWindowExW(0, wc.lpszClassName, L"DiaTweaks", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, nullptr);
+        // A hidden top-level owner lets Windows dismiss tray popup menus normally.
+        runner.window = CreateWindowExW(0, wc.lpszClassName, L"DiaTweaks", 0, 0, 0, 0, 0, nullptr, nullptr, instance, nullptr);
         if (!runner.window) throw last_error();
         tray.hWnd = runner.window; tray.uID = 1; tray.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
         tray.uCallbackMessage = WM_APP + 1; tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
