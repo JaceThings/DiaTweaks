@@ -2,6 +2,7 @@
 #include "page.h"
 #include "entry_style.h"
 #include "content_host.h"
+#include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <sstream>
@@ -43,6 +44,8 @@ struct NativeSettings::Impl {
     std::unique_ptr<SettingsContentHost> contentHost;
     Source footerSource{};
     event_token clickToken{};
+    event_token doubleTapToken{};
+    bool doubleTapHooked = false;
     event_token invokedToken{}, selectionToken{};
     bool invokedHooked = false, selectionHooked = false;
     bool installed = false, available, on;
@@ -90,6 +93,13 @@ struct NativeSettings::Impl {
             invokedHooked = true;
             selectionToken = navigation.SelectionChanged([this](auto&&, auto&&) noexcept { return_to_native(); });
             selectionHooked = true;
+            doubleTapToken = entry.DoubleTapped([this](auto&&, const Input::DoubleTappedRoutedEventArgs& args) noexcept {
+                try {
+                    navigation.IsPaneOpen(!navigation.IsPaneOpen());
+                    args.Handled(true);
+                } catch (...) {}
+            });
+            doubleTapHooked = true;
             installed = true;
         } catch (...) {
             unhook_navigation();
@@ -139,6 +149,7 @@ struct NativeSettings::Impl {
         catch (...) { fail(E_FAIL, L"Could not return to native Settings"); }
     }
     void unhook_navigation() noexcept {
+        if (doubleTapHooked) { entry.DoubleTapped(doubleTapToken); doubleTapHooked = false; }
         if (invokedHooked) { navigation.ItemInvoked(invokedToken); invokedHooked = false; }
         if (selectionHooked) { navigation.SelectionChanged(selectionToken); selectionHooked = false; }
     }

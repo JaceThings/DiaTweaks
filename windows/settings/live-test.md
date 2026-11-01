@@ -82,3 +82,20 @@ checks cover the controller and override plumbing; they do not verify animation
 appearance. The final visual changes are awaiting a fresh-process live test.
 The recording and extracted frames stay in the ignored build directory and are
 not committed.
+
+The user confirmed the mirrored wand is correct and the transition looks right,
+but reported that the native marker remains on the previous category while
+Patches is open. The follow-up uses a saved Visibility override for each native
+indicator instead of an empty geometry clip. Probe status now reports the moving
+marker's current/target Y positions and the number of hidden native indicators.
+This correction is awaiting live confirmation.
+
+The user also reported that native category labels disappear when the sidebar
+is collapsed by double-clicking a category, while Patches retained its label.
+The follow-up synchronizes the Patches label with IsPaneOpen and handles a
+double-tap on its own button by toggling that property. The button's accessible
+name remains Patches in either mode. This behavior also awaits live confirmation.
+
+The combined `marker-fix` Debug output built successfully. Both CTest checks
+passed again, and the output DLL contains the marker position diagnostics and
+compact-label state diagnostics. No visual pass is inferred from those checks.

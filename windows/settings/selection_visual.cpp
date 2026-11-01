@@ -5,6 +5,7 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.UI.ViewManagement.h>
 #include <algorithm>
+#include <sstream>
 
 namespace dt {
 using namespace winrt;
@@ -27,9 +28,10 @@ struct SelectionVisual::Impl {
     NavigationViewItem originalItem{nullptr};
     Control originalPresenter{nullptr};
     Brush originalBackground{nullptr};
-    struct Mask { UIElement element; winrt::Windows::Foundation::IInspectable value; RectangleGeometry clip; };
+    struct Mask { UIElement element; winrt::Windows::Foundation::IInspectable value; };
     std::vector<Mask> masks;
     std::wstring error;
+    double destinationY = 0;
     Impl(const NavigationView& nav, const Button& button) : navigation(nav), entry(button) {
         pane = find_visual(nav, [](const FrameworkElement& e) {
             return e.Name() == L"PaneContentGrid" && e.try_as<Grid>();
@@ -57,12 +59,13 @@ struct SelectionVisual::Impl {
         if (!node || depth > 64) return;
         if (auto item = node.try_as<NavigationViewItem>()) {
             if (auto source = indicator(item)) {
-                auto value = source.ReadLocalValue(UIElement::ClipProperty());
+                auto value = source.ReadLocalValue(UIElement::VisibilityProperty());
                 // Refuse a binding/expression rather than replacing it.
-                if (value && value != DependencyProperty::UnsetValue() && !value.try_as<Geometry>())
-                    throw hresult_not_implemented();
-                RectangleGeometry clip; clip.Rect({0, 0, 0, 0});
-                masks.push_back({source, value, clip}); source.Clip(clip);
+                if (value != DependencyProperty::UnsetValue()) (void)unbox_value<Visibility>(value);
+                // Native NavigationView animates the indicator's composition
+                // visual. Hide the XAML element itself, rather than relying on
+                // an empty geometry clip surviving that composition animation.
+                masks.push_back({source, value}); source.Visibility(Visibility::Collapsed);
             }
             return;
         }
@@ -77,9 +80,9 @@ struct SelectionVisual::Impl {
     }
     void restore_masks() {
         for (const auto& mask : masks) {
-            if (mask.element.Clip() != mask.clip) continue;
-            if (mask.value == DependencyProperty::UnsetValue()) mask.element.ClearValue(UIElement::ClipProperty());
-            else mask.element.SetValue(UIElement::ClipProperty(), mask.value);
+            if (mask.element.Visibility() != Visibility::Collapsed) continue;
+            if (mask.value == DependencyProperty::UnsetValue()) mask.element.ClearValue(UIElement::VisibilityProperty());
+            else mask.element.SetValue(UIElement::VisibilityProperty(), mask.value);
         }
         masks.clear(); layer.Visibility(Visibility::Collapsed);
     }
@@ -92,6 +95,7 @@ struct SelectionVisual::Impl {
     }
     void animate(double target) {
         stop_motion();
+        destinationY = target;
         if (!winrt::Windows::UI::ViewManagement::UISettings{}.AnimationsEnabled()) {
             offset.Y(target); if (!active) restore_masks(); return;
         }
@@ -171,7 +175,11 @@ void SelectionVisual::set(bool active) noexcept {
 }
 void SelectionVisual::remove() noexcept { impl_->remove(); }
 std::wstring SelectionVisual::status() const {
-    return impl_->error.empty() ? std::wstring(L"Selection: ") + (impl_->active ? L"Patches active" : L"native category") + L"\n"
-        : L"Selection animation unavailable: " + impl_->error + L"\n";
+    if (!impl_->error.empty()) return L"Selection animation unavailable: " + impl_->error + L"\n";
+    std::wostringstream out;
+    out << L"Selection: " << (impl_->active ? L"Patches active" : L"native category")
+        << L"; marker Y=" << impl_->offset.Y() << L"; target=" << impl_->destinationY
+        << L"; hidden native markers=" << impl_->masks.size() << L"\n";
+    return out.str();
 }
 }

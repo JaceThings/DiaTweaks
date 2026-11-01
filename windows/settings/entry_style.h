@@ -14,12 +14,16 @@ class EntryStyle {
     bool nativePalette_ = false;
     std::unique_ptr<SelectionVisual> selection_;
     std::wstring selectionError_;
+    winrt::Microsoft::UI::Xaml::Controls::TextBlock label_{nullptr};
+    int64_t paneToken_ = 0;
+    bool paneHooked_ = false;
 public:
     EntryStyle(const winrt::Microsoft::UI::Xaml::Controls::NavigationView&,
                const winrt::Microsoft::UI::Xaml::Controls::Button&);
     void place_inline();
     void restore();
     void selected(bool);
+    void sync_pane();
     std::wstring placement() const;
 };
 }

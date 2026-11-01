@@ -1,6 +1,7 @@
 #include "entry_style.h"
 #include "wand_icon.h"
 #include "visual_tree.h"
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Markup.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -45,6 +46,7 @@ EntryStyle::EntryStyle(const NavigationView& navigation, const Button& entry) {
 </ResourceDictionary>)").as<ResourceDictionary>()); nativePalette_ = true; }
     catch (const hresult_error&) { /* Retain native Button theme if a palette key is unavailable. */ }
     entry.FontFamily(advanced.FontFamily()); entry.FontSize(advanced.FontSize());
+    Automation::AutomationProperties::SetName(entry, L"Patches");
     entry.FontWeight(advanced.FontWeight()); entry.Foreground(advanced.Foreground());
     entry.Background(advanced.Background() ? advanced.Background() : SolidColorBrush(winrt::Windows::UI::Color{0, 0, 0, 0}));
     entry.CornerRadius(advanced.CornerRadius());
@@ -71,7 +73,7 @@ EntryStyle::EntryStyle(const NavigationView& navigation, const Button& entry) {
         if (original.ActualWidth() > 0) iconSlot.Width(original.ActualWidth());
         if (original.ActualHeight() > 0) iconSlot.Height(original.ActualHeight());
     }
-    // Keep the complete SVG viewport, then scale it into the native icon cell.
+    // Keep the complete 20-unit SVG viewport, then scale it into the native icon cell.
     // Reducing PathIcon's bounds directly clips its geometry.
     icon.Width(20); icon.Height(20); icon.Name(L"DiaTweaksWandIcon");
     ScaleTransform mirror; mirror.ScaleX(-1);
@@ -81,14 +83,26 @@ EntryStyle::EntryStyle(const NavigationView& navigation, const Button& entry) {
     entry.Padding(Thickness{inset, 0, 12, 0});
     StackPanel content; content.Orientation(Orientation::Horizontal); content.Spacing(gap);
     content.Children().Append(iconSlot);
-    TextBlock label; label.Text(L"Patches"); label.VerticalAlignment(VerticalAlignment::Center);
-    content.Children().Append(label); entry.Content(content);
+    label_ = TextBlock{}; label_.Text(L"Patches"); label_.VerticalAlignment(VerticalAlignment::Center);
+    content.Children().Append(label_); entry.Content(content);
 }
 void EntryStyle::place_inline() {
     positioned_ = true;
     menuRow_.Height(GridLength{1, GridUnitType::Auto});
+    paneToken_ = navigation_.RegisterPropertyChangedCallback(NavigationView::IsPaneOpenProperty(), [this](auto&&, auto&&) noexcept {
+        try { sync_pane(); } catch (...) {}
+    });
+    paneHooked_ = true;
+    sync_pane();
+}
+void EntryStyle::sync_pane() {
+    label_.Visibility(navigation_.IsPaneOpen() ? Visibility::Visible : Visibility::Collapsed);
 }
 void EntryStyle::restore() {
+    if (paneHooked_) {
+        navigation_.UnregisterPropertyChangedCallback(NavigationView::IsPaneOpenProperty(), paneToken_);
+        paneHooked_ = false;
+    }
     if (selection_) selection_->remove();
     if (!positioned_) return;
     if (menuRow_.Height().GridUnitType == GridUnitType::Auto) {
@@ -111,6 +125,8 @@ std::wstring EntryStyle::placement() const {
         out << L"Layout: Patches top=" << p.Y << L"; Advanced bottom=" << a.Y + advanced_.ActualHeight()
             << L"; Patches/Advanced font=" << entry_.FontSize() << L"/" << advanced_.FontSize()
             << L"; palette=" << (nativePalette_ ? L"navigation" : L"native button fallback") << L"\n";
+        out << L"Pane: " << (navigation_.IsPaneOpen() ? L"expanded" : L"compact")
+            << L"; Patches label=" << (label_.Visibility() == Visibility::Visible ? L"visible" : L"collapsed") << L"\n";
         if (selection_) out << selection_->status();
         if (!selectionError_.empty()) out << L"Selection unavailable: " << selectionError_ << L"\n";
         return out.str();

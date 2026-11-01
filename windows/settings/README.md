@@ -31,13 +31,18 @@ its MIT license in `assets/LICENSE.fluent-icons`.
 
 The selection bridge copies the native blue marker's size, brush and radius,
 then animates it to Patches in 200 ms. While Patches is active, the native marker
-is temporarily clipped and its selected row uses the unselected visual state;
+is temporarily collapsed and its selected row uses the unselected visual state;
 Dia's SelectedItem, IsSelected and route keys remain untouched. Returning to a
 native category restores these visuals. The cached page also replays a 180 ms
 fade/slide on entry. Both animations respect Windows' animation setting.
 The bridge refuses unfamiliar template parts and reports the failure through
-the probe instead of changing the navigation model. The latest selection and
-wand refinements still require live visual confirmation.
+the probe instead of changing the navigation model. The user confirmed the wand
+and transition appearance. The native-marker suppression correction and compact
+pane behavior still require live confirmation.
+
+Patches follows IsPaneOpen so its label disappears in the native icon-only pane.
+Double-tapping its row toggles that same pane property. The button retains an
+accessible name in compact mode. Both hooks are removed on disconnect.
 
 The panel lists all nine patch definitions and the tab-grouping command from
 `shared/features.json`. Only Hide sidebar button is enabled. All other features
