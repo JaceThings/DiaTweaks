@@ -11,14 +11,15 @@ NSString *DPWhyDisabled(DPPatch *patch) {
     return required && !required->on ? [NSString stringWithFormat:@"Needs %@.", required->title] : nil;
 }
 
-// A patch's options bring back what it hides, like the hidden toolbar on hover, so with one on this still shows then.
-NSString *DPWhyHidden(DPPatch *patch) {
-    DPPatch *disabler = DPPatchNamed(patch->disabledBy);
-    if (!patch->on || !disabler || !disabler->on) return nil;
+// A patch's options bring back what it hides, like the hidden toolbar on hover, so with one on it doesn't hide for good.
+NSString *DPWhyHiddenBy(DPPatch *disabler) {
+    if (!disabler || !disabler->on) return nil;
     __block BOOL shownSometimes = NO;
     DPForEachOption(disabler, ^(DPPatch *option) { shownSometimes |= option->on; });
     return shownSometimes ? nil : [NSString stringWithFormat:@"Hidden while %@ is on", disabler->title];
 }
+
+NSString *DPWhyHidden(DPPatch *patch) { return patch->on ? DPWhyHiddenBy(DPPatchNamed(patch->disabledBy)) : nil; }
 
 NSURL *DPWikiURL(DPPatch *patch) {
     NSString *page = [patch->title stringByReplacingOccurrencesOfString:@" " withString:@"-"];
