@@ -67,6 +67,30 @@ static void writeMessage(NSDictionary *message) {
 
 static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name" : @"NotAllowedError", @"message" : message } }; }
 
+static NSArray<NSString *> *const kAccountStore = @[ @"global_key_value_store.db", @"global_key_value_store.db-wal", @"global_key_value_store.db-shm" ];
+
+static NSArray *modificationDates(NSString *folder) {
+    NSMutableArray *dates = [NSMutableArray array];
+    for (NSString *name in kAccountStore)
+        [dates addObject:[NSFileManager.defaultManager attributesOfItemAtPath:[folder stringByAppendingPathComponent:name] error:nil].fileModificationDate ?: NSNull.null];
+    return dates;
+}
+
+// Dia's account store signs the copy in. Dia may be writing to it, so it's copied until a copy starts and ends on the same files.
+static void signInAsDia(NSString *userData) {
+    NSFileManager *files = NSFileManager.defaultManager;
+    NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
+    [files createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
+    for (int tries = 0; tries < 5; tries++) {
+        NSArray *before = modificationDates(dia);
+        for (NSString *name in kAccountStore) {
+            [files removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
+            [files copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
+        }
+        if ([modificationDates(dia) isEqual:before]) return;
+    }
+}
+
 static void skipIntro(NSString *data) {
     NSString *preferences = [data stringByAppendingPathComponent:@"Library/Preferences/company.thebrowser.dia"];
     [[NSTask launchedTaskWithLaunchPath:@"/usr/bin/defaults" arguments:@[ @"write", preferences, @"hasPresentedOnboardingIntro", @"-bool", @"YES" ]] waitUntilExit];
@@ -80,6 +104,7 @@ static void forgetWindows(NSString *userData) {
 static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     NSString *data = [home stringByAppendingPathComponent:@"passkey-helper"];
     NSString *userData = [data stringByAppendingPathComponent:@"ud/User Data"];
+    signInAsDia(userData);
     skipIntro(data);
     forgetWindows(userData);
 
@@ -178,6 +203,9 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
         if (atOrigin(tools, session, origin)) break;
     }
     tellDia(@"show", pid);
+    // WebAuthn refuses a page without focus, which it only gets once Dia has brought the copy forward.
+    for (int tries = 0; tries < 30; tries++, usleep(100000))
+        if ([[tools send:@"Runtime.evaluate" params:@{ @"expression" : @"document.hasFocus()", @"returnByValue" : @YES } session:session][@"result"][@"result"][@"value"] boolValue]) break;
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
