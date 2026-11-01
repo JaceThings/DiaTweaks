@@ -78,7 +78,7 @@ static void DPInstallPasskeys(void) {
 }
 
 static void DPApplyPasskeys(DPPatch *patch) {
-    if (patch->on == gExtensionLoaded) return;
+    if (patch->on == gExtensionLoaded || patch->on != DPSavedOn(patch)) return;  // the self-test flips patches without saving
     NSAlert *alert = [NSAlert new];
     alert.messageText = patch->on ? @"Relaunch Dia to allow iCloud passkeys" : @"Relaunch Dia to stop using iCloud passkeys";
     [alert addButtonWithTitle:@"Relaunch"];
