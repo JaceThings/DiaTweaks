@@ -134,6 +134,12 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [self.layer addSublayer:_media];
 }
 
+- (void)updateLayer {
+    [super updateLayer];
+    self.layer.borderWidth = 1;
+    self.layer.borderColor = NSColor.separatorColor.CGColor;
+}
+
 - (void)layout {
     [super layout];
     [CATransaction begin];
