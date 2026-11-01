@@ -30,10 +30,11 @@ DWORD BackgroundRunner::run() noexcept {
                 if (read_flag(channel.shared->ready) != 1) throw HRESULT_FROM_WIN32(ERROR_TIMEOUT);
                 status(1); log(L"Attached; open Dia Settings for Patches.");
                 while (!stop && WaitForSingleObject(process.value, 0) == WAIT_TIMEOUT) {
+                    bool preferencesOkay = true;
                     const auto previous = preferences.mask();
                     std::optional<uint32_t> desired;
                     try { desired = preferences.incoming(reset.exchange(false)); }
-                    catch (...) { status(4); log(L"Invalid/unreadable preferences; current session retained."); }
+                    catch (...) { preferencesOkay = false; status(4); log(L"Invalid/unreadable preferences; current session retained."); }
                     if (desired) {
                         std::wstring response;
                         for (uint32_t i = 0; i < static_cast<uint32_t>(FeatureId::Count) && !stop; ++i) if (((*desired ^ previous) & (1u << i)) != 0)
@@ -42,8 +43,8 @@ DWORD BackgroundRunner::run() noexcept {
                     if (stop) break;
                     std::wstring response; check(channel.call({Command::Features, 0, 0}, response));
                     try { preferences.observed(static_cast<uint32_t>(read_flag(channel.shared->currentFeatureMask))); }
-                    catch (...) { status(4); log(L"Could not save switches; current session retained."); }
-                    if (response.find(L"Settings: installed") != response.npos) status(2);
+                    catch (...) { preferencesOkay = false; status(4); log(L"Could not save switches; current session retained."); }
+                    if (preferencesOkay && response.find(L"Settings: installed") != response.npos) status(2);
                     for (int i = 0; i < 10 && !stop; ++i) Sleep(100);
                 }
                 // The mapping survives Dia exiting, including its final toggle
