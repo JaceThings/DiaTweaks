@@ -101,6 +101,14 @@ static void forgetWindows(NSString *userData) {
         [NSFileManager.defaultManager removeItemAtPath:[userData stringByAppendingPathComponent:[@"Default" stringByAppendingPathComponent:saved]] error:nil];
 }
 
+static NSDictionary *sheetBounds(void) {
+    CGRect screen = CGDisplayBounds(CGMainDisplayID());
+    return @{
+        @"left" : @((int)(CGRectGetMidX(screen) - kSheetWidth / 2)), @"top" : @((int)(CGRectGetMidY(screen) - kSheetHeight / 2 - 100)),
+        @"width" : @(kSheetWidth), @"height" : @(kSheetHeight),
+    };
+}
+
 static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     NSString *data = [home stringByAppendingPathComponent:@"passkey-helper"];
     NSString *userData = [data stringByAppendingPathComponent:@"ud/User Data"];
@@ -110,7 +118,10 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
 
     NSString *app = [home stringByAppendingPathComponent:@"pristine/Dia.app/Contents/MacOS/Dia"];
     NSString *profile = [@"--user-data-dir=" stringByAppendingString:[data stringByAppendingPathComponent:@"ud"]];
-    const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, "--remote-debugging-pipe", "--mute-audio", NULL };
+    NSDictionary *bounds = sheetBounds();
+    NSString *size = [NSString stringWithFormat:@"--window-size=%@,%@", bounds[@"width"], bounds[@"height"]];
+    NSString *position = [NSString stringWithFormat:@"--window-position=%@,%@", bounds[@"left"], bounds[@"top"]];
+    const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, size.UTF8String, position.UTF8String, "--remote-debugging-pipe", "--mute-audio", NULL };
 
     NSMutableArray<NSString *> *environment = [NSMutableArray array];
     for (char **e = environ; *e; e++) [environment addObject:@(*e)];
@@ -189,12 +200,7 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
     }
     if (startup != DPStartupReady) return failure(@"The passkey copy of Dia didn't open.");
 
-    CGRect screen = CGDisplayBounds(CGMainDisplayID());
-    NSDictionary *bounds = @{
-        @"left" : @((int)(CGRectGetMidX(screen) - kSheetWidth / 2)), @"top" : @((int)(CGRectGetMidY(screen) - kSheetHeight / 2 - 100)),
-        @"width" : @(kSheetWidth), @"height" : @(kSheetHeight),
-    };
-    [tools send:@"Browser.setWindowBounds" params:@{ @"windowId" : windowId, @"bounds" : bounds } session:nil];
+    [tools send:@"Browser.setWindowBounds" params:@{ @"windowId" : windowId, @"bounds" : sheetBounds() } session:nil];
 
     NSString *session = [tools send:@"Target.attachToTarget" params:@{ @"targetId" : targetId, @"flatten" : @YES } session:nil][@"result"][@"sessionId"];
     // Any page at the origin works, and robots.txt runs none of the site's scripts.
