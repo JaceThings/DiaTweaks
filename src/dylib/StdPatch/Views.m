@@ -22,7 +22,7 @@ NSArray<NSView *> *DPFindViews(const char *className) {
     return views;
 }
 
-NSString *DPTabLayout(void) { return DPFindViews(DPDiaSidebarFooter).count ? @"sidebar" : @"top"; }
+NSString *DPTabLayout(void) { return DPFindViews(DPDiaSidebarFooter).count ? @"vertical" : @"horizontal"; }
 
 NSView *DPSubview(NSView *parent, const char *className) {
     for (NSView *sub in parent.subviews) if (DPIsKind(sub, className)) return sub;

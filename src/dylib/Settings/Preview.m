@@ -6,40 +6,45 @@
 #endif
 
 @implementation DPPreviewView {
-    NSString *_key;
+    NSArray<NSString *> *_names;
     CALayer *_media;
     AVPlayerLooper *_looper;
     NSTextField *_placeholder;
 }
 
-static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
+static NSURL *DPCachedPreview(NSString *name) {
     NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
     NSURL *dir = [caches URLByAppendingPathComponent:@"DiaPatches/previews" isDirectory:YES];
     [NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    return [dir URLByAppendingPathComponent:[key stringByAppendingPathExtension:ext]];
+    return [dir URLByAppendingPathComponent:name];
 }
 
+// Previews are named for the tab layout they were recorded in. The one matching Dia's layout wins, then the other.
 - (instancetype)initWithKey:(NSString *)key {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
-    _key = key;
+    NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
+    NSMutableArray<NSString *> *names = [NSMutableArray new];
+    for (NSString *prefix in @[layout, other])
+        for (NSString *ext in @[@"mp4", @"png"]) [names addObject:[NSString stringWithFormat:@"%@-%@.%@", prefix, key, ext]];
+    _names = names;
     _placeholder = DPLabel(@"No preview yet", 12, NSFontWeightRegular, NSColor.tertiaryLabelColor);
     _placeholder.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_placeholder];
     [_placeholder.centerXAnchor constraintEqualToAnchor:self.centerXAnchor].active = YES;
     [_placeholder.centerYAnchor constraintEqualToAnchor:self.centerYAnchor].active = YES;
-    for (NSString *ext in @[@"mp4", @"png"])
-        if ([DPCachedPreview(key, ext) checkResourceIsReachableAndReturnError:nil]) {
-            [self show:DPCachedPreview(key, ext)];
+    for (NSString *name in _names)
+        if ([DPCachedPreview(name) checkResourceIsReachableAndReturnError:nil]) {
+            [self show:DPCachedPreview(name)];
             break;
         }
-    [self fetch:@[@"mp4", @"png"]];
+    [self fetch:_names];
     return self;
 }
 
-- (void)fetch:(NSArray<NSString *> *)exts {
-    if (!exts.count) return [self show:nil];
-    NSURL *cached = DPCachedPreview(_key, exts[0]);
-    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%s%@.%@", DP_PREVIEWS, _key, exts[0]]];
+- (void)fetch:(NSArray<NSString *> *)names {
+    if (!names.count) return [self show:nil];
+    NSURL *cached = DPCachedPreview(names[0]);
+    NSURL *url = [NSURL URLWithString:[@DP_PREVIEWS stringByAppendingString:names[0]]];
     __weak DPPreviewView *weakSelf = self;
     [[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSInteger status = [(NSHTTPURLResponse *)response statusCode];
@@ -47,7 +52,7 @@ static NSURL *DPCachedPreview(NSString *key, NSString *ext) {
             if (error || (status != 200 && status != 404)) return;
             if (status == 404) {
                 [NSFileManager.defaultManager removeItemAtURL:cached error:nil];
-                return [weakSelf fetch:[exts subarrayWithRange:NSMakeRange(1, exts.count - 1)]];
+                return [weakSelf fetch:[names subarrayWithRange:NSMakeRange(1, names.count - 1)]];
             }
             if ([[NSData dataWithContentsOfURL:cached] isEqualToData:data]) return;
             [data writeToURL:cached atomically:YES];
