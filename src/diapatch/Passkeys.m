@@ -1,7 +1,9 @@
 // diapatch as a native messaging host for the Passkeys tweak. A patched Dia can't reach Apple Passwords, so each request
 // runs in an unpatched copy, at the page's origin, in a window the size of the passkey sheet so the sheet covers it.
-#import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <Foundation/Foundation.h>
 #import <spawn.h>
+#import <sys/file.h>
 #import "Passkeys.h"
 
 extern char **environ;
@@ -72,14 +74,13 @@ static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name
 
 static void prepareProfile(NSString *userData) {
     NSFileManager *files = NSFileManager.defaultManager;
-    // The first time, it signs in with Dia's own account store instead of asking.
-    if (![files fileExistsAtPath:[userData stringByAppendingPathComponent:@"global_key_value_store.db"]]) {
-        NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
-        [files createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
-        for (NSString *suffix in @[ @"", @"-wal", @"-shm" ]) {
-            NSString *name = [@"global_key_value_store.db" stringByAppendingString:suffix];
-            [files copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
-        }
+    // Dia's account store, fresh each time, keeps it signed in as Dia is.
+    NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
+    [files createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
+    for (NSString *suffix in @[ @"", @"-wal", @"-shm" ]) {
+        NSString *name = [@"global_key_value_store.db" stringByAppendingString:suffix];
+        [files removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
+        [files copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
     }
     for (NSString *saved in @[ @"Default/Sessions", @"Default/Sessions_Encrypted", @"Default/tabs.db", @"Default/tabs.db-wal", @"Default/tabs.db-shm" ])  // or it reopens its last windows
         [files removeItemAtPath:[userData stringByAppendingPathComponent:saved] error:nil];
@@ -117,14 +118,17 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
 // The tab in the window Dia opens at launch: the only window it will have. Signed out, Dia shows its welcome window
 // instead, and tabs get no window until someone signs in there.
 static NSString *startupTab(DPDevTools *tools, int seconds, NSNumber **windowId) {
-    for (int tries = 0; tries < seconds * 4; tries++, usleep(250000))
-        for (NSDictionary *target in [tools send:@"Target.getTargets" params:nil session:nil][@"result"][@"targetInfos"]) {
+    for (int tries = 0; tries < seconds * 4; tries++, usleep(250000)) {
+        NSDictionary *targets = [tools send:@"Target.getTargets" params:nil session:nil];
+        if (!targets) return nil;  // it quit
+        for (NSDictionary *target in targets[@"result"][@"targetInfos"]) {
             if (![target[@"type"] isEqualToString:@"page"]) continue;
             NSDictionary *window = [tools send:@"Browser.getWindowForTarget" params:@{ @"targetId" : target[@"targetId"] } session:nil][@"result"];
             if (![window[@"bounds"][@"width"] intValue]) continue;
             *windowId = window[@"windowId"];
             return target[@"targetId"];
         }
+    }
     return nil;
 }
 
@@ -137,12 +141,19 @@ static BOOL atOrigin(DPDevTools *tools, NSString *session, NSString *origin) {
     return NO;
 }
 
+// Only the app in front can bring another forward, and that's Dia, so it does both from here on (Passkeys.m in the dylib).
+static void tellDia(NSString *what, pid_t helper) {
+    [NSDistributedNotificationCenter.defaultCenter postNotificationName:[@"com.diapatches.passkeys." stringByAppendingString:what]
+                                                                 object:@(helper).stringValue
+                                                               userInfo:nil
+                                                     deliverImmediately:YES];
+}
+
 static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, NSString *origin, id options) {
-    NSRunningApplication *helper = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
     NSNumber *windowId;
     NSString *targetId = startupTab(tools, 15, &windowId);
-    if (!targetId) {
-        [helper activateWithOptions:NSApplicationActivateAllWindows];
+    if (!targetId && kill(pid, 0) == 0) {
+        tellDia(@"signIn", pid);
         targetId = startupTab(tools, 600, &windowId);
     }
     if (!targetId) return failure(@"Sign in to the copy of Dia that opened, then try the passkey again.");
@@ -159,7 +170,7 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
         [tools send:@"Page.navigate" params:@{ @"url" : [origin stringByAppendingString:path] } session:session];
         if (atOrigin(tools, session, origin)) break;
     }
-    [helper activateWithOptions:NSApplicationActivateAllWindows];  // or the sheet opens behind
+    tellDia(@"show", pid);  // or the sheet opens behind
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
@@ -180,6 +191,9 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
 int DPRunPasskeyHost(NSString *home) {
     NSDictionary *request = readMessage();
     if (!request) return 1;
+    // One copy of Dia at a time: a second one started on the same data hands off to the first and quits.
+    int lock = open([home stringByAppendingPathComponent:@"passkey-helper.lock"].fileSystemRepresentation, O_CREAT | O_RDWR, 0600);
+    flock(lock, LOCK_EX);
     int toHelper[2], fromHelper[2];
     if (pipe(toHelper) || pipe(fromHelper)) return writeMessage(failure(@"Couldn't start the passkey copy of Dia.")), 1;
     pid_t pid = launchHelper(home, toHelper, fromHelper);
@@ -188,9 +202,11 @@ int DPRunPasskeyHost(NSString *home) {
     if (!pid) return writeMessage(failure(@"Couldn't start the passkey copy of Dia.")), 1;
 
     DPDevTools *tools = [[DPDevTools alloc] initWithIn:fromHelper[0] out:toHelper[1]];
-    writeMessage(runInHelper(tools, pid, request[@"kind"], request[@"origin"], request[@"options"]));
+    NSDictionary *result = runInHelper(tools, pid, request[@"kind"], request[@"origin"], request[@"options"]);
+    // Dia ends this process as soon as it has the answer, so the copy quits first.
     [tools send:@"Browser.close" params:nil session:nil];
     for (int i = 0; i < 50 && kill(pid, 0) == 0; i++) usleep(100000);
     kill(pid, SIGKILL);
+    writeMessage(result);
     return 0;
 }

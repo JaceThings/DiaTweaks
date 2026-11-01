@@ -60,11 +60,27 @@ static void DPLoadExtension(NSString *folder) {
     free(next);
 }
 
+// diapatch can't bring the copy forward itself: macOS lets only the app in front do that, which is Dia while you sign in.
+static void DPShowHelper(NSNotification *note) {
+    NSRunningApplication *helper = [NSRunningApplication runningApplicationWithProcessIdentifier:[note.object intValue]];
+    if ([note.name hasSuffix:@"signIn"]) {
+        NSAlert *alert = [NSAlert new];
+        alert.messageText = @"Sign in to Dia once for passkeys";
+        alert.informativeText = @"Passkeys from Apple Passwords open in a second copy of Dia, and it needs you to sign in once. "
+                                 "Its intro plays first: press Skip Intro in the bottom right, then sign in with your Dia email. "
+                                 "Your passkey carries on after.";
+        [alert runModal];
+    }
+    [helper activateFromApplication:NSRunningApplication.currentApplication options:NSApplicationActivateAllWindows];
+}
+
 static void DPInstallPasskeys(void) {
     if (!DPPasskeys.on) return;
     NSString *extension = DPSupportPath(@"passkeys-extension");
-    if (DPWriteExtension(extension) && DPRegisterHost()) DPLoadExtension(extension);
-    else NSLog(@"DiaPatches: couldn't set up passkeys");
+    if (!DPWriteExtension(extension) || !DPRegisterHost()) return (void)NSLog(@"DiaPatches: couldn't set up passkeys");
+    DPLoadExtension(extension);
+    for (NSString *name in @[ @"com.diapatches.passkeys.show", @"com.diapatches.passkeys.signIn" ])
+        [NSDistributedNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { DPShowHelper(note); }];
 }
 
 DP_PATCH(DPPasskeys) {
