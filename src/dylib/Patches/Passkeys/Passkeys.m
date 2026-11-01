@@ -97,6 +97,7 @@ static void DPApplyPasskeys(DPPatch *patch) {
 DP_PATCH(DPPasskeys) {
     .key = @"passkeys",
     .order = 100,
+    .defaultOn = YES,
     .title = @"Allow iCloud passkeys",
     .detail = @"Lets sites sign you in with passkeys saved in Apple Passwords, which a patched Dia can't reach. For each one, the original Dia that DiaTweaks keeps opens behind the Touch ID prompt, then quits. Your passkeys stay in Apple Passwords. Experimental.",
     .symbol = @"person.badge.key.fill",
