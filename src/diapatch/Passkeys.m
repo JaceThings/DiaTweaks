@@ -227,13 +227,15 @@ static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, N
         if ([[tools send:@"Runtime.evaluate" params:@{ @"expression" : @"document.hasFocus()", @"returnByValue" : @YES } session:session][@"result"][@"result"][@"value"] boolValue]) break;
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
+    // A picker left open would hold the copy, and every request queued behind it, forever.
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
+                                                    "  const signal = AbortSignal.timeout(Math.min(options.timeout || 300000, 600000));"
                                                     "  try {"
                                                     "    const credential = kind === 'create'"
-                                                    "      ? await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(options) })"
-                                                    "      : await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options) });"
+                                                    "      ? await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(options), signal })"
+                                                    "      : await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options), signal });"
                                                     "    return { credential: credential.toJSON() };"
-                                                    "  } catch (e) { return { error: { name: e.name, message: e.message } }; }"
+                                                    "  } catch (e) { return { error: { name: e.name === 'TimeoutError' ? 'NotAllowedError' : e.name, message: e.message } }; }"
                                                     "})(%@)",
                                                    [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
     NSDictionary *result = [tools send:@"Runtime.evaluate"
