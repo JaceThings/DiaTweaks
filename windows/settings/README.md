@@ -36,9 +36,9 @@ Dia's SelectedItem, IsSelected and route keys remain untouched. Returning to a
 native category restores these visuals. The cached page also replays a 180 ms
 fade/slide on entry. Both animations respect Windows' animation setting.
 The bridge refuses unfamiliar template parts and reports the failure through
-the probe instead of changing the navigation model. The user confirmed the wand
-and transition appearance. The native-marker suppression correction and compact
-pane behavior still require live confirmation.
+the probe instead of changing the navigation model. The user confirmed the wand,
+transition appearance, marker beside Patches only, and double-click collapse and
+expansion with the label hiding and returning alongside native category labels.
 
 Patches follows IsPaneOpen so its label disappears in the native icon-only pane.
 Double-tapping its row toggles that same pane property. The button retains an

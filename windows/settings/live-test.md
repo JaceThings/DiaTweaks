@@ -99,3 +99,19 @@ name remains Patches in either mode. This behavior also awaits live confirmation
 The combined `marker-fix` Debug output built successfully. Both CTest checks
 passed again, and the output DLL contains the marker position diagnostics and
 compact-label state diagnostics. No visual pass is inferred from those checks.
+
+## Combined correction verified live
+
+The combined build attached successfully to a fresh Dia process (21168). The
+user confirmed that Patches alone has the blue marker while its page is open.
+Readback reported:
+
+```text
+Pane: expanded; Patches label=visible
+Selection: Patches active; marker Y=292; target=292; hidden native markers=7
+```
+
+The user then double-clicked the Patches row to collapse the pane and its icon
+to expand it, confirming that its label hides and returns with the other category
+labels. These confirmations supersede the pending visual checks above. The
+controller remains connected for continued use of this session prototype.
