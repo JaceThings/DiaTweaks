@@ -6,7 +6,7 @@ EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectc
 all: build/diapatch build/DiaPatches.dylib build/patches.json
 
 build/diapatch: $(wildcard src/diapatch/*.[hm]) | build
-	clang $(CFLAGS) -framework Foundation -framework CoreGraphics -framework Security -o $@ $(filter %.m,$^)
+	clang $(CFLAGS) -framework AppKit -framework CoreGraphics -framework Security -o $@ $(filter %.m,$^)
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) $(wildcard $(PASSKEYS)/*) | build
 	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -framework AppKit -framework QuartzCore -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo -o $@ $(filter %.m,$^)
