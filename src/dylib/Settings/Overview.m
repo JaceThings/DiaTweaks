@@ -18,6 +18,7 @@ static const DPItem DPGroupTabsItem = {
     self.searchText = [NSMapTable strongToStrongObjectsMapTable];
     self.notes = [NSMapTable strongToStrongObjectsMapTable];
     self.sections = [NSMutableArray new];
+    [DPPreviewView preload];
 
     NSMutableArray<NSString *> *titles = [NSMutableArray new];
     NSMutableDictionary<NSString *, NSMutableArray<NSView *> *> *rows = [NSMutableDictionary new];
