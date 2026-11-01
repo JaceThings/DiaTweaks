@@ -1,0 +1,93 @@
+#include "target.h"
+#include "channel.h"
+#include <iostream>
+#include <sstream>
+#include <algorithm>
+
+static volatile LONG interrupted = 0;
+static BOOL WINAPI interrupt(DWORD) { InterlockedExchange(&interrupted, 1); return TRUE; }
+static void usage() {
+    std::wcout << L"DiaTweaks Windows prototype (x64)\n"
+        L"Usage: diatweaks-probe [--pid PID] [--check]\n"
+        L"Open Dia yourself first. --check only validates a target; it does not attach.\n"
+        L"Interactive: tree [filter], inspect ID, pulse ID SECONDS (1..30), restore, quit\n"
+        L"IDs come from tree, not raw memory addresses. Pulse is a temporary developer test.\n";
+}
+int wmain(int argc, wchar_t** argv) {
+    using namespace dt;
+    DWORD requestedPid = 0;
+    bool checkOnly = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::wstring arg(argv[i]);
+        if (arg == L"--help" || arg == L"-h") { usage(); return 0; }
+        if (arg == L"--check") checkOnly = true;
+        else if (arg == L"--pid" && i + 1 < argc) {
+            wchar_t* end = nullptr;
+            auto pid = wcstoul(argv[++i], &end, 10);
+            if (!pid || *end) { usage(); return 2; }
+            requestedPid = pid;
+        } else { usage(); return 2; }
+    }
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    int exitCode = 0;
+    try {
+        check(com);
+        const auto target = find_target(requestedPid);
+        std::wcout << L"Dia UI process: " << target.pid << L"\nDiagnostics: " << target.framework.c_str() << L'\n';
+        if (!checkOnly) {
+            wchar_t executable[32768]{};
+            if (!GetModuleFileNameW(nullptr, executable, 32768)) throw last_error();
+            auto dll = std::filesystem::path(executable).parent_path() / L"DiaTweaksTap.dll";
+            if (!std::filesystem::is_regular_file(dll)) throw HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+            Channel channel(target.pid);
+            check(attach(target, dll, channel.name));
+            const auto deadline = GetTickCount64() + 10000;
+            while (read_flag(channel.shared->ready) == 0 && GetTickCount64() < deadline) Sleep(25);
+            if (read_flag(channel.shared->ready) != 1) {
+                check(channel.shared->startup);
+                throw HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+            }
+            SetConsoleCtrlHandler(interrupt, TRUE);
+            usage();
+            std::wcout << L"Attached. Type tree to inspect controls. No override is enabled.\n";
+            std::wstring line;
+            while (!read_flag(interrupted) && std::wcout << L"> " && std::getline(std::wcin, line)) {
+                std::wistringstream input(line);
+                std::wstring verb, extra;
+                input >> verb;
+                if (verb == L"quit" || verb == L"exit") break;
+                if (verb.empty()) continue;
+                Request request{};
+                if (verb == L"tree") { request.command = Command::Tree; std::getline(input >> std::ws, extra); }
+                else if (verb == L"restore") request.command = Command::Restore;
+                else if (verb == L"inspect" || verb == L"pulse") {
+                    request.command = verb == L"inspect" ? Command::Inspect : Command::Pulse;
+                    if (!(input >> request.handle) || !request.handle ||
+                        (verb == L"pulse" && (!(input >> request.seconds) || request.seconds < 1 || request.seconds > 30))) {
+                        std::wcout << L"Expected an ID from tree and, for pulse, 1..30 seconds.\n"; continue;
+                    }
+                } else { usage(); continue; }
+                if (verb != L"tree" && input >> extra) { std::wcout << L"Unexpected argument.\n"; continue; }
+                std::wstring response;
+                const auto hr = channel.call(request, response);
+                std::wistringstream rows(response);
+                std::wstring row;
+                while (std::getline(rows, row)) if (verb != L"tree" || extra.empty() || row.find(extra) != std::wstring::npos) std::wcout << row << L'\n';
+                std::wcout << L"HRESULT=0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << L'\n';
+                if (hr == HRESULT_FROM_WIN32(ERROR_TIMEOUT)) break;
+            }
+            std::wstring restored;
+            const auto hr = channel.call({Command::Restore, 0, 0}, restored);
+            std::wcout << restored;
+            if (FAILED(hr)) { std::wcerr << L"Restore not confirmed. The UI timer will retry; restart Dia if needed.\n"; exitCode = 1; }
+            SetConsoleCtrlHandler(interrupt, FALSE);
+            std::wcout << L"Session ending. Restart Dia before attaching another probe build.\n";
+        }
+    } catch (HRESULT hr) {
+        std::wcerr << L"Probe failed: 0x" << std::hex << static_cast<unsigned long>(hr)
+            << L"\nOpen Dia first; close other probes/debuggers. If already attached, restart Dia.\n";
+        exitCode = 1;
+    } catch (const std::exception& e) { std::cerr << e.what() << '\n'; exitCode = 1; }
+    if (SUCCEEDED(com)) CoUninitialize();
+    return exitCode;
+}

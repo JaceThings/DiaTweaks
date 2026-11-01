@@ -4,6 +4,9 @@ Small tweaks for [Dia](https://www.diabrowser.com) that stay in place when Dia u
 
 Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 or later.
 
+An experimental [Windows developer probe](windows/README.md) is being developed
+on this branch. It is a separate prototype; the instructions below are for macOS.
+
 ## Tweaks
 
 Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site.
