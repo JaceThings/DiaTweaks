@@ -1,4 +1,5 @@
 #import "StdPatch/StdPatch.h"
+#import "Updates/Updates.h"
 #import <crt_externs.h>
 #import <mach-o/dyld.h>
 #import <mach-o/getsect.h>
@@ -28,9 +29,12 @@ static BOOL DPWriteExtension(NSString *folder) {
 }
 
 // Dia's Chromium looks for native messaging hosts in Chrome's folder.
+static NSString *DPHostManifestPath(void) {
+    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
+        stringByAppendingPathComponent:@"Google/Chrome/NativeMessagingHosts/com.diapatches.passkeys.json"];
+}
+
 static BOOL DPRegisterHost(void) {
-    NSString *folder = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"Google/Chrome/NativeMessagingHosts"];
     NSDictionary *manifest = @{
         @"name" : @"com.diapatches.passkeys",
         @"description" : @"DiaTweaks passkeys",
@@ -39,23 +43,30 @@ static BOOL DPRegisterHost(void) {
         @"allowed_origins" : @[ [NSString stringWithFormat:@"chrome-extension://%@/", kExtensionID] ],
     };
     NSData *json = [NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted error:nil];
-    [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
-    return [json writeToFile:[folder stringByAppendingPathComponent:@"com.diapatches.passkeys.json"] atomically:YES];
+    [NSFileManager.defaultManager createDirectoryAtPath:DPHostManifestPath().stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+    return [json writeToFile:DPHostManifestPath() atomically:YES];
 }
 
+static NSString *DPExtensionFlag(void) { return [@"--load-extension=" stringByAppendingString:DPSupportPath(@"passkeys-extension")]; }
+
+static BOOL DPExtensionLoaded(void) { return [NSProcessInfo.processInfo.arguments containsObject:DPExtensionFlag()]; }
+
 // Chromium only reads the command line Dia started with, so Dia restarts in place with the extension added.
-static void DPLoadExtension(NSString *folder) {
-    const char *flag = [@"--load-extension=" stringByAppendingString:folder].fileSystemRepresentation;
+static void DPLoadExtension(void) {
+    if (DPExtensionLoaded()) return;
     int argc = *_NSGetArgc();
-    char **argv = *_NSGetArgv();
-    for (int i = 1; i < argc; i++) if (!strcmp(argv[i], flag)) return;
     char **next = calloc(argc + 2, sizeof *next);
-    memcpy(next, argv, argc * sizeof *next);
-    next[argc] = (char *)flag;
+    memcpy(next, *_NSGetArgv(), argc * sizeof *next);
+    next[argc] = (char *)DPExtensionFlag().fileSystemRepresentation;
     char path[PATH_MAX];
     uint32_t size = sizeof path;
     if (_NSGetExecutablePath(path, &size) == 0) execv(path, next);
     free(next);
+}
+
+static void DPRemoveSetup(void) {
+    [NSFileManager.defaultManager removeItemAtPath:DPSupportPath(@"passkeys-extension") error:nil];
+    [NSFileManager.defaultManager removeItemAtPath:DPHostManifestPath() error:nil];
 }
 
 static void DPShowHelper(NSNotification *note) {
@@ -73,21 +84,30 @@ static void DPShowHelper(NSNotification *note) {
 }
 
 static void DPInstallPasskeys(void) {
-    if (!DPPasskeys.on) return;
-    NSString *extension = DPSupportPath(@"passkeys-extension");
-    if (!DPWriteExtension(extension) || !DPRegisterHost()) return (void)NSLog(@"DiaPatches: couldn't set up passkeys");
-    DPLoadExtension(extension);
+    if (!DPPasskeys.on) return DPRemoveSetup();
+    if (!DPWriteExtension(DPSupportPath(@"passkeys-extension")) || !DPRegisterHost()) return (void)NSLog(@"DiaPatches: couldn't set up passkeys");
+    DPLoadExtension();
     for (NSString *name in @[ @"com.diapatches.passkeys.show", @"com.diapatches.passkeys.signIn" ])
         [NSDistributedNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { DPShowHelper(note); }];
+}
+
+static void DPApplyPasskeys(DPPatch *patch) {
+    if (patch->on == DPExtensionLoaded()) return;
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = patch->on ? @"Relaunch Dia to allow iCloud passkeys" : @"Relaunch Dia to stop using iCloud passkeys";
+    [alert addButtonWithTitle:@"Relaunch"];
+    [alert addButtonWithTitle:@"Later"];
+    if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
 }
 
 DP_PATCH(DPPasskeys) {
     .key = @"passkeys",
     .order = 100,
-    .title = @"Apple Passwords passkeys",
-    .detail = @"Sign in with passkeys saved in Apple Passwords. A second copy of Dia opens behind the Touch ID prompt and quits after. Takes effect when Dia relaunches. Experimental.",
+    .title = @"Allow iCloud passkeys",
+    .detail = @"Lets sites sign you in with passkeys saved in Apple Passwords, which a patched Dia can't reach. For each one, the original Dia that DiaTweaks keeps opens behind the Touch ID prompt, then quits. Your passkeys stay in Apple Passwords. Experimental.",
     .symbol = @"person.badge.key.fill",
     .tint = @"systemGreenColor",
     .section = @"Passwords",
     .install = DPInstallPasskeys,
+    .apply = DPApplyPasskeys,
 };
