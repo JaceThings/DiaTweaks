@@ -6,6 +6,10 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <vector>
+#ifdef DIATWEAKS_SETTINGS
+#include "native_settings.h"
+#endif
 
 namespace dt {
 struct Node { uint64_t id; InstanceHandle handle, parent; DWORD thread; std::wstring type, name; };
@@ -23,6 +27,11 @@ struct Context {
     DWORD thread;
     std::atomic<HWND> window{nullptr};
     VisibilityLease lease;
+    std::map<uint64_t, VisibilityLease> featureOverrides;
+#ifdef DIATWEAKS_SETTINGS
+    std::unique_ptr<NativeSettings> settings;
+#endif
+    void sync_feature();
     static LRESULT CALLBACK window_proc(HWND, UINT, WPARAM, LPARAM);
     void execute(Job&);
 };
@@ -41,11 +50,15 @@ class Session final : public Microsoft::WRL::RuntimeClass<
 public:
     ~Session() { if (shared_) UnmapViewOfFile(shared_); }
     ComPtr<IVisualTreeService> service;
+    ComPtr<IXamlDiagnostics> diagnostics;
+    std::atomic<bool> hideSidebar{false};
     std::atomic<bool> stopping{false};
     HRESULT start(IUnknown*);
     HRESULT STDMETHODCALLTYPE OnVisualTreeChange(ParentChildRelation, VisualElement, VisualMutationType) noexcept override;
     HRESULT STDMETHODCALLTYPE OnElementStateChanged(InstanceHandle, VisualElementState, LPCWSTR) noexcept override { return S_OK; }
     std::optional<Node> node(uint64_t);
     std::wstring tree();
+    std::vector<Node> sidebar_nodes(DWORD thread);
+    bool is_settings_navigation(uint64_t id);
 };
 }

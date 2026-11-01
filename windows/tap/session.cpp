@@ -3,7 +3,6 @@
 
 namespace dt {
 HRESULT Session::start(IUnknown* site) {
-    ComPtr<IXamlDiagnostics> diagnostics;
     check(site->QueryInterface(IID_PPV_ARGS(&diagnostics)));
     check(site->QueryInterface(IID_PPV_ARGS(&service)));
     Bstr initialization;
@@ -44,12 +43,14 @@ void Session::run() noexcept {
             const auto request = shared_->request;
             try {
                 if (request.command == Command::Tree) { response = tree(); hr = S_OK; }
-                else if (request.command == Command::Inspect || request.command == Command::Pulse) {
+                else if (request.command == Command::Inspect || request.command == Command::Pulse || request.command == Command::Settings) {
                     auto n = node(request.handle);
                     Context* context = nullptr;
                     if (n) { std::lock_guard lock(mutex_); context = contexts_.at(n->thread).get(); }
                     hr = context ? dispatch(context, request, response) : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-                } else if (request.command == Command::Restore) {
+                } else if (request.command == Command::Restore || request.command == Command::SetSidebar) {
+                    if (request.command == Command::SetSidebar && request.seconds > 1) throw E_INVALIDARG;
+                    hideSidebar = request.command == Command::SetSidebar && request.seconds == 1;
                     std::vector<Context*> contexts;
                     { std::lock_guard lock(mutex_); for (auto& [_, c] : contexts_) contexts.push_back(c.get()); }
                     hr = S_OK;

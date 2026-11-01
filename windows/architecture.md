@@ -8,7 +8,7 @@ feature key after its native control has been identified. It should not copy
 the AppKit class names or assume that an English label is a stable XAML name.
 
 ```text
-Shared feature contract (next step)
+Shared feature catalog (behavior adapters remain separate)
   key, settings, dependencies, expected behavior, capability requirements
                  |
         +--------+---------+
@@ -18,9 +18,11 @@ Shared feature contract (next step)
   native hooks       UI-thread property overrides
 ```
 
-The Windows prototype implements the lower path only. It intentionally leaves
-the Mac runtime unchanged until the Windows attachment path is proven. It does
-not yet claim to have a shared feature engine.
+The Mac runtime currently retains its registrations. A checked exporter produces
+`shared/features.json`, which the optional Windows native Settings panel consumes.
+That shares the catalog while the two behavior engines remain separate. New Mac
+features need an explicit Windows adapter; catalog synchronization does not make
+their toggles functional automatically.
 
 ## Current Windows path
 

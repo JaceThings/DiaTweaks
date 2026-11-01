@@ -25,7 +25,10 @@ public:
     bool active() const { return saved_.has_value(); }
     bool expired() const { return saved_ && GetTickCount64() >= saved_->deadline; }
     HRESULT pulse(IVisualTreeService*, InstanceHandle, DWORD seconds);
+    HRESULT enable(IVisualTreeService*, InstanceHandle);
     HRESULT restore(IVisualTreeService*);
     void removed(InstanceHandle h) { if (saved_ && saved_->handle == h) saved_.reset(); }
+private:
+    HRESULT apply(IVisualTreeService*, InstanceHandle, ULONGLONG deadline);
 };
 }

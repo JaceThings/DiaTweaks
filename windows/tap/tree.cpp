@@ -18,6 +18,10 @@ HRESULT Session::OnVisualTreeChange(ParentChildRelation relation, VisualElement 
             if (mutation == Remove) {
                 nodes_.erase(key);
                 if (auto it = contexts_.find(thread); it != contexts_.end()) it->second->lease.removed(element.Handle);
+                for (auto& [_, c] : contexts_) {
+                    if (c->thread != thread) continue;
+                    for (auto& [__, overrideValue] : c->featureOverrides) overrideValue.removed(element.Handle);
+                }
                 return S_OK;
             }
             if (stopping) return S_OK;
@@ -63,13 +67,43 @@ std::wstring Session::tree() {
 void Context::execute(Job& job) {
     if (job.cancelled || GetTickCount64() > job.deadline) { job.result = HRESULT_FROM_WIN32(ERROR_TIMEOUT); return; }
     if (job.request.command == Command::Restore) {
+        sync_feature();
+#ifdef DIATWEAKS_SETTINGS
+        if (session->stopping && settings) settings->remove();
+#endif
         job.result = lease.restore(session->service.Get());
+        if (!featureOverrides.empty()) job.result = E_FAIL;
         job.response = lease.active() ? L"Restore failed; retrying on the UI thread.\n" : L"Restored (or no active override).\n";
+        return;
+    }
+    if (job.request.command == Command::SetSidebar) {
+        sync_feature();
+        job.result = S_OK;
+        job.response = session->hideSidebar ? L"Sidebar-button feature requested on.\n" : L"Sidebar-button feature requested off.\n";
         return;
     }
     if (session->stopping) { job.result = E_ABORT; return; }
     auto node = session->node(job.request.handle);
     if (!node || node->thread != GetCurrentThreadId()) { job.result = HRESULT_FROM_WIN32(ERROR_NOT_FOUND); return; }
+    if (job.request.command == Command::Settings) {
+#ifdef DIATWEAKS_SETTINGS
+        if (!session->is_settings_navigation(node->id)) { job.result = E_INVALIDARG; return; }
+        if (settings) { job.result = S_FALSE; job.response = settings->status(); return; }
+        bool available = false;
+        for (const auto& target : session->sidebar_nodes(thread)) {
+            Visibility v;
+            if (SUCCEEDED(read_visibility(session->service.Get(), target.handle, v))) available = true;
+        }
+        settings = std::make_unique<NativeSettings>(session->diagnostics.Get(), session->service.Get(),
+            node->handle, available, session->hideSidebar.load(), [s = session](bool on) { s->hideSidebar = on; });
+        job.result = S_OK;
+        job.response = L"Patches entry installed in Dia Settings. Keep this controller open while using it.\n";
+#else
+        job.result = E_NOTIMPL;
+        job.response = L"This build does not include the experimental native Settings panel.\n";
+#endif
+        return;
+    }
     if (job.request.command == Command::Inspect) {
         Visibility v;
         job.result = read_visibility(session->service.Get(), node->handle, v);
@@ -91,13 +125,23 @@ LRESULT CALLBACK Context::window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (context && msg == WorkMessage) {
             std::unique_ptr<std::shared_ptr<Job>> holder(reinterpret_cast<std::shared_ptr<Job>*>(lp));
             auto job = *holder;
-            try { context->execute(*job); } catch (...) { job->result = E_FAIL; }
+            try { context->execute(*job); }
+#ifdef DIATWEAKS_SETTINGS
+            catch (const SettingsError& error) { job->result = error.code; job->response = error.detail + L"\n"; }
+#endif
+            catch (HRESULT hr) { job->result = hr; }
+            catch (...) { job->result = E_FAIL; }
             SetEvent(job->done.value);
             return 0;
         }
         if (context && msg == WM_TIMER) {
+            context->sync_feature();
+#ifdef DIATWEAKS_SETTINGS
+            if (context->session->stopping && context->settings) context->settings->remove();
+            else if (context->settings) context->settings->sync(context->session->hideSidebar.load());
+#endif
             if (context->lease.expired() || context->session->stopping) context->lease.restore(context->session->service.Get());
-            if (context->session->stopping && !context->lease.active()) KillTimer(hwnd, 1);
+            if (context->session->stopping && !context->lease.active() && context->featureOverrides.empty()) KillTimer(hwnd, 1);
             return 0;
         }
     } catch (...) { /* The next timer can retry restoration. */ }

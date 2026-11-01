@@ -52,13 +52,19 @@ static HRESULT set(IVisualTreeService* service, InstanceHandle h, const Visibili
     return FAILED(hr) ? hr : service->SetProperty(h, instance, property.index);
 }
 HRESULT VisibilityLease::pulse(IVisualTreeService* service, InstanceHandle handle, DWORD seconds) {
-    if (saved_) return HRESULT_FROM_WIN32(ERROR_BUSY);
     if (seconds < 1 || seconds > 30) return E_INVALIDARG;
+    return apply(service, handle, GetTickCount64() + seconds * 1000ULL);
+}
+HRESULT VisibilityLease::enable(IVisualTreeService* service, InstanceHandle handle) {
+    return apply(service, handle, MAXULONGLONG);
+}
+HRESULT VisibilityLease::apply(IVisualTreeService* service, InstanceHandle handle, ULONGLONG deadline) {
+    if (saved_) return HRESULT_FROM_WIN32(ERROR_BUSY);
     Visibility original;
     HRESULT hr = read_visibility(service, handle, original);
     if (FAILED(hr)) return hr;
     if (original.value != L"Visible") return S_FALSE;
-    saved_ = Saved{handle, original, GetTickCount64() + seconds * 1000ULL};
+    saved_ = Saved{handle, original, deadline};
     hr = set(service, handle, original, L"Collapsed");
     if (SUCCEEDED(hr)) {
         Visibility actual;

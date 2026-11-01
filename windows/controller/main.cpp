@@ -10,7 +10,8 @@ static void usage() {
     std::wcout << L"DiaTweaks Windows prototype (x64)\n"
         L"Usage: diatweaks-probe [--pid PID] [--check]\n"
         L"Open Dia yourself first. --check only validates a target; it does not attach.\n"
-        L"Interactive: tree [filter], inspect ID, pulse ID SECONDS (1..30), restore, quit\n"
+        L"Interactive: tree [filter], inspect ID, pulse ID SECONDS (1..30), settings ID, restore, quit\n"
+        L"Feature: enable hideSidebarButton / disable hideSidebarButton (this session only)\n"
         L"IDs come from tree, not raw memory addresses. Pulse is a temporary developer test.\n";
 }
 int wmain(int argc, wchar_t** argv) {
@@ -65,8 +66,15 @@ int wmain(int argc, wchar_t** argv) {
                 Request request{};
                 if (verb == L"tree") { request.command = Command::Tree; std::getline(input >> std::ws, extra); }
                 else if (verb == L"restore") request.command = Command::Restore;
-                else if (verb == L"inspect" || verb == L"pulse") {
-                    request.command = verb == L"inspect" ? Command::Inspect : Command::Pulse;
+                else if (verb == L"enable" || verb == L"disable") {
+                    std::wstring key;
+                    if (!(input >> key) || key != L"hideSidebarButton") {
+                        std::wcout << L"Only hideSidebarButton has a Windows session adapter in this prototype.\n"; continue;
+                    }
+                    request = {Command::SetSidebar, 0, verb == L"enable" ? 1U : 0U};
+                }
+                else if (verb == L"inspect" || verb == L"pulse" || verb == L"settings") {
+                    request.command = verb == L"settings" ? Command::Settings : (verb == L"inspect" ? Command::Inspect : Command::Pulse);
                     if (!(input >> request.handle) || !request.handle ||
                         (verb == L"pulse" && (!(input >> request.seconds) || request.seconds < 1 || request.seconds > 30))) {
                         std::wcout << L"Expected an ID from tree and, for pulse, 1..30 seconds.\n"; continue;

@@ -7,6 +7,10 @@ tree discovery and a timed Visibility override work on Dia 1.4.0.424. The sideba
 toggle's Visible → Collapsed → Visible cycle was verified by live readback;
 visual confirmation and screenshots are still pending.
 
+An optional [native Patches panel prototype](settings/README.md) adds the shared
+feature catalog inside Dia Settings. It currently enables only Hide sidebar
+button; the remaining Windows implementations are unavailable.
+
 ## Build
 
 Requires Windows 11 x64, Visual Studio 2022 or later C++ Build Tools, the Windows

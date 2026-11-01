@@ -25,6 +25,8 @@ static void property_tests() {
     service->local = false;
     require(lease.pulse(service.Get(), 42, 1) == S_OK && service->collapsed, "collapse numeric default visibility");
     require(lease.restore(service.Get()) == S_OK && !service->local && !service->collapsed, "clear numeric default override");
+    require(lease.enable(service.Get(), 42) == S_OK && !lease.expired(), "session override has no pulse deadline");
+    require(lease.restore(service.Get()) == S_OK && !service->local, "session override restores source");
     service->local = false; service->metadata = IsValueBindingExpression;
     require(lease.pulse(service.Get(), 42, 1) == E_NOTIMPL, "preserve binding");
     const auto diagnostic = describe_visibility(service.Get(), 42);
@@ -52,7 +54,7 @@ static void property_tests() {
 static LRESULT CALLBACK fixture_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     if (message == WM_APP + 1) {
         auto* callback = reinterpret_cast<IVisualTreeServiceCallback*>(lp);
-        Bstr type(L"Microsoft.UI.Xaml.Controls.Button"), name(L"FixtureChatButton");
+        Bstr type(L"Microsoft.UI.Xaml.Controls.Button"), name(L"SidebarToggleButton");
         VisualElement element{};
         element.Handle = 42; element.Type = type.value; element.Name = name.value;
         callback->OnVisualTreeChange({0, 42, 0}, element, Add);
@@ -94,7 +96,7 @@ static void session_tests() {
             catch (HRESULT hr) { duplicateRejected = hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS); }
             require(duplicateRejected, "one controller per target");
             std::wstring response;
-            require(SUCCEEDED(channel.call({Command::Tree, 0, 0}, response)) && response.find(L"FixtureChatButton") != std::wstring::npos, "tree roundtrip");
+            require(SUCCEEDED(channel.call({Command::Tree, 0, 0}, response)) && response.find(L"SidebarToggleButton") != std::wstring::npos, "tree roundtrip");
             require(channel.call({Command::Inspect, 1, 0}, response) == S_OK && response.find(L"Visible") != std::wstring::npos, "inspect on owner thread");
             require(FAILED(channel.call({Command::Pulse, 999, 1}, response)), "reject stale ID");
             require(channel.call({Command::Pulse, 1, 1}, response) == S_OK && service->collapsed, "pulse roundtrip");
@@ -102,6 +104,10 @@ static void session_tests() {
             while (service->collapsed && GetTickCount64() < restoredBy) Sleep(25);
             require(!service->collapsed && !service->local, "timer restores original source");
             require(channel.call({Command::Pulse, 1, 30}, response) == S_OK && service->collapsed, "long lease before disconnect");
+            require(SUCCEEDED(channel.call({Command::Restore, 0, 0}, response)) && !service->collapsed, "restore long pulse");
+            require(channel.call({Command::SetSidebar, 0, 1}, response) == S_OK && service->collapsed, "enable session feature through IPC");
+            require(channel.call({Command::SetSidebar, 0, 0}, response) == S_OK && !service->collapsed && !service->local, "disable feature restores source");
+            require(channel.call({Command::SetSidebar, 0, 1}, response) == S_OK && service->collapsed, "leave feature on before disconnect");
         }
         require(!service->collapsed && !service->local, "controller disconnect restores");
         require(!service->wrongThread, "all property calls stay on UI thread");
