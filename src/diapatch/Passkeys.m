@@ -3,6 +3,7 @@
 #import <Foundation/Foundation.h>
 #import <spawn.h>
 #import <sys/file.h>
+#import <sys/wait.h>
 #import "Passkeys.h"
 
 extern char **environ;
@@ -66,14 +67,9 @@ static void writeMessage(NSDictionary *message) {
 
 static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name" : @"NotAllowedError", @"message" : message } }; }
 
-static void signInAsDia(NSString *userData) {
-    NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
-    [NSFileManager.defaultManager createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
-    for (NSString *suffix in @[ @"", @"-wal", @"-shm" ]) {
-        NSString *name = [@"global_key_value_store.db" stringByAppendingString:suffix];
-        [NSFileManager.defaultManager removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
-        [NSFileManager.defaultManager copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
-    }
+static void skipIntro(NSString *data) {
+    NSString *preferences = [data stringByAppendingPathComponent:@"Library/Preferences/company.thebrowser.dia"];
+    [[NSTask launchedTaskWithLaunchPath:@"/usr/bin/defaults" arguments:@[ @"write", preferences, @"hasPresentedOnboardingIntro", @"-bool", @"YES" ]] waitUntilExit];
 }
 
 static void forgetWindows(NSString *userData) {
@@ -84,12 +80,12 @@ static void forgetWindows(NSString *userData) {
 static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     NSString *data = [home stringByAppendingPathComponent:@"passkey-helper"];
     NSString *userData = [data stringByAppendingPathComponent:@"ud/User Data"];
-    signInAsDia(userData);
+    skipIntro(data);
     forgetWindows(userData);
 
     NSString *app = [home stringByAppendingPathComponent:@"pristine/Dia.app/Contents/MacOS/Dia"];
     NSString *profile = [@"--user-data-dir=" stringByAppendingString:[data stringByAppendingPathComponent:@"ud"]];
-    const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, "--remote-debugging-pipe", NULL };
+    const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, "--remote-debugging-pipe", "--mute-audio", NULL };
 
     NSMutableArray<NSString *> *environment = [NSMutableArray array];
     for (char **e = environ; *e; e++) [environment addObject:@(*e)];
@@ -113,20 +109,32 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     return status == 0 ? pid : 0;
 }
 
-// Signed out, Dia shows its intro instead, and tabs get no window until someone signs in there.
-static NSString *startupTab(DPDevTools *tools, int seconds, NSNumber **windowId) {
-    for (int tries = 0; tries < seconds * 4; tries++, usleep(250000)) {
+static BOOL hasWindowOnScreen(pid_t pid) {
+    NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID));
+    for (NSDictionary *window in windows)
+        if ([window[(id)kCGWindowOwnerPID] intValue] == pid && [window[(id)kCGWindowLayer] intValue] == 0) return YES;
+    return NO;
+}
+
+typedef NS_ENUM(int, DPStartup) { DPStartupReady, DPStartupSignedOut, DPStartupFailed };
+
+// Signed out, Dia shows its intro: a window of its own that no tab lives in.
+static DPStartup waitForStartupTab(DPDevTools *tools, pid_t pid, int seconds, NSString **targetId, NSNumber **windowId) {
+    for (int tries = 0, tablessWindow = 0; tries < seconds * 4; tries++, usleep(250000)) {
         NSDictionary *targets = [tools send:@"Target.getTargets" params:nil session:nil];
-        if (!targets) return nil;
+        if (!targets) return DPStartupFailed;
         for (NSDictionary *target in targets[@"result"][@"targetInfos"]) {
             if (![target[@"type"] isEqualToString:@"page"]) continue;
             NSDictionary *window = [tools send:@"Browser.getWindowForTarget" params:@{ @"targetId" : target[@"targetId"] } session:nil][@"result"];
             if (![window[@"bounds"][@"width"] intValue]) continue;
+            *targetId = target[@"targetId"];
             *windowId = window[@"windowId"];
-            return target[@"targetId"];
+            return DPStartupReady;
         }
+        tablessWindow = hasWindowOnScreen(pid) ? tablessWindow + 1 : 0;
+        if (tablessWindow == 8) return DPStartupSignedOut;
     }
-    return nil;
+    return DPStartupFailed;
 }
 
 static BOOL atOrigin(DPDevTools *tools, NSString *session, NSString *origin) {
@@ -147,13 +155,14 @@ static void tellDia(NSString *what, pid_t helper) {
 }
 
 static NSDictionary *runInHelper(DPDevTools *tools, pid_t pid, NSString *kind, NSString *origin, id options) {
+    NSString *targetId;
     NSNumber *windowId;
-    NSString *targetId = startupTab(tools, 15, &windowId);
-    if (!targetId && kill(pid, 0) == 0) {
+    DPStartup startup = waitForStartupTab(tools, pid, 60, &targetId, &windowId);
+    if (startup == DPStartupSignedOut) {
         tellDia(@"signIn", pid);
-        targetId = startupTab(tools, 600, &windowId);
+        startup = waitForStartupTab(tools, pid, 600, &targetId, &windowId);
     }
-    if (!targetId) return failure(@"Sign in to the copy of Dia that opened, then try the passkey again.");
+    if (startup != DPStartupReady) return failure(@"The passkey copy of Dia didn't open.");
 
     CGRect screen = CGDisplayBounds(CGMainDisplayID());
     NSDictionary *bounds = @{
@@ -203,7 +212,7 @@ int DPRunPasskeyHost(NSString *home) {
     NSDictionary *result = runInHelper(tools, pid, request[@"kind"], request[@"origin"], request[@"options"]);
     // Dia kills this process once it has the answer, so the copy has to quit before then.
     [tools send:@"Browser.close" params:nil session:nil];
-    for (int i = 0; i < 50 && kill(pid, 0) == 0; i++) usleep(100000);
+    for (int i = 0; i < 50 && waitpid(pid, NULL, WNOHANG) == 0; i++) usleep(100000);
     kill(pid, SIGKILL);
     writeMessage(result);
     return 0;

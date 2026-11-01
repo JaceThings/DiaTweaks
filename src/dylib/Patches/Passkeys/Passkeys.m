@@ -59,16 +59,17 @@ static void DPLoadExtension(NSString *folder) {
 }
 
 static void DPShowHelper(NSNotification *note) {
-    if ([note.name hasSuffix:@"signIn"]) {
-        NSAlert *alert = [NSAlert new];
-        alert.messageText = @"Sign in to Dia once for passkeys";
-        alert.informativeText = @"Passkeys from Apple Passwords open in a second copy of Dia, and it needs you to sign in once. "
-                                 "Its intro plays first: press Skip Intro in the bottom right, then sign in with your Dia email. "
-                                 "Your passkey carries on after.";
-        [alert runModal];
-    }
-    [[NSRunningApplication runningApplicationWithProcessIdentifier:[note.object intValue]] activateFromApplication:NSRunningApplication.currentApplication
-                                                                                                         options:NSApplicationActivateAllWindows];
+    NSRunningApplication *helper = [NSRunningApplication runningApplicationWithProcessIdentifier:[note.object intValue]];
+    void (^show)(void) = ^{ [helper activateFromApplication:NSRunningApplication.currentApplication options:NSApplicationActivateAllWindows]; };
+    if (![note.name hasSuffix:@"signIn"]) return show();
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Sign in to Dia once for passkeys";
+    alert.informativeText = @"Passkeys from Apple Passwords open in a second copy of Dia, and it needs you to sign in once. "
+                             "Sign in with your Dia email in the window that opens. "
+                             "Your passkey carries on after.";
+    NSUInteger browser = [NSApp.orderedWindows indexOfObjectPassingTest:^BOOL(NSWindow *window, NSUInteger i, BOOL *stop) { return window.visible && window.canBecomeMainWindow; }];
+    if (browser == NSNotFound) return (void)([alert runModal], show());
+    [alert beginSheetModalForWindow:NSApp.orderedWindows[browser] completionHandler:^(NSModalResponse _) { show(); }];
 }
 
 static void DPInstallPasskeys(void) {
