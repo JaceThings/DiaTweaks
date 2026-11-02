@@ -57,6 +57,12 @@ static NSView *DPPanelIn(NSView *page) {
     return DPFindView(page, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaAssistantPanel); });
 }
 
+// How much of the room above and below the bar macOS center leaves above it. Debug in Settings tunes it.
+static CGFloat DPBarHeight(void) {
+    NSNumber *saved = [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] objectForKey:@"commandBarHeight"];
+    return saved ? saved.doubleValue : 0.25;
+}
+
 // The bar's top left before suggestions open. macOS centres a window on the screen with a quarter of the room left
 // above it and three quarters below, like NSWindow.center(); the window's centre is its middle.
 static NSPoint DPBarOrigin(DPCommandBarOverlay *overlay, NSSize bar) {
@@ -64,7 +70,7 @@ static NSPoint DPBarOrigin(DPCommandBarOverlay *overlay, NSSize bar) {
     if (![DPChoice(&DPCommandBar) isEqual:@"macos"] || !overlay.window.screen)
         return NSMakePoint(NSMidX(bounds) - bar.width / 2, NSMidY(bounds) - bar.height / 2);
     NSRect visible = overlay.window.screen.visibleFrame;
-    NSPoint topLeft = NSMakePoint(NSMinX(visible) + (NSWidth(visible) - bar.width) / 2, NSMaxY(visible) - (NSHeight(visible) - bar.height) / 4);
+    NSPoint topLeft = NSMakePoint(NSMinX(visible) + (NSWidth(visible) - bar.width) / 2, NSMaxY(visible) - (NSHeight(visible) - bar.height) * DPBarHeight());
     return [overlay convertPoint:[overlay.window convertPointFromScreen:topLeft] fromView:nil];
 }
 
@@ -364,6 +370,30 @@ static NSMenu *DPCommandBarPositions(void) {
     return menu;
 }
 
+@interface DPCommandBarHeightRow : NSStackView
+@property NSTextField *value;
+@end
+
+@implementation DPCommandBarHeightRow
+- (void)slide:(NSSlider *)slider {
+    [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] setDouble:slider.doubleValue forKey:@"commandBarHeight"];
+    self.value.stringValue = [NSString stringWithFormat:@"%.0f%%", slider.doubleValue * 100];
+    for (NSWindow *window in NSApp.windows) ((NSView *)DPGet(window, &DPOverlayKey)).needsLayout = YES;
+}
+@end
+
+static NSView *DPCommandBarDebug(void) {
+    NSSlider *slider = [NSSlider sliderWithValue:DPBarHeight() minValue:0 maxValue:0.5 target:nil action:@selector(slide:)];
+    slider.controlSize = NSControlSizeSmall;
+    [slider.widthAnchor constraintEqualToConstant:180].active = YES;
+    NSTextField *value = [NSTextField labelWithString:[NSString stringWithFormat:@"%.0f%%", DPBarHeight() * 100]];
+    value.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular];
+    DPCommandBarHeightRow *row = [DPCommandBarHeightRow stackViewWithViews:@[[NSTextField labelWithString:@"Room above the bar in macOS center"], slider, value]];
+    row.value = value;
+    slider.target = row;
+    return row;
+}
+
 static void DPInstallCommandBar(void) {
     DPHook(DPDiaContentPane, @selector(viewDidMoveToWindow), (IMP)DPContentPane_viewDidMoveToWindow);
     DPHook(DPDiaNewTabPage, @selector(viewDidMoveToWindow), (IMP)DPNewTabPage_viewDidMoveToWindow);
@@ -384,6 +414,7 @@ DP_PATCH(DPCommandBar) {
     .choice = @"commandBarPosition",
     .defaultChoice = @"macos",
     .choices = DPCommandBarPositions,
+    .debug = DPCommandBarDebug,
     .install = DPInstallCommandBar,
     .apply = DPApplyCommandBar,
     .verify = DPVerifyCommandBar,

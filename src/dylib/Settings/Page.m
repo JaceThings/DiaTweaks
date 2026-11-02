@@ -40,6 +40,8 @@
         [options insertObject:DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker) atIndex:0];
     }
     if (options.count) [views addObjectsFromArray:@[DPHeader(@"Options"), DPGroup(options)]];
+    if (patch->debug && [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] boolForKey:@"devTools"])
+        [views addObjectsFromArray:@[DPHeader(@"Debug"), DPGroup(@[DPRow(patch->debug(), [NSView new])])]];
 
     NSURL *wiki = DPWikiURL(patch);
     NSView *wikiRow = DPLinkRow(DPRow(DPLabel(@"Read more on the wiki", 13, NSFontWeightRegular, NSColor.labelColor),

@@ -20,6 +20,7 @@ struct DPPatch {
     // A menu on the patch's Settings page, titled by the menu. Items' representedObjects are saved under `choice`.
     __unsafe_unretained NSString *choice, *defaultChoice;
     NSMenu *(*choices)(void);
+    NSView *(*debug)(void);  // Controls for tuning it by eye, under Debug on its Settings page with devTools on.
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.
     void (*apply)(DPPatch *patch);  // Applies a toggle at once. Without it, `progress` eases toward `on` while every patch's `relayout` runs each frame.
