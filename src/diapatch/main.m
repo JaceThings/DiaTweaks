@@ -549,16 +549,29 @@ static void removeAgent(void) {
 }
 
 // launchd starts the relay when the patched Dia's iCloud Passwords extension first connects.
-static BOOL installAgent(void) {
-    if (env("DIAPATCH_NO_AGENT")) return YES;
+static NSDictionary *agent(void) {
     NSMutableDictionary *environment = [NSMutableDictionary dictionary];
     for (NSString *name in @[ @"DIAPATCH_HOME", @"DIAPATCH_APP" ]) environment[name] = env(name.UTF8String);
-    NSDictionary *agent = DPPasswordsAgentPlist(gHome, inHome(@"bin/diapatch"), environment);
+    return DPPasswordsAgentPlist(gHome, inHome(@"bin/diapatch"), environment);
+}
+
+static BOOL installAgent(void) {
+    if (env("DIAPATCH_NO_AGENT")) return YES;
     NSError *error;
     removeAgent();
     return makeDir(agentPlist().stringByDeletingLastPathComponent)
-        && ([agent writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
+        && ([agent() writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
         && check(@[ @"/bin/launchctl", @"bootstrap", [NSString stringWithFormat:@"gui/%d", getuid()], agentPlist() ]);
+}
+
+static BOOL agentCurrent(void) { return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()]; }
+
+// The diapatch a self-update replaces is the one that applies it, so the new one's first host updates the agent.
+static void refreshAgent(void) {
+    if (agentCurrent()) return;
+    FILE *lock = fopen(inHome(@"diapatch.log").fileSystemRepresentation, "a");
+    if (lock && flock(fileno(lock), LOCK_EX | LOCK_NB) == 0 && !agentCurrent()) installAgent();
+    if (lock) fclose(lock);
 }
 
 // Only the copy the dylib registered: another app's override of Apple's host isn't DiaTweaks' to remove.
@@ -580,7 +593,7 @@ static BOOL purge(void) {
         say(@"deleted %@", link);
     }
     for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"release.plist", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
-                              @".diatweaks.lock", @".incoming", @"passwords-helper", @"passwords.sock" ])
+                              @".diatweaks.lock", @".incoming", @"passwords-helper", @"passwords.sock", @"onepassword.sock" ])
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
         if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
@@ -594,6 +607,7 @@ static BOOL uninstall(BOOL purgeFiles) {
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch uninstall`");
     removeAgent();
     removePasswordsHost();  // the official Dia reaches iCloud Passwords itself
+    if (!removeTree(DPCopyFolder)) return NO;
     if (!claimsOfficial(gApp)) {
         NSString *copy = [gPristine stringByAppendingString:@".restore"];
         if (!exists(gPristine)) return fail(@"no official Dia at %@; reinstall Dia from https://www.diabrowser.com", gPristine);
@@ -692,8 +706,11 @@ int main(int argc, const char *argv[]) {
         gReady = inHome(@"staged/ready");
         gStagedTweaks = inHome(@"staged/DiaTweaks");
         // Started by Dia as the Passkeys extension's native messaging host.
-        if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19))
-            return DPIsPasswordsOrigin(argv[1]) ? DPRunPasswordsHost(gHome, gApp, argc, argv) : DPRunPasskeyHost(gHome);
+        if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) {
+            if (!DPIsPasswordsOrigin(argv[1])) return DPRunPasskeyHost(gHome);
+            refreshAgent();
+            return DPRunPasswordsHost(gHome, gApp, argc, argv);
+        }
         if (argc > 1 && !strcmp(argv[1], "passwords-relay")) return DPRunPasswordsRelay(gHome, gApp);
 
         NSString *command = argc > 1 ? @(argv[1]) : @"";

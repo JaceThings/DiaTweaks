@@ -1,21 +1,17 @@
 #import <AppKit/AppKit.h>
 #import <spawn.h>
+#import <sys/clonefile.h>
 #import <sys/wait.h>
+#import "Passwords.h"
 #import "PasswordsParts.h"
 
 extern char **environ;
 int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS then asks about the copy, not Dia
 
-// The Chrome Web Store key of Apple's extension. The helper only answers ports from Apple's extension IDs, so the relay
-// extension in the original Dia is loaded under this key.
-static NSString *const kAppleExtensionKey =
-    @"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAk4xPYZla5XqlDN0PPiLCQAYRqdaR06jSl3sntEE5jHoe7XldFqhsdBSp4L8mozwjCwi6z5YtEpTV1L2k4WYmDu"
-    @"iwoH7YKGlQD/YbC8QMcPvGLWOr8WYfXWtECKv0Nx7Tahk8nCIDWgJVm8YmPIDhPv4o5VVrq6aUveCKvTOskHWFyRzSTC2VKpzIVX7F65UzqqOmqLfMpo6lfaLcKSC7G6oQLA"
-    @"/wS7hcGZEwZ11si6XWR4o/hDuUSt6zdacy/sc7H80eH3lMnEmvb6HoB7+KvxfGIU7dqRmhA/w/X0qkiIJYeoo4tZrNxBj7TTLz9hnHUbMRwJqsoIU+pkoprgFWDQIDAQAB";
 static NSString *const kRelayScript =
     @"const ports = new Map();\n"
-     "globalThis.relayOpen = (id) => {\n"
-     "  const port = chrome.runtime.connectNative('com.apple.passwordmanager');\n"
+     "globalThis.relayOpen = (id, host) => {\n"
+     "  const port = chrome.runtime.connectNative(host);\n"
      "  ports.set(id, port);\n"
      "  port.onMessage.addListener((message) => relayOut(JSON.stringify({ id, message })));\n"
      "  port.onDisconnect.addListener(() => { ports.delete(id); relayOut(JSON.stringify({ id, closed: true })); });\n"
@@ -23,12 +19,14 @@ static NSString *const kRelayScript =
      "globalThis.relayPost = (id, message) => ports.get(id)?.postMessage(message);\n"
      "globalThis.relayClose = (id) => { ports.get(id)?.disconnect(); ports.delete(id); };\n";
 
-static pid_t gDia;
-static NSString *gSession;
+NSString *const DPCopyFolder = @"/Applications/.DiaTweaks";
 
-static BOOL writeExtension(NSString *folder) {
+static pid_t gDia;
+static NSString *gSessions[2];
+
+static BOOL writeExtension(NSString *folder, const DPPasswordsService *service) {
     NSDictionary *manifest = @{
-        @"manifest_version" : @3, @"name" : @"DiaTweaks iCloud Passwords relay", @"version" : @"1", @"key" : kAppleExtensionKey,
+        @"manifest_version" : @3, @"name" : @"DiaTweaks passwords relay", @"version" : @"1", @"key" : @(service->key),
         @"permissions" : @[ @"nativeMessaging" ], @"background" : @{ @"service_worker" : @"relay.js" },
     };
     [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
@@ -49,18 +47,41 @@ static int highFD(int fd) {
     return moved;
 }
 
+// 1Password's helper checks its browser's signature, and its sandbox can only read apps under /Applications.
+static NSString *runnableCopy(NSString *home) {
+    NSString *pristine = [home stringByAppendingPathComponent:@"pristine/Dia.app"], *clone = [DPCopyFolder stringByAppendingPathComponent:@"Dia.app"];
+    [NSFileManager.defaultManager removeItemAtPath:clone error:nil];
+    [NSFileManager.defaultManager createDirectoryAtPath:DPCopyFolder withIntermediateDirectories:YES attributes:nil error:nil];
+    return clonefile(pristine.fileSystemRepresentation, clone.fileSystemRepresentation, 0) == 0 ? clone : pristine;
+}
+
+// Chromium looks for native hosts under the copy's home, its data folder.
+static void linkOnePasswordHost(NSString *data) {
+    NSString *path = @"Library/Application Support/Google/Chrome/NativeMessagingHosts/com.1password.1password.json";
+    NSString *link = [data stringByAppendingPathComponent:path];
+    [NSFileManager.defaultManager createDirectoryAtPath:link.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+    [NSFileManager.defaultManager removeItemAtPath:link error:nil];
+    [NSFileManager.defaultManager createSymbolicLinkAtPath:link withDestinationPath:[NSHomeDirectory() stringByAppendingPathComponent:path] error:nil];
+}
+
 static pid_t launch(NSString *home) {
-    NSString *data = [home stringByAppendingPathComponent:@"passwords-helper"], *extension = [data stringByAppendingPathComponent:@"extension"];
+    NSString *data = [home stringByAppendingPathComponent:@"passwords-helper"];
     [NSFileManager.defaultManager createDirectoryAtPath:data withIntermediateDirectories:YES attributes:@{ NSFilePosixPermissions : @0700 } error:nil];
-    if (!writeExtension(extension)) return 0;
+    NSMutableArray<NSString *> *extensions = [NSMutableArray array];
+    for (const DPPasswordsService *service = DPPasswordsServices; service < DPPasswordsServices + 2; service++) {
+        NSString *extension = [data stringByAppendingPathComponent:[@"extension-" stringByAppendingString:@(service->host)]];
+        if (!writeExtension(extension, service)) return 0;
+        [extensions addObject:extension];
+    }
+    linkOnePasswordHost(data);
     quieten(data);
     int toDia[2], fromDia[2];
     if (pipe(toDia) || pipe(fromDia)) return 0;
     toDia[0] = highFD(toDia[0]), toDia[1] = highFD(toDia[1]), fromDia[0] = highFD(fromDia[0]), fromDia[1] = highFD(fromDia[1]);
 
-    NSString *app = [home stringByAppendingPathComponent:@"pristine/Dia.app/Contents/MacOS/Dia"];
+    NSString *app = [runnableCopy(home) stringByAppendingPathComponent:@"Contents/MacOS/Dia"];
     NSString *profile = [@"--user-data-dir=" stringByAppendingString:[data stringByAppendingPathComponent:@"ud"]];
-    NSString *load = [@"--load-extension=" stringByAppendingString:extension];
+    NSString *load = [@"--load-extension=" stringByAppendingString:[extensions componentsJoinedByString:@","]];
     const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, load.UTF8String, "--remote-debugging-pipe", "--no-startup-window", "--mute-audio", NULL };
     NSMutableArray<NSString *> *environment = [NSMutableArray arrayWithObject:[@"CFFIXED_USER_HOME=" stringByAppendingString:data]];
     for (char **e = environ; *e; e++) [environment addObject:@(*e)];
@@ -96,21 +117,36 @@ static pid_t launch(NSString *home) {
     return pid;
 }
 
-static NSString *relayWorker(void) {
+static NSString *relayWorker(const DPPasswordsService *service) {
     for (int tries = 0; tries < 120; tries++, usleep(250000))
         for (NSDictionary *target in DPDevToolsAsk(@"Target.getTargets", nil, nil)[@"result"][@"targetInfos"])
-            if ([target[@"type"] isEqual:@"service_worker"] && [target[@"url"] hasPrefix:@(DPAppleExtensions[0])]) return target[@"targetId"];
+            if ([target[@"type"] isEqual:@"service_worker"] && [target[@"url"] hasPrefix:@(service->origins[0])]) return target[@"targetId"];
     return nil;
+}
+
+static NSString *attach(const DPPasswordsService *service) {
+    NSString *worker = relayWorker(service);
+    NSString *session = worker ? DPDevToolsAsk(@"Target.attachToTarget", @{ @"targetId" : worker, @"flatten" : @YES }, nil)[@"result"][@"sessionId"] : nil;
+    return session && DPDevToolsAsk(@"Runtime.addBinding", @{ @"name" : @"relayOut" }, session) ? session : nil;
+}
+
+// Launch Services would send links and "open Dia" to the windowless copy.
+static void unregister(void) {
+    NSTask *task = [NSTask launchedTaskWithExecutableURL:[NSURL fileURLWithPath:@"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"]
+                                               arguments:@[ @"-u", [DPCopyFolder stringByAppendingPathComponent:@"Dia.app"] ] error:nil terminationHandler:nil];
+    [task waitUntilExit];
 }
 
 BOOL DPCopyStart(NSString *home) {
     gDia = launch(home);
-    NSString *worker = gDia ? relayWorker() : nil;
-    gSession = worker ? DPDevToolsAsk(@"Target.attachToTarget", @{ @"targetId" : worker, @"flatten" : @YES }, nil)[@"result"][@"sessionId"] : nil;
-    return gSession && DPDevToolsAsk(@"Runtime.addBinding", @{ @"name" : @"relayOut" }, gSession);
+    for (int i = 0; i < 2; i++) gSessions[i] = gDia ? attach(&DPPasswordsServices[i]) : nil;
+    unregister();
+    return gSessions[0] && gSessions[1];
 }
 
-void DPCopyEvaluate(NSString *expression) { DPDevToolsCall(@"Runtime.evaluate", @{ @"expression" : expression }, gSession); }
+void DPCopyEvaluate(const DPPasswordsService *service, NSString *expression) {
+    DPDevToolsCall(@"Runtime.evaluate", @{ @"expression" : expression }, gSessions[service - DPPasswordsServices]);
+}
 
 void DPCopyQuit(void) {
     if (!gDia) return;

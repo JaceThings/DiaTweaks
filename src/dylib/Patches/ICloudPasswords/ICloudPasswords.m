@@ -41,15 +41,15 @@ static void DPRegisterHost(BOOL on) {
 // The relay quits the original Dia a few seconds after this one quits. Opened again before then, Dia would find it
 // still running and refuse to start ("Dia is already open"), so it's stopped first; this runs before Dia checks.
 static void DPStopOriginalDia(void) {
-    char original[PATH_MAX], path[PROC_PIDPATHINFO_MAXSIZE];
-    NSString *dia = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
+    char path[PROC_PIDPATHINFO_MAXSIZE];
+    NSString *pristine = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
         stringByAppendingPathComponent:@"DiaPatches/pristine/Dia.app/Contents/MacOS/Dia"];
-    if (!realpath(dia.fileSystemRepresentation, original)) return;
+    NSArray<NSString *> *originals = @[ pristine.stringByResolvingSymlinksInPath, @"/Applications/.DiaTweaks/Dia.app/Contents/MacOS/Dia" ];
     int capacity = proc_listallpids(NULL, 0) + 64;
     pid_t pids[capacity];
     int count = proc_listallpids(pids, capacity * (int)sizeof *pids);
     for (int i = 0; i < count; i++) {
-        if (proc_pidpath(pids[i], path, sizeof path) <= 0 || strcmp(path, original)) continue;
+        if (proc_pidpath(pids[i], path, sizeof path) <= 0 || ![originals containsObject:@(path)]) continue;
         kill(pids[i], SIGKILL);
         for (int tries = 0; tries < 50 && kill(pids[i], 0) == 0; tries++) usleep(20000);
     }

@@ -1,8 +1,17 @@
 // Shared between the iCloud Passwords host and relay; Passwords.h is what the rest of diapatch uses.
 #import <Foundation/Foundation.h>
 
-extern const char *const DPAppleExtensions[2];
-NSString *DPPasswordsSocket(NSString *home);
+// `key` gives the relay extension the manager's extension ID, as each helper only answers its own extension.
+typedef struct {
+    const char *origins[3];
+    const char *host;
+    const char *key;
+    const char *socket;
+} DPPasswordsService;
+
+extern const DPPasswordsService DPPasswordsServices[2];
+const DPPasswordsService *DPPasswordsServiceFor(const char *origin);
+NSString *DPPasswordsSocket(NSString *home, const DPPasswordsService *service);
 
 BOOL DPRunsPatchedDia(pid_t pid, NSString *app);
 BOOL DPPatchedDiaRunning(NSString *app);
@@ -18,5 +27,5 @@ int DPDevToolsInput(void);
 
 // The original Dia, windowless, with the relay extension in it.
 BOOL DPCopyStart(NSString *home);
-void DPCopyEvaluate(NSString *expression);
+void DPCopyEvaluate(const DPPasswordsService *service, NSString *expression);
 void DPCopyQuit(void);

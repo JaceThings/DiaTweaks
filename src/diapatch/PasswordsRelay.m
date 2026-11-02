@@ -1,4 +1,4 @@
-// One windowless original Dia, driven over its DevTools pipe, opens a native port to Apple's helper for each client.
+// One windowless original Dia, driven over its DevTools pipe, opens a native port to a password manager's helper for each client.
 #import <launch.h>
 #import <poll.h>
 #import <sys/socket.h>
@@ -13,6 +13,7 @@ static const NSTimeInterval kIdleQuit = 600;
 
 static NSMutableDictionary<NSNumber *, NSNumber *> *gClients;  // id → socket
 static NSMutableDictionary<NSNumber *, NSMutableData *> *gPending;
+static NSMutableDictionary<NSNumber *, NSValue *> *gServices;
 static FILE *gLog;
 static volatile sig_atomic_t gStopping;
 
@@ -21,7 +22,10 @@ NSDictionary *DPPasswordsAgentPlist(NSString *home, NSString *diapatch, NSDictio
         @"Label" : DPPasswordsAgent,
         @"ProgramArguments" : @[ diapatch, @"passwords-relay" ],
         @"EnvironmentVariables" : environment,
-        @"Sockets" : @{ @"Listener" : @{ @"SockPathName" : DPPasswordsSocket(home), @"SockPathMode" : @0600 } },
+        @"Sockets" : @{
+            @(DPPasswordsServices[0].socket) : @{ @"SockPathName" : DPPasswordsSocket(home, &DPPasswordsServices[0]), @"SockPathMode" : @0600 },
+            @(DPPasswordsServices[1].socket) : @{ @"SockPathName" : DPPasswordsSocket(home, &DPPasswordsServices[1]), @"SockPathMode" : @0600 },
+        },
         @"ProcessType" : @"Interactive",
     };
 }
@@ -51,11 +55,14 @@ static BOOL writeFrame(int fd, id message) {
     return YES;
 }
 
+static const DPPasswordsService *serviceOf(NSNumber *client) { return gServices[client].pointerValue; }
+
 static void drop(NSNumber *client, BOOL tellDia) {
     close(gClients[client].intValue);
     [gClients removeObjectForKey:client];
+    if (tellDia) DPCopyEvaluate(serviceOf(client), [NSString stringWithFormat:@"relayClose(%@)", client]);
     [gPending removeObjectForKey:client];
-    if (tellDia) DPCopyEvaluate([NSString stringWithFormat:@"relayClose(%@)", client]);
+    [gServices removeObjectForKey:client];
 }
 
 // Each message is parsed and serialized again before it becomes JavaScript, so it can only ever be a JSON value.
@@ -71,7 +78,7 @@ static BOOL forward(NSNumber *client) {
         [pending replaceBytesInRange:NSMakeRange(0, 4 + length) withBytes:NULL length:0];
         NSData *json = message ? [NSJSONSerialization dataWithJSONObject:message options:NSJSONWritingFragmentsAllowed error:nil] : nil;
         if (!json) return NO;
-        DPCopyEvaluate([NSString stringWithFormat:@"relayPost(%@, %@)", client, [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]]);
+        DPCopyEvaluate(serviceOf(client), [NSString stringWithFormat:@"relayPost(%@, %@)", client, [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]]);
     }
     return YES;
 }
@@ -88,7 +95,7 @@ static BOOL deliver(void) {
     return YES;
 }
 
-static void accepted(int fd, NSString *home, NSString *app) {
+static void accepted(int fd, const DPPasswordsService *service, NSString *home, NSString *app) {
     static int lastID;
     if (!DPTrustedRelayPeer(fd, app)) return (void)(logLine(@"refused a client that isn't diapatch started by the patched Dia"), close(fd));
     if (DPDevToolsInput() < 0) {
@@ -98,15 +105,21 @@ static void accepted(int fd, NSString *home, NSString *app) {
     NSNumber *client = @(++lastID);
     gClients[client] = @(fd);
     gPending[client] = [NSMutableData data];
-    DPCopyEvaluate([NSString stringWithFormat:@"relayOpen(%@)", client]);
+    gServices[client] = [NSValue valueWithPointer:service];
+    DPCopyEvaluate(service, [NSString stringWithFormat:@"relayOpen(%@, '%s')", client, service->host]);
 }
 
 static void stop(int signal) { gStopping = 1; }
 
 int DPRunPasswordsRelay(NSString *home, NSString *app) {
-    int *listeners = NULL;
-    size_t listenerCount = 0;
-    if (launch_activate_socket("Listener", &listeners, &listenerCount) != 0 || listenerCount != 1) return 1;
+    int listeners[2];
+    for (int i = 0; i < 2; i++) {
+        int *fds = NULL;
+        size_t count = 0;
+        if (launch_activate_socket(DPPasswordsServices[i].socket, &fds, &count) != 0 || count != 1) return 1;
+        listeners[i] = fds[0];
+        free(fds);
+    }
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTERM, stop);
     gLog = fopen([home stringByAppendingPathComponent:@"diapatch.log"].fileSystemRepresentation, "a") ?: stderr;
@@ -114,22 +127,23 @@ int DPRunPasswordsRelay(NSString *home, NSString *app) {
     atexit(DPCopyQuit);
     gClients = [NSMutableDictionary dictionary];
     gPending = [NSMutableDictionary dictionary];
+    gServices = [NSMutableDictionary dictionary];
     NSDate *idleSince = NSDate.date;
     while (!gStopping && (gClients.count || (-idleSince.timeIntervalSinceNow < kIdleQuit && DPPatchedDiaRunning(app)))) {
         NSArray<NSNumber *> *ids = gClients.allKeys;
-        struct pollfd fds[2 + ids.count];
-        fds[0] = (struct pollfd){ .fd = listeners[0], .events = POLLIN };
-        fds[1] = (struct pollfd){ .fd = DPDevToolsInput(), .events = POLLIN };
-        for (NSUInteger i = 0; i < ids.count; i++) fds[2 + i] = (struct pollfd){ .fd = gClients[ids[i]].intValue, .events = POLLIN };
-        if (poll(fds, 2 + ids.count, 5000) < 0 && errno != EINTR) break;
-        if (fds[0].revents) {
-            int fd = accept(listeners[0], NULL, NULL);
-            if (fd >= 0) accepted(fd, home, app);
+        struct pollfd fds[3 + ids.count];
+        for (int i = 0; i < 2; i++) fds[i] = (struct pollfd){ .fd = listeners[i], .events = POLLIN };
+        fds[2] = (struct pollfd){ .fd = DPDevToolsInput(), .events = POLLIN };
+        for (NSUInteger i = 0; i < ids.count; i++) fds[3 + i] = (struct pollfd){ .fd = gClients[ids[i]].intValue, .events = POLLIN };
+        if (poll(fds, 3 + ids.count, 5000) < 0 && errno != EINTR) break;
+        for (int i = 0; i < 2; i++) {
+            int fd = fds[i].revents ? accept(listeners[i], NULL, NULL) : -1;
+            if (fd >= 0) accepted(fd, &DPPasswordsServices[i], home, app);
         }
-        if (fds[1].revents && !DPDevToolsRead()) break;
+        if (fds[2].revents && !DPDevToolsRead()) break;
         if (!deliver()) break;
         for (NSUInteger i = 0; i < ids.count; i++)
-            if (gClients[ids[i]] && fds[2 + i].revents && !forward(ids[i])) drop(ids[i], YES);
+            if (gClients[ids[i]] && fds[3 + i].revents && !forward(ids[i])) drop(ids[i], YES);
         if (gClients.count) idleSince = NSDate.date;
     }
     logLine(@"%@", gStopping ? @"stopping" : gClients.count ? @"the original Dia went away" : @"idle, quitting the original Dia");
