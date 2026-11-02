@@ -37,6 +37,7 @@
 #define DPDiaProfilePane        "_TtC11Preferences44DiaProfileDetailPreferencePaneViewController"
 #define DPDiaSettingsFormGroup  "_TtC11Preferences21SettingsFormGroupView"
 #define DPDiaSettingsSidebarCell "_TtC11PreferencesP33_4E27E2219272DF78406B73092738280415SidebarCellView"
+#define DPDiaChatUsage          "_TtC15BoostCommandBar13ChatUsageView"
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
