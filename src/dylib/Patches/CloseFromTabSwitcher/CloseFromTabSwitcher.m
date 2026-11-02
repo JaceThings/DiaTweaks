@@ -1,7 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-// The switcher is Swift, so its state is read by field name through the reflection AppKit loads for accessibility.
-// It never drops a closed tab while it's open, so after closing one it's opened again and stepped back into place.
+// The switcher never drops a closed tab while open, so after closing one it reopens and steps back into place.
 
 @interface NSObject (DPSwiftFields)
 - (id)safeSwiftValueForKey:(NSString *)key;
