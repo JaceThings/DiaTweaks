@@ -7,7 +7,8 @@ extern DPPatch DPProfileEmoji;
 @end
 
 static NSString *const DPEmojisKey = @"profileEmojis";
-static const CGFloat DPSidebarEmojiSize = 15, DPSidebarItemWidth = 24;
+// The gap is between what's drawn, so emoji and dots sit the same distance apart in any mix.
+static const CGFloat DPSidebarEmojiSize = 13.5, DPSidebarEmojiWidth = 16, DPSidebarDotWidth = 6, DPSidebarGap = 10;
 static NSUserDefaults *DPEmojiDefaults;
 static char DPLabelKey, DPFieldKey;
 
@@ -52,14 +53,30 @@ static void DPShowSidebarItem(NSView *item) {
     DPShowEmoji(item, dot, emoji, DPSidebarEmojiSize, selected ? 1 : 0.45);
 }
 
-// Dia's 12 point spacing crowds emoji. It also places items outside layout, such as after switching profiles.
+static CGFloat DPSidebarItemWidth(NSView *item, NSDictionary *views) {
+    return (DPEmoji(DPSpaceIDOf(item, views)) ? DPSidebarEmojiWidth : DPSidebarDotWidth) + DPSidebarGap;
+}
+
+// Dia packs items 12 points apart, which crowds emoji, so each item gets its own width and the row stays centered.
+// Dia also places items outside layout, such as after switching profiles.
 static void DPSidebarItem_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     NSView *switcher = self.superview;
+    NSDictionary *views = [switcher safeSwiftValueForKey:@"itemViews"];
     BOOL anyEmoji = NO;
-    for (id key in [switcher safeSwiftValueForKey:@"itemViews"]) anyEmoji = anyEmoji || DPEmoji([key description]);
-    if (anyEmoji && NSWidth(frame) > 0 && NSWidth(frame) < DPSidebarItemWidth) {
-        CGFloat middle = NSMidX(switcher.bounds), center = middle + (NSMidX(frame) - middle) * DPSidebarItemWidth / NSWidth(frame);
-        frame = NSMakeRect(round(center - DPSidebarItemWidth / 2), NSMinY(frame), DPSidebarItemWidth, NSHeight(frame));
+    for (id key in views) anyEmoji = anyEmoji || DPEmoji([key description]);
+    if (anyEmoji && NSWidth(frame) > 0 && NSWidth(frame) < DPSidebarDotWidth + DPSidebarGap) {
+        CGFloat middle = NSMidX(switcher.bounds);
+        NSInteger index = lround((NSMinX(frame) - (middle - views.count * NSWidth(frame) / 2)) / NSWidth(frame));
+        NSMutableArray<NSView *> *row = [[views.allValues filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"self != %@", self]] mutableCopy];
+        [row sortUsingComparator:^NSComparisonResult(NSView *a, NSView *b) { return [@(NSMidX(a.frame)) compare:@(NSMidX(b.frame))]; }];
+        [row insertObject:self atIndex:MIN(MAX(index, 0), (NSInteger)row.count)];
+        CGFloat total = 0, x = 0;
+        for (NSView *item in row) total += DPSidebarItemWidth(item, views);
+        for (NSView *item in row) {
+            if (item == self) break;
+            x += DPSidebarItemWidth(item, views);
+        }
+        frame = NSMakeRect(round(middle - total / 2 + x), NSMinY(frame), DPSidebarItemWidth(self, views), NSHeight(frame));
     }
     DPCallOriginal(DPSidebarItem_setFrame, self, frame);
 }
