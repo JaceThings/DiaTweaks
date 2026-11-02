@@ -40,7 +40,7 @@ DP_PATCH(DPQuietDownloads) {
     .detail = @"Stops the downloads list opening by itself each time a download starts. The downloads button still shows progress, and clicking it opens the list.",
     .symbol = @"arrow.down.circle",
     .tint = @"systemOrangeColor",
-    .section = @"Toolbar",
+    .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaDownloadsMenu, DPDiaDownloadsButton, DPDiaTabSurfaceButton),
     .install = DPInstallQuietDownloads,
 };
