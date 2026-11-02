@@ -20,6 +20,7 @@ static char DPOverlayKey, DPHomeKey, DPRecentKey;
 @end
 
 static void DPCancelCommandBar(DPCommandBarOverlay *overlay);
+static void DPPlaceShade(DPCommandBarOverlay *overlay);
 
 @interface NSObject (DPCAFilter)
 + (id)filterWithType:(NSString *)type;
@@ -57,20 +58,23 @@ static NSView *DPPanelIn(NSView *page) {
     return DPFindView(page, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaAssistantPanel); });
 }
 
-// How much of the room above and below the bar macOS center leaves above it. Debug in Settings tunes it.
-static CGFloat DPBarHeight(void) {
-    NSNumber *saved = [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] objectForKey:@"commandBarHeight"];
-    return saved ? saved.doubleValue : 0.25;
+// Values Debug in Settings tunes, saved under their keys.
+static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
+                *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
+
+static double DPTuned(NSString *key) {
+    NSDictionary *fallbacks = @{ DPHeightKey : @0.3, DPDarknessKey : @0.3, DPBlurRadiusKey : @16, DPBlurWindowKey : @NO };
+    return [([[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] objectForKey:key] ?: fallbacks[key]) doubleValue];
 }
 
-// The bar's top left before suggestions open. macOS centres a window on the screen with a quarter of the room left
-// above it and three quarters below, like NSWindow.center(); the window's centre is its middle.
+// The bar's top left before suggestions open. Like NSWindow.center(), macOS center leaves part of the screen's room
+// above it (a quarter for windows, 30% here) and the rest below; the window's centre is its middle.
 static NSPoint DPBarOrigin(DPCommandBarOverlay *overlay, NSSize bar) {
     NSRect bounds = overlay.bounds;
     if (![DPChoice(&DPCommandBar) isEqual:@"macos"] || !overlay.window.screen)
         return NSMakePoint(NSMidX(bounds) - bar.width / 2, NSMidY(bounds) - bar.height / 2);
     NSRect visible = overlay.window.screen.visibleFrame;
-    NSPoint topLeft = NSMakePoint(NSMinX(visible) + (NSWidth(visible) - bar.width) / 2, NSMaxY(visible) - (NSHeight(visible) - bar.height) * DPBarHeight());
+    NSPoint topLeft = NSMakePoint(NSMinX(visible) + (NSWidth(visible) - bar.width) / 2, NSMaxY(visible) - (NSHeight(visible) - bar.height) * DPTuned(DPHeightKey));
     return [overlay convertPoint:[overlay.window convertPointFromScreen:topLeft] fromView:nil];
 }
 
@@ -91,6 +95,7 @@ static NSPoint DPBarOrigin(DPCommandBarOverlay *overlay, NSSize bar) {
 - (void)layout {
     [super layout];
     if (self.panel) self.panel.frame = [self frameForPanelSize:self.panel.frame.size];
+    DPPlaceShade(self);
 }
 
 // Only the bar takes the mouse; anywhere else cancels.
@@ -112,31 +117,52 @@ static CALayer *DPBlurLayer(void) {
     CALayer *backdrop = [NSClassFromString(@"CABackdropLayer") new];
     id blur = [(id)NSClassFromString(@"CAFilter") filterWithType:@"gaussianBlur"];
     if (!backdrop || !blur) return nil;
-    [blur setValue:@16 forKey:@"inputRadius"];
+    [blur setValue:@(DPTuned(DPBlurRadiusKey)) forKey:@"inputRadius"];
     [blur setValue:@YES forKey:@"inputNormalizeEdges"];
     backdrop.filters = @[ blur ];
     return backdrop;
+}
+
+// The page's rounded card, without the sidebar: the visible content pane, or its ancestor that rounds it.
+static NSView *DPCardIn(NSWindow *window) {
+    NSView *pane = DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaContentPane) && !view.isHiddenOrHasHiddenAncestor; });
+    for (NSView *view = pane; view && view != window.contentView; view = view.superview)
+        if (view.layer.cornerRadius > 0 && view.layer.maskedCorners && view.layer.masksToBounds) return view;
+    return pane;
+}
+
+// The darkening covers the page's card; the blur does too unless Debug says the whole window.
+static void DPPlaceShade(DPCommandBarOverlay *overlay) {
+    NSView *card = DPCardIn(overlay.host);
+    NSRect page = card ? [overlay.shade convertRect:card.bounds fromView:card] : overlay.shade.bounds;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (CALayer *layer in overlay.shade.layer.sublayers) {
+        BOOL window = DPTuned(DPBlurWindowKey) && [layer isKindOfClass:NSClassFromString(@"CABackdropLayer")];
+        layer.frame = window ? overlay.shade.bounds : page;
+        layer.cornerRadius = window ? 0 : card.layer.cornerRadius;
+        layer.maskedCorners = card.layer.maskedCorners;
+        layer.cornerCurve = card.layer.cornerCurve;
+        layer.masksToBounds = YES;
+    }
+    [CATransaction commit];
 }
 
 static void DPShowShade(DPCommandBarOverlay *overlay) {
     NSView *shade = [[NSView alloc] initWithFrame:overlay.bounds];
     shade.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     shade.wantsLayer = YES;
-    NSMutableArray *layers = [NSMutableArray array];
-    if (DPCommandBarBlur.on && DPBlurLayer()) [layers addObject:DPBlurLayer()];
+    CALayer *blur = DPCommandBarBlur.on ? DPBlurLayer() : nil;
+    if (blur) [shade.layer addSublayer:blur];
     if (DPCommandBarDarken.on) {
         CALayer *dim = [CALayer layer];
-        dim.backgroundColor = [NSColor colorWithWhite:0 alpha:0.3].CGColor;
-        [layers addObject:dim];
-    }
-    for (CALayer *layer in layers) {
-        layer.frame = shade.bounds;
-        layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
-        [shade.layer addSublayer:layer];
+        dim.backgroundColor = [NSColor colorWithWhite:0 alpha:DPTuned(DPDarknessKey)].CGColor;
+        [shade.layer addSublayer:dim];
     }
     [overlay.shade removeFromSuperview];
     [overlay addSubview:shade positioned:NSWindowBelow relativeTo:overlay.panel];
     overlay.shade = shade;
+    DPPlaceShade(overlay);
 }
 
 static NSTextView *DPBarText(DPCommandBarOverlay *overlay) {
@@ -188,6 +214,7 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
         overlay.frame = frame.bounds;
         [frame addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
     }
+    DPPlaceShade(overlay);  // The sidebar may have opened or closed.
     NSString *tabID = [overlay.openedTab valueForKey:@"tabId"];
     id tab = DPScriptTab(window, tabID);
     if (!tab) return (void)DPDismissCommandBar(overlay);
@@ -370,28 +397,49 @@ static NSMenu *DPCommandBarPositions(void) {
     return menu;
 }
 
-@interface DPCommandBarHeightRow : NSStackView
+// A Debug row in Settings: a slider or checkbox for one tuned value, which open bars pick up at once.
+@interface DPCommandBarTuneRow : NSStackView
+@property(copy) NSString *key, *format;
+@property double scale;
 @property NSTextField *value;
 @end
 
-@implementation DPCommandBarHeightRow
-- (void)slide:(NSSlider *)slider {
-    [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] setDouble:slider.doubleValue forKey:@"commandBarHeight"];
-    self.value.stringValue = [NSString stringWithFormat:@"%.0f%%", slider.doubleValue * 100];
-    for (NSWindow *window in NSApp.windows) ((NSView *)DPGet(window, &DPOverlayKey)).needsLayout = YES;
+@implementation DPCommandBarTuneRow
+- (void)tune:(NSControl *)control {
+    double value = [control isKindOfClass:NSButton.class] ? ((NSButton *)control).state : control.doubleValue;
+    [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] setDouble:value forKey:self.key];
+    self.value.stringValue = [NSString stringWithFormat:self.format, value * self.scale];
+    for (NSWindow *window in NSApp.windows) {
+        DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+        if (overlay) DPShowShade(overlay);
+        overlay.needsLayout = YES;
+    }
 }
 @end
 
-static NSView *DPCommandBarDebug(void) {
-    NSSlider *slider = [NSSlider sliderWithValue:DPBarHeight() minValue:0 maxValue:0.5 target:nil action:@selector(slide:)];
-    slider.controlSize = NSControlSizeSmall;
-    [slider.widthAnchor constraintEqualToConstant:180].active = YES;
-    NSTextField *value = [NSTextField labelWithString:[NSString stringWithFormat:@"%.0f%%", DPBarHeight() * 100]];
+static NSView *DPTuneRow(NSString *title, NSString *key, double max, double scale, NSString *format) {
+    NSControl *control = max ? [NSSlider sliderWithValue:DPTuned(key) minValue:0 maxValue:max target:nil action:@selector(tune:)]
+                             : [NSButton checkboxWithTitle:@"" target:nil action:@selector(tune:)];
+    if (max) [control.widthAnchor constraintEqualToConstant:180].active = YES;
+    else ((NSButton *)control).state = DPTuned(key);
+    control.controlSize = NSControlSizeSmall;
+    NSTextField *value = [NSTextField labelWithString:max ? [NSString stringWithFormat:format, DPTuned(key) * scale] : @""];
     value.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular];
-    DPCommandBarHeightRow *row = [DPCommandBarHeightRow stackViewWithViews:@[[NSTextField labelWithString:@"Room above the bar in macOS center"], slider, value]];
-    row.value = value;
-    slider.target = row;
+    NSTextField *label = [NSTextField labelWithString:title];
+    [label.widthAnchor constraintEqualToConstant:240].active = YES;
+    DPCommandBarTuneRow *row = [DPCommandBarTuneRow stackViewWithViews:@[label, control, value]];
+    row.key = key, row.format = format, row.scale = scale, row.value = value;
+    control.target = row;
     return row;
+}
+
+static NSArray<NSView *> *DPCommandBarDebug(void) {
+    return @[
+        DPTuneRow(@"Room above the bar in macOS center", DPHeightKey, 0.5, 100, @"%.0f%%"),
+        DPTuneRow(@"Darkness", DPDarknessKey, 0.8, 100, @"%.0f%%"),
+        DPTuneRow(@"Blur radius", DPBlurRadiusKey, 60, 1, @"%.0f pt"),
+        DPTuneRow(@"Blur the sidebar too", DPBlurWindowKey, 0, 1, @""),
+    ];
 }
 
 static void DPInstallCommandBar(void) {
