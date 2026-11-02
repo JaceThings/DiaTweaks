@@ -17,6 +17,7 @@ static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey;
 @property(strong) NSTimer *watch;
 @property(weak) NSWindow *host;
 @property BOOL picked;
+@property BOOL overBlank;  // Opened over a blank tab's own page, which it goes back to being.
 @end
 
 static void DPCancelCommandBar(DPCommandBarOverlay *overlay);
@@ -210,9 +211,23 @@ static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
     return overlay.openedTab;
 }
 
+// Leaves the active tab's new tab page empty, without the bar; see DPCloseLeftBlank.
+static void DPMakeBlank(NSView *page) {
+    NSString *active = DPActiveTabID(page.window);
+    if (!active) return;
+    NSMutableSet<NSString *> *blanks = DPGet(page.window, &DPBlankKey);
+    if (!blanks) DPSet(page.window, &DPBlankKey, blanks = [NSMutableSet set]);
+    [blanks addObject:active];
+    DPSet(page, &DPBlankKey, @YES);
+    DPHidePage(page, YES);
+}
+
 static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
+    NSView *page = overlay.page;
+    BOOL overBlank = overlay.overBlank;
     id tab = DPDismissCommandBar(overlay);
-    if (tab) DPCloseTab(tab);
+    if (overBlank) DPMakeBlank(page);
+    else if (tab) DPCloseTab(tab);
 }
 
 // Picking something loads it in the new tab where it waits, so the tab moving off the new tab page means it was used.
@@ -248,7 +263,8 @@ static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
     });
 }
 
-static void DPPresentCommandBar(NSView *page) {
+// Over a blank tab, the bar opens on the blank tab's own page: nothing to go back to, and picking loads there.
+static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
     NSView *frame = window.contentView.superview, *panel = DPPanelIn(page);
     id scripted = DPScriptWindow(window), openedTab = [scripted valueForKey:@"activeTab"];
@@ -256,9 +272,15 @@ static void DPPresentCommandBar(NSView *page) {
     NSString *openedID = [openedTab valueForKey:@"tabId"];
     NSArray *recent = DPGet(window, &DPRecentKey);
     NSString *returnID = [recent.lastObject isEqual:openedID] ? (recent.count > 1 ? recent.firstObject : nil) : recent.lastObject;
+    if (overBlank) {
+        returnID = nil;
+        [(NSMutableSet *)DPGet(window, &DPBlankKey) removeObject:openedID];
+        DPSet(page, &DPBlankKey, nil);
+    }
 
     DPCommandBarOverlay *overlay = [[DPCommandBarOverlay alloc] initWithFrame:frame.bounds];
     overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    overlay.overBlank = overBlank;
     overlay.page = page;
     overlay.panel = panel;
     overlay.openedTab = openedTab;
@@ -430,21 +452,24 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     NSMutableSet<NSString *> *blanks = DPGet(self.window, &DPBlankKey);
     NSArray *recent = DPGet(self.window, &DPRecentKey);
     if (active && ([blanks containsObject:active] || DPClosingTab() || (recent.count > 1 && !DPScriptTab(self.window, recent.firstObject)))) {
-        if (!blanks) DPSet(self.window, &DPBlankKey, blanks = [NSMutableSet set]);
-        [blanks addObject:active];
-        DPSet(self, &DPBlankKey, @YES);
-        DPHidePage(self, YES);
+        DPMakeBlank(self);
         // Closed some other way, like with the mouse, the bar opened over the tab that was going; that tab goes too.
-        if (overlay && !DPScriptTab(self.window, [overlay.returnTab valueForKey:@"tabId"])) DPCancelCommandBar(overlay);
+        if (overlay.returnTab && !DPScriptTab(self.window, [overlay.returnTab valueForKey:@"tabId"])) DPCancelCommandBar(overlay);
         return;
     }
     if (overlay) DPCancelCommandBar(overlay);
+    // A new tab from a blank one, like with the sidebar's New Tab button, takes the blank tab's place.
+    id blank = recent.count > 1 && [blanks containsObject:recent.firstObject] ? DPScriptTab(self.window, recent.firstObject) : nil;
+    if (blank) {
+        [blanks removeObject:recent.firstObject];
+        DPCloseTab(blank);
+    }
     // Lifted and gone back from before Dia first draws the new tab page, it never shows. The page has no size yet, so
     // its pane lays it out first, which sizes the bar.
     NSView *pane = self.superview;
     while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
     [pane layoutSubtreeIfNeeded];
-    DPPresentCommandBar(self);
+    DPPresentCommandBar(self, blank != nil);
 }
 
 static void DPApplyCommandBar(DPPatch *patch) {
@@ -459,7 +484,7 @@ static void DPApplyCommandBar(DPPatch *patch) {
     }
     for (NSView *page in DPFindViews(DPDiaNewTabPage)) {
         if (DPCommandBar.on) {
-            if (!DPGet(page, &DPBlankKey)) DPPresentCommandBar(page);
+            if (!DPGet(page, &DPBlankKey)) DPPresentCommandBar(page, NO);
         } else if (DPGet(page, &DPBlankKey)) {
             DPSet(page, &DPBlankKey, nil);
             DPHidePage(page, NO);
@@ -576,7 +601,38 @@ static NSArray<NSView *> *DPCommandBarRows(void) {
     ];
 }
 
+// The sidebar's New Tab button, on a blank tab, opens the bar over it rather than making a tab.
+static BOOL DPOpenOverBlank(NSWindow *window) {
+    if (!DPCommandBar.on || ![(NSSet *)DPGet(window, &DPBlankKey) containsObject:DPActiveTabID(window)]) return NO;
+    NSView *page = DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaNewTabPage) && DPGet(view, &DPBlankKey); });
+    if (page) DPPresentCommandBar(page, YES);
+    return page != nil;
+}
+
+static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
+    if (!DPOpenOverBlank(self.window)) DPCallOriginal(DPNewTabButton_mouseDown, self, event);
+}
+
+// Dia's New Tab shortcut, whatever it's set to, doesn't make a tab while the bar is open, or on a blank tab, where the
+// bar opens over the blank tab instead. Pressed again and again, it would otherwise make and close tab after tab.
+static NSEvent *DPNewTabKey(NSEvent *event) {
+    NSWindow *window = event.window;
+    NSMenuItem *newTab = DPMenuItemTitled(NSApp.mainMenu, @"New Tab");
+    NSEventModifierFlags mods = NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagControl;
+    if (!DPCommandBar.on || !window || !newTab.keyEquivalent.length || (event.modifierFlags & mods) != newTab.keyEquivalentModifierMask
+        || [event.charactersIgnoringModifiers caseInsensitiveCompare:newTab.keyEquivalent] != NSOrderedSame)
+        return event;
+    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    if (overlay) {
+        DPFocusBar(overlay);
+        return nil;
+    }
+    return DPOpenOverBlank(window) ? nil : event;
+}
+
 static void DPInstallCommandBar(void) {
+    DPHook(DPDiaNewTabButton, @selector(mouseDown:), (IMP)DPNewTabButton_mouseDown);
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPNewTabKey(event); }];
     DPHook(DPDiaContentPane, @selector(viewDidMoveToWindow), (IMP)DPContentPane_viewDidMoveToWindow);
     DPHook(DPDiaNewTabPage, @selector(viewDidMoveToWindow), (IMP)DPNewTabPage_viewDidMoveToWindow);
     DPHook(DPDiaAssistantPanel, @selector(setFrame:), (IMP)DPPanel_setFrame);

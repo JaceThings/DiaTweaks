@@ -43,3 +43,4 @@
 #define DPDiaAssistantPanel     "_TtC20AssistantPanelUIBase22AssistantPanelRootView"
 #define DPDiaCommandBarSuggestions "_TtC15BoostCommandBar15SuggestionsView"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
+#define DPDiaNewTabButton       "_TtC7TabList14NewTabCellView"
