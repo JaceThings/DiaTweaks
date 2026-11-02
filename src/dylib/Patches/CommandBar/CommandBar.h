@@ -32,6 +32,7 @@ NSString *DPShortcutText(NSString *key, NSEventModifierFlags modifiers);
 DPBarMatch DPBarMatchOf(NSArray<NSString *> *words, NSString *title, NSString *url);
 NSInteger DPBarTier(DPBarKind kind, DPBarMatch match, NSUInteger queryLength);  // Negative means drop it.
 void DPBarSortItems(NSMutableArray<DPBarItem *> *items);
+BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab);
 NSString *DPSuggestURL(NSString *suggestTemplate, NSString *text);
 NSArray<NSString *> *DPParseSuggestions(NSData *json, NSString *query);
 
