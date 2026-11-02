@@ -87,13 +87,11 @@ impl Manifest {
             .and_then(|key| self.index(key))
     }
 
-    /// The tweak that hides what this one changes, as `state` stands: its disabler while that's on,
-    /// unless one of the disabler's options brings it back now and then, like the toolbar on hover.
     pub fn hidden_by(&self, index: usize, state: &[bool]) -> Option<usize> {
         let disabler = self.disabler(index).filter(|&disabler| state[disabler])?;
-        let brought_back = (0..self.patches.len())
+        let option_on = (0..self.patches.len())
             .any(|option| state[option] && self.requirement(option) == Some(disabler));
-        (!brought_back).then_some(disabler)
+        (!option_on).then_some(disabler)
     }
 
     pub fn title(&self, index: usize) -> &str {

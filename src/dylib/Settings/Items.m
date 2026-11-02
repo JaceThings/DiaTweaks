@@ -11,7 +11,7 @@ NSString *DPWhyDisabled(DPPatch *patch) {
     return required && !required->on ? [NSString stringWithFormat:@"Needs %@.", required->title] : nil;
 }
 
-// A patch's options bring back what it hides, like the hidden toolbar on hover, so with one on it doesn't hide for good.
+// An option on, like showing the hidden toolbar on hover, means it doesn't hide for good.
 NSString *DPWhyHiddenBy(DPPatch *disabler) {
     if (!disabler || !disabler->on) return nil;
     __block BOOL shownSometimes = NO;
@@ -48,8 +48,7 @@ NSURL *DPWikiURL(DPPatch *patch) {
 - (NSView *)withHiddenIcon {
     NSStackView *stack = [NSStackView new];
     stack.spacing = 8;
-    // Keeps the eye in place while hidden, so it doesn't slide in when it shows. Set before adding it, since sync may have hidden it already.
-    stack.detachesHiddenViews = NO;
+    stack.detachesHiddenViews = NO;  // Before adding the icon, which a stack drops if it's already hidden.
     [stack addArrangedSubview:self.hiddenIcon];
     [stack addArrangedSubview:self];
     return stack;
