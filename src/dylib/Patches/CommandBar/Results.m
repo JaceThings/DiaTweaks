@@ -53,7 +53,7 @@
     NSImage *tinted = [NSImage imageWithSize:symbol.size flipped:NO drawingHandler:^BOOL(NSRect target) {
         [symbol drawInRect:target];
         [tint set];
-        NSRectFillUsingOperation(target, NSCompositingOperationSourceAtop);
+        NSRectFillUsingOperation(target, NSCompositingOperationSourceIn);
         return YES;
     }];
     NSRect fit = NSMakeRect(NSMidX(rect) - symbol.size.width / 2, NSMidY(rect) - symbol.size.height / 2, symbol.size.width, symbol.size.height);
@@ -98,7 +98,7 @@ static void DPFillTile(NSRect rect, NSColor *color) {
         if (item.kind == DPBarKindTab) {
             NSRect chip = NSMakeRect(maxX - 24, NSMidY(row) - 14, 28, 28);
             DPFillTile(chip, selected ? NSColor.labelColor : DPBarColor(1, 0.16, 0, 0.09));
-            [self drawSymbol:@"arrow.right" size:13 weight:NSFontWeightSemibold in:chip tint:selected ? NSColor.windowBackgroundColor : NSColor.secondaryLabelColor];
+            [self drawSymbol:@"arrow.right" size:13 weight:NSFontWeightSemibold in:chip tint:selected ? NSColor.windowBackgroundColor : NSColor.labelColor];
             NSDictionary *attributes = @{NSFontAttributeName: selected ? titleFont : detailFont, NSForegroundColorAttributeName: selected ? NSColor.labelColor : detailColor};
             NSSize size = [item.detail sizeWithAttributes:attributes];
             [item.detail drawAtPoint:NSMakePoint(NSMinX(chip) - 12 - size.width, NSMidY(row) - size.height / 2) withAttributes:attributes];
