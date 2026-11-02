@@ -22,16 +22,18 @@
 }
 
 - (void)prepareForWindow:(NSWindow *)window {
+    DPBarHoldScriptedWindows(YES);
     NSString *space = DPBarSpaceOfWindow(window);
     // Private windows get their own tabs and nothing from the profile. Nothing goes to the search engine either.
     _private = !space;
     DPBarNoteActiveTab(window);
     DPBarUseSpace(space);
     _icons.disabled = _private;
+    _activeURL = DPBarURLOfWindow(window);
+    _tabs = [DPBarLoadTabs(window, space) filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"tabId != %@", DPBarActiveTabId(window)]];
+    DPBarHoldScriptedWindows(NO);
     _commands = DPBarLoadCommands();
     _pages = DPBarLoadPages();
-    _activeURL = DPBarURLOfWindow(window);
-    _tabs = [DPBarLoadTabs(window, space) filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"url != %@", _activeURL]];
     _bookmarks = _private ? @[] : DPBarLoadBookmarks();
     NSString *suggest = nil;
     _searchTemplate = DPBarLoadSearchTemplate(&suggest);
@@ -61,12 +63,14 @@ static NSMutableArray<DPBarItem *> *DPRanked(NSMutableArray<DPBarItem *> *all) {
         NSString *key = item.url ? [item.url stringByTrimmingCharactersInSet:slash] : item.title;
         NSString *site = item.url ? [NSURL URLWithString:item.url].host : nil;
         BOOL history = item.kind == DPBarKindHistory;
-        if (!key || [keys containsObject:key]) continue;
+        NSString *own = item.kind == DPBarKindTab && key ? [NSString stringWithFormat:@"%@ %@", item.space, key] : key;
+        if (!own || [keys containsObject:own]) continue;
         if (history && site && [perSite countForObject:site] >= 2) continue;
         if (history && item.title && [perTitle countForObject:item.title] >= 2) continue;
         if (site) [perSite addObject:site];
         if (item.title) [perTitle addObject:item.title];
         [keys addObject:key];
+        [keys addObject:own];
         [ranked addObject:item];
         if (ranked.count == DPBarMaxRows) break;
     }
@@ -122,7 +126,7 @@ static DPBarItem *DPTypedItem(NSString *text, NSString *searchURL) {
         // Load these now so rows and icons show up together.
         for (DPBarItem *item in items)
             if (item.kind == DPBarKindHistory || item.kind == DPBarKindTab || item.kind == DPBarKindBookmark || item.kind == DPBarKindURL)
-                [self->_icons preload:item.url];
+                [self->_icons preload:item.url space:item.space];
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation != self->_latest) return;
             done(items);

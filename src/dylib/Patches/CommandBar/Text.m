@@ -191,20 +191,21 @@ void DPBarSortByRecency(NSMutableArray<DPBarItem *> *tabs, NSDictionary<NSString
 
 NSMutableArray<DPBarItem *> *DPBarArrangeTabs(NSArray<DPBarItem *> *tabs, NSString *space, NSString *windowId) {
     NSInteger (^distance)(DPBarItem *) = ^NSInteger(DPBarItem *tab) {
-        return ([tab.space isEqual:space] ? 0 : 2) + ([tab.windowId isEqual:windowId] ? 0 : 1);
+        return ([tab.space isEqual:space] ? 0 : 4) + (tab.windowShowsSpace ? 0 : 2) + ([tab.windowId isEqual:windowId] ? 0 : 1);
     };
     NSArray<DPBarItem *> *nearestFirst = [tabs sortedArrayWithOptions:NSSortStable usingComparator:^NSComparisonResult(DPBarItem *a, DPBarItem *b) {
         return [@(distance(a)) compare:@(distance(b))];
     }];
     NSMutableArray<DPBarItem *> *arranged = [NSMutableArray new];
-    NSMutableSet<NSString *> *seen = [NSMutableSet new], *spaces = [NSMutableSet new];
+    NSMutableSet<NSString *> *seen = [NSMutableSet new];
+    BOOL label = NO;
     for (DPBarItem *tab in nearestFirst) {
-        if (tab.space) [spaces addObject:tab.space];
+        if (tab.space && ![tab.space isEqual:space]) label = YES;
         if ([seen containsObject:tab.tabId]) continue;
         if (tab.tabId) [seen addObject:tab.tabId];
         [arranged addObject:tab];
     }
-    if (spaces.count < 2) for (DPBarItem *tab in arranged) tab.space = nil;
+    for (DPBarItem *tab in arranged) tab.showsSpace = label;
     return arranged;
 }
 

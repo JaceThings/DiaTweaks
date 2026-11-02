@@ -26,7 +26,7 @@
     if (selected <= 0) {
         NSString *text = (self.field.currentEditor.string ?: self.field.stringValue).lowercaseString;
         NSString *site = self.completionURL ?: DPResolveURL(text);
-        NSImage *favicon = site ? [self.sources.icons iconFor:site] : nil;
+        NSImage *favicon = site ? [self.sources.icons iconFor:site space:nil] : nil;
         if (favicon) {
             self.fieldIcon.image = favicon;
             return;
@@ -38,7 +38,7 @@
 
 - (NSImage *)iconForItem:(DPBarItem *)item {
     if (item.kind == DPBarKindCommand || item.kind == DPBarKindPage || item.kind == DPBarKindSearch || item.kind == DPBarKindSuggestion) return nil;
-    return [self.sources.icons iconFor:item.url];
+    return [self.sources.icons iconFor:item.url space:item.space];
 }
 
 // "git" becomes "git|hub.com", with the suffix selected.
@@ -116,12 +116,7 @@
         dispatch_async(dispatch_get_main_queue(), ^{ [NSApp sendAction:entry.action to:entry.target from:entry]; });
         return;
     }
-    // Opening a tab blocks the main thread, so the bar starts closing first.
-    if (item.kind == DPBarKindTab) {
-        NSString *windowId = item.windowId, *space = item.space, *tabId = item.tabId;
-        dispatch_async(dispatch_get_main_queue(), ^{ DPBarFocusTab(windowId, space, tabId); });
-        return;
-    }
+    if (item.kind == DPBarKindTab) return DPBarFocusTab(item.windowId, item.profileIndex, item.tabId);
     NSString *url = item.url;
     // An accepted completion keeps its http and port.
     if (item.kind == DPBarKindURL) url = completionURL ?: ([text isEqualToString:item.title] ? url : typedURL);

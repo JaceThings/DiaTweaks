@@ -2,7 +2,7 @@
 
 extern DPPatch DPCommandBarAnimation;
 
-static const NSTimeInterval DPBarOpenSeconds = 0.18, DPBarCloseSeconds = 0.12;
+static const NSTimeInterval DPBarOpenSeconds = 0.12, DPBarCloseSeconds = 0.12;
 
 // Scale around the top centre or the field jumps.
 static CATransform3D DPBarSmaller(NSView *view) {

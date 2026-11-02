@@ -29,12 +29,14 @@ static NSString *DPFolderOfSpace(NSString *space) {
 }
 
 static NSString *DPCurrentFolder;
+static NSMutableDictionary<NSString *, NSString *> *DPFolders;
 static os_unfair_lock DPFolderLock = OS_UNFAIR_LOCK_INIT;
 
 void DPBarUseSpace(NSString *space) {
     NSString *folder = DPFolderOfSpace(space);
     os_unfair_lock_lock(&DPFolderLock);
     DPCurrentFolder = folder;
+    DPFolders = space ? [NSMutableDictionary dictionaryWithObject:folder forKey:space] : [NSMutableDictionary new];
     os_unfair_lock_unlock(&DPFolderLock);
 }
 
@@ -45,9 +47,24 @@ static NSString *DPFolder(void) {
     return folder ?: DPFolderOfSpace(nil);
 }
 
-static NSString *DPBarProfilePath(NSString *file) {
-    return [[DPUserData() stringByAppendingPathComponent:DPFolder()] stringByAppendingPathComponent:file];
+static NSString *DPFolderFor(NSString *space) {
+    if (!space) return DPFolder();
+    os_unfair_lock_lock(&DPFolderLock);
+    NSString *folder = DPFolders[space];
+    os_unfair_lock_unlock(&DPFolderLock);
+    if (folder) return folder;
+    folder = DPFolderOfSpace(space);
+    os_unfair_lock_lock(&DPFolderLock);
+    DPFolders[space] = folder;
+    os_unfair_lock_unlock(&DPFolderLock);
+    return folder;
 }
+
+static NSString *DPPathIn(NSString *folder, NSString *file) {
+    return [[DPUserData() stringByAppendingPathComponent:folder] stringByAppendingPathComponent:file];
+}
+
+static NSString *DPBarProfilePath(NSString *file) { return DPPathIn(DPFolder(), file); }
 
 // clonefile can't cross volumes.
 static NSString *DPSnapshotFolder(void) { return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/com.diapatches.commandbar"]; }
@@ -65,12 +82,12 @@ void DPBarDropProfileSnapshot(void) {
 
 // Closing any descriptor for a file drops every POSIX lock this process holds on it, Dia's too. So never open the real files.
 // ponytail: no clones off APFS, so no history there. Copy with a helper process if that matters.
-static NSString *DPSnapshot(NSString *file) {
+static NSString *DPSnapshot(NSString *folder, NSString *file) {
     __block NSString *copy;
-    NSString *original = DPBarProfilePath(file);
+    NSString *original = DPPathIn(folder, file);
     dispatch_sync(DPSnapshotQueue(), ^{
         // Folder in the name so a slow query from another space can't leave us its clone.
-        copy = [DPSnapshotFolder() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@-%@", DPFolder(), file]];
+        copy = [DPSnapshotFolder() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@-%@", folder, file]];
         NSFileManager *files = NSFileManager.defaultManager;
         if ([files fileExistsAtPath:copy]) return;
         [files createDirectoryAtPath:DPSnapshotFolder() withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions: @0700} error:nil];
@@ -82,8 +99,8 @@ static NSString *DPSnapshot(NSString *file) {
     return copy;
 }
 
-void DPBarQueryProfile(NSString *file, NSString *sql, NSArray *args, void (^row)(NSArray *columns)) {
-    NSString *path = [DPSnapshot(file) stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
+void DPBarQueryProfile(NSString *space, NSString *file, NSString *sql, NSArray *args, void (^row)(NSArray *columns)) {
+    NSString *path = [DPSnapshot(DPFolderFor(space), file) stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
     sqlite3 *db = NULL;
     // Writable because recovering a journal writes to the file. It's our clone, so that's fine.
     if (sqlite3_open_v2([@"file:" stringByAppendingString:path].UTF8String, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_URI, NULL) == SQLITE_OK) {
@@ -141,7 +158,7 @@ NSString *DPBarLoadSearchTemplate(NSString **suggestTemplate) {
     id search = preferences[@"search"];
     BOOL suggests = ![search isKindOfClass:NSDictionary.class] || ![search[@"suggest_enabled"] isEqual:@NO];
     __block NSString *url = nil, *suggest = nil;
-    DPBarQueryProfile(@"Web Data", @"SELECT url, suggest_url FROM keywords WHERE sync_guid = ?1 LIMIT 1", @[guid], ^(NSArray *columns) {
+    DPBarQueryProfile(nil, @"Web Data", @"SELECT url, suggest_url FROM keywords WHERE sync_guid = ?1 LIMIT 1", @[guid], ^(NSArray *columns) {
         if ([columns[0] isKindOfClass:NSString.class] && [columns[0] length]) url = columns[0];
         if (suggests && [columns[1] isKindOfClass:NSString.class]) suggest = columns[1];
     });
@@ -167,7 +184,7 @@ NSArray<DPBarItem *> *DPBarLoadHistory(NSArray<NSString *> *words) {
                                                 "ORDER BY typed_count * 2 + visit_count DESC, last_visit_time DESC LIMIT 80", where];
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     double now = (NSDate.date.timeIntervalSince1970 + 11644473600.0) * 1e6;  // Chromium time: microseconds since 1601.
-    DPBarQueryProfile(@"History", sql, args, ^(NSArray *columns) {
+    DPBarQueryProfile(nil, @"History", sql, args, ^(NSArray *columns) {
         if (![columns[0] isKindOfClass:NSString.class]) return;
         DPBarItem *item = [DPBarItem new];
         item.kind = DPBarKindHistory;

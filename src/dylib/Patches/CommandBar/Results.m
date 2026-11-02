@@ -112,7 +112,7 @@ static void DPFillTile(NSRect rect, NSColor *color) {
 
         NSString *detail = item.kind == DPBarKindSearch || item.kind == DPBarKindSuggestion || item.kind == DPBarKindURL ? item.detail
                          : item.kind == DPBarKindHistory || item.kind == DPBarKindBookmark || item.kind == DPBarKindPage ? DPPrettyURL(item.url)
-                         : item.kind == DPBarKindTab ? item.space : nil;
+                         : item.kind == DPBarKindTab && item.showsSpace ? item.space : nil;
         NSDictionary *titleAttributes = @{NSFontAttributeName: titleFont, NSForegroundColorAttributeName: NSColor.labelColor, NSParagraphStyleAttributeName: truncating};
         NSString *title = item.title ?: @"";
         NSSize titleSize = [title sizeWithAttributes:titleAttributes];

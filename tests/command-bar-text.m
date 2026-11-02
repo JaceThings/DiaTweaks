@@ -82,13 +82,21 @@ int main(void) {
         tab.tabId = tabId;
         tab.space = space;
         tab.windowId = windowId;
+        tab.windowShowsSpace = [windowId isEqual:@"shows"];
         return tab;
     };
     NSArray<DPBarItem *> *arranged = DPBarArrangeTabs(@[spaceTab(@"other", @"B", @"w1"), spaceTab(@"pinned", @"A", @"w2"), spaceTab(@"pinned", @"A", @"w1"), spaceTab(@"own", @"A", @"w1")], @"A", @"w1");
     SAME([[arranged valueForKey:@"tabId"] componentsJoinedByString:@","], @"pinned,own,other");
     SAME(arranged[0].windowId, @"w1");
     SAME(arranged[2].space, @"B");
-    CHECK(!DPBarArrangeTabs(@[spaceTab(@"own", @"A", @"w1")], @"A", @"w1")[0].space);
+    CHECK(arranged[2].showsSpace);
+    NSArray<DPBarItem *> *oneSpace = DPBarArrangeTabs(@[spaceTab(@"own", @"A", @"w1")], @"A", @"w1");
+    CHECK(!oneSpace[0].showsSpace);
+    SAME(oneSpace[0].space, @"A");
+    CHECK(DPBarArrangeTabs(@[spaceTab(@"other", @"B", @"w1")], @"A", @"w1")[0].showsSpace);
+    NSArray<DPBarItem *> *shared = DPBarArrangeTabs(@[spaceTab(@"pinned", @"B", @"w1"), spaceTab(@"pinned", @"B", @"shows")], @"A", @"w1");
+    CHECK(shared.count == 1);
+    SAME(shared[0].windowId, @"shows");
 
     SAME(DPSuggestURL(@"{google:baseSuggestURL}{google:suggestPath}?q={searchTerms}", @"a b"), @"https://suggestqueries.google.com/complete/search?client=firefox&oe=utf-8&q=a%20b");
     SAME(DPSuggestURL(@"https://duckduckgo.com/ac/?q={searchTerms}&type=list", @"x"), @"https://duckduckgo.com/ac/?q=x&type=list");

@@ -20,6 +20,8 @@ typedef NS_ENUM(NSInteger, DPBarMatch) { DPBarMatchNone, DPBarMatchContains, DPB
 @property (nonatomic, copy) NSString *title, *detail, *url, *symbol, *tabId, *windowId, *space;
 @property (nonatomic, strong) NSMenuItem *menuItem;
 @property (nonatomic) NSInteger tier;  // Lower lists first.
+@property (nonatomic) NSInteger profileIndex;
+@property (nonatomic) BOOL showsSpace, windowShowsSpace;
 @property (nonatomic) double frecency, rank;
 @end
 
@@ -38,14 +40,16 @@ BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab);
 NSString *DPSuggestURL(NSString *suggestTemplate, NSString *text);
 NSArray<NSString *> *DPParseSuggestions(NSData *json, NSString *query);
 
+void DPBarHoldScriptedWindows(BOOL hold);
 BOOL DPBarCanScript(NSWindow *window);
 BOOL DPBarCanListSpaces(NSWindow *window);
 NSString *DPBarURLOfWindow(NSWindow *window);  // nil on a blank tab.
+NSString *DPBarActiveTabId(NSWindow *window);
 void DPBarNavigate(NSWindow *window, NSString *url);
 void DPBarOpenInNewTab(NSWindow *window, NSString *url);
 BOOL DPBarCanOpenTabDirectly(void);
 void DPBarNoteActiveTab(NSWindow *window);
-void DPBarFocusTab(NSString *windowId, NSString *space, NSString *tabId);
+void DPBarFocusTab(NSString *windowId, NSInteger profileIndex, NSString *tabId);
 NSString *DPBarSpaceOfWindow(NSWindow *window);  // nil for a private window, which has no space.
 NSArray<DPBarItem *> *DPBarLoadTabs(NSWindow *window, NSString *space);  // A nil space lists only `window`'s own tabs.
 
@@ -59,14 +63,14 @@ NSArray<DPBarItem *> *DPBarLoadBookmarks(void);
 NSString *DPBarLoadSearchTemplate(NSString **suggestTemplate);  // nil means Google. No suggest template if Dia's setting is off.
 NSArray<DPBarItem *> *DPBarLoadHistory(NSArray<NSString *> *words);
 // Columns are NSString, NSData, NSNumber or NSNull.
-void DPBarQueryProfile(NSString *file, NSString *sql, NSArray *args, void (^row)(NSArray *columns));
+void DPBarQueryProfile(NSString *space, NSString *file, NSString *sql, NSArray *args, void (^row)(NSArray *columns));
 
 @interface DPBarIcons : NSObject
 @property (nonatomic, copy) void (^changed)(void);  // Runs on main.
 @property (nonatomic) BOOL disabled;
 - (void)prepare;
-- (void)preload:(NSString *)url;          // Blocks, so call it off the main thread.
-- (NSImage *)iconFor:(NSString *)url;     // Never blocks: nil until loaded, then `changed` runs.
+- (void)preload:(NSString *)url space:(NSString *)space;          // Blocks, so call it off the main thread.
+- (NSImage *)iconFor:(NSString *)url space:(NSString *)space;     // Never blocks: nil until loaded, then `changed` runs.
 @end
 
 @interface DPBarSources : NSObject

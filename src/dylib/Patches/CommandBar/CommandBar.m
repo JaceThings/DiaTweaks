@@ -71,15 +71,15 @@ static void DPNoteActiveTabSoon(void) {
     });
 }
 
-static void DPWindow_setTitle(NSWindow *self, SEL _cmd, NSString *title) {
-    if (self.isKeyWindow && ![title isEqualToString:self.title]) DPNoteActiveTabSoon();
-    DPCallOriginal(DPWindow_setTitle, self, title);
+static BOOL DPWindow_makeFirstResponder(NSWindow *self, SEL _cmd, NSResponder *responder) {
+    if (self.isKeyWindow && responder != self.firstResponder) DPNoteActiveTabSoon();
+    return DPCallOriginal(DPWindow_makeFirstResponder, self, responder);
 }
 
 static void DPInstallCommandBar(void) {
     DPHook(DPDiaNewTabCell, @selector(mouseDown:), (IMP)DPNewTabCell_mouseDown);
     DPHook(DPDiaTabStripButton, @selector(mouseDown:), (IMP)DPTabStripButton_mouseDown);
-    DPHook(DPDiaBrowserWindow, @selector(setTitle:), (IMP)DPWindow_setTitle);
+    DPHook(DPDiaBrowserWindow, @selector(makeFirstResponder:), (IMP)DPWindow_makeFirstResponder);
     DPOnQuit(^{ DPBarDropProfileSnapshot(); });
     DPOnLaunch(^{
         [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPHandleKey(event); }];
@@ -91,8 +91,10 @@ static void DPApplyCommandBar(DPPatch *patch) {
     if (!DPCommandBar.on) DPCommandBarClose();
 }
 
+static BOOL DPIsVisibleBrowser(NSWindow *window) { return window.visible && DPIsKind(window, DPDiaBrowserWindow); }
+
 static NSWindow *DPAnyBrowserWindow(void) {
-    for (NSWindow *window in NSApp.windows) if (window.visible && DPIsKind(window, DPDiaBrowserWindow)) return window;
+    for (NSWindow *window in NSApp.windows) if (DPIsVisibleBrowser(window)) return window;
     return nil;
 }
 
@@ -120,7 +122,7 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
     Method button = class_getInstanceMethod(objc_getClass(DPDiaTabStripButton), @selector(mouseDown:));
     if (method_getImplementation(row) != (IMP)DPNewTabCell_mouseDown) return @"the New Tab row isn't hooked";
     if (method_getImplementation(button) != (IMP)DPTabStripButton_mouseDown) return @"the tab strip's + button isn't hooked";
-    if (method_getImplementation(class_getInstanceMethod(objc_getClass(DPDiaBrowserWindow), @selector(setTitle:))) != (IMP)DPWindow_setTitle) return @"the window title isn't hooked";
+    if (method_getImplementation(class_getInstanceMethod(objc_getClass(DPDiaBrowserWindow), @selector(makeFirstResponder:))) != (IMP)DPWindow_makeFirstResponder) return @"the window's first responder isn't hooked";
     return patch->on ? DPVerifyOpens(YES) : nil;
 }
 
@@ -138,8 +140,11 @@ static NSString *DPVerifyCommandBarAnimation(DPPatch *patch) {
 }
 
 static NSString *DPVerifyCommandBarAllSpaces(DPPatch *patch) {
-    NSWindow *window = DPAnyBrowserWindow();
-    return patch->on && window && !DPBarCanListSpaces(window) ? @"Dia's scripting bridge lists no spaces for this window" : nil;
+    if (!patch->on) return nil;
+    for (NSWindow *window in NSApp.windows)
+        if (DPIsVisibleBrowser(window) && DPBarSpaceOfWindow(window))
+            return DPBarCanListSpaces(window) ? nil : @"Dia's scripting bridge can't list or focus tabs by space";
+    return nil;
 }
 
 DP_PATCH(DPCommandBar) {
