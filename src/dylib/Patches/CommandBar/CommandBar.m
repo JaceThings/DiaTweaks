@@ -9,7 +9,7 @@ static char DPOverlayKey, DPHomeKey, DPRecentKey;
 
 @interface DPCommandBarOverlay : NSView
 @property(weak) NSView *page, *panel;
-@property(strong) NSView *shade;
+@property(strong) NSView *shade, *windowBlur;
 @property(strong) id openedTab, returnTab;
 @property(copy) NSString *startURL;
 @property CGFloat collapsedHeight;
@@ -131,37 +131,43 @@ static NSView *DPCardIn(NSWindow *window) {
     return pane;
 }
 
-// The darkening covers the page's card; the blur does too unless it's set to cover the sidebar too.
-static void DPPlaceShade(DPCommandBarOverlay *overlay) {
-    NSView *card = DPCardIn(overlay.host);
-    NSRect page = card ? [overlay.shade convertRect:card.bounds fromView:card] : overlay.shade.bounds;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    for (CALayer *layer in overlay.shade.layer.sublayers) {
-        BOOL window = DPTuned(DPBlurWindowKey) && [layer isKindOfClass:NSClassFromString(@"CABackdropLayer")];
-        layer.frame = window ? overlay.shade.bounds : page;
-        layer.cornerRadius = window ? 0 : card.layer.cornerRadius;
-        layer.maskedCorners = card.layer.maskedCorners;
-        layer.cornerCurve = card.layer.cornerCurve;
-        layer.masksToBounds = YES;
+// A view the size of `frame` filled by `layers`, following its size.
+static NSView *DPLayerView(NSRect frame, NSArray<CALayer *> *layers) {
+    NSView *view = [[NSView alloc] initWithFrame:frame];
+    view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    view.wantsLayer = YES;
+    for (CALayer *layer in layers) {
+        layer.frame = view.bounds;
+        layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+        [view.layer addSublayer:layer];
     }
-    [CATransaction commit];
+    return view;
 }
 
+// The shade sits on top of the page's card, so it moves and clips with it, like when the sidebar slides in.
+static void DPPlaceShade(DPCommandBarOverlay *overlay) {
+    NSView *card = DPCardIn(overlay.host);
+    if (!card || overlay.shade.superview == card) return;
+    overlay.shade.frame = card.bounds;
+    [card addSubview:overlay.shade];
+}
+
+// The darkening covers the page; the blur does too, or the whole window behind the bar when it covers the sidebar too.
 static void DPShowShade(DPCommandBarOverlay *overlay) {
-    NSView *shade = [[NSView alloc] initWithFrame:overlay.bounds];
-    shade.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    shade.wantsLayer = YES;
+    [overlay.shade removeFromSuperview];
+    [overlay.windowBlur removeFromSuperview];
     CALayer *blur = DPCommandBarBlur.on ? DPBlurLayer() : nil;
-    if (blur) [shade.layer addSublayer:blur];
+    BOOL wholeWindow = blur && DPTuned(DPBlurWindowKey);
+    NSMutableArray<CALayer *> *layers = [NSMutableArray array];
+    if (blur && !wholeWindow) [layers addObject:blur];
     if (DPCommandBarDarken.on) {
         CALayer *dim = [CALayer layer];
         dim.backgroundColor = [NSColor colorWithWhite:0 alpha:DPTuned(DPDarknessKey)].CGColor;
-        [shade.layer addSublayer:dim];
+        [layers addObject:dim];
     }
-    [overlay.shade removeFromSuperview];
-    [overlay addSubview:shade positioned:NSWindowBelow relativeTo:overlay.panel];
-    overlay.shade = shade;
+    overlay.windowBlur = wholeWindow ? DPLayerView(overlay.bounds, @[ blur ]) : nil;
+    if (overlay.windowBlur) [overlay addSubview:overlay.windowBlur positioned:NSWindowBelow relativeTo:overlay.panel];
+    overlay.shade = DPLayerView(NSZeroRect, layers);
     DPPlaceShade(overlay);
 }
 
@@ -186,6 +192,7 @@ static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
     [overlay.watch invalidate];
     if (overlay.keyMonitor) [NSEvent removeMonitor:overlay.keyMonitor];
     overlay.keyMonitor = nil;
+    [overlay.shade removeFromSuperview];
     if (!overlay.host) return nil;
     if (DPGet(overlay.host, &DPOverlayKey) == overlay) DPSet(overlay.host, &DPOverlayKey, nil);
     overlay.host = nil;
