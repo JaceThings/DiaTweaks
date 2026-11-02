@@ -65,7 +65,6 @@ static void DPApplyICloudPasswords(DPPatch *patch) { DPRegisterHost(patch->on); 
 DP_PATCH(DPICloudPasswords) {
     .key = @"icloudPasswords",
     .order = 101,
-    .defaultOn = YES,
     .title = @"Allow iCloud Passwords",
     .detail = @"Lets the iCloud Passwords extension fill passwords from Apple Passwords, which a patched Dia can't reach. While the extension is connected, the original Dia that DiaTweaks keeps runs in the background without windows and talks to Apple Passwords for it. Experimental.",
     .symbol = @"key.fill",

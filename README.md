@@ -91,7 +91,7 @@ No. It only does anything while Dia is open.
 <details>
 <summary><strong>Does anything stop working?</strong></summary>
 
-No. Passkeys saved in Apple Passwords take a short detour through the original Dia, which **Allow iCloud passkeys** handles. It's on by default. [How it works →](https://github.com/JaceThings/DiaTweaks/wiki/Allow-iCloud-passkeys)
+Passkeys saved in Apple Passwords need a short detour through the original Dia, which **Allow iCloud passkeys** handles. It's off by default, since it runs a second copy of Dia. [How it works →](https://github.com/JaceThings/DiaTweaks/wiki/Allow-iCloud-passkeys)
 
 </details>
 

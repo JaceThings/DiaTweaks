@@ -34,7 +34,6 @@ __attribute__((used, section("__DATA,__interpose"))) static const struct { const
 DP_PATCH(DPOnePassword) {
     .key = @"onePassword",
     .order = 102,
-    .defaultOn = YES,
     .title = @"Allow 1Password",
     .detail = @"Lets the 1Password extension connect to the 1Password app, which turns away a patched Dia. While the extension is connected, the original Dia that DiaTweaks keeps runs in the background without windows and talks to 1Password for it. Experimental.",
     .symbol = @"lock.shield.fill",
