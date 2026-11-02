@@ -29,6 +29,16 @@
                                   DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)], 2);
         [options addObject:DPRow(text, [self switchFor:option])];
     });
+    if (patch->choices) {
+        NSMenu *menu = patch->choices();
+        NSPopUpButton *picker = [NSPopUpButton new];
+        picker.menu = menu;
+        picker.controlSize = NSControlSizeSmall;
+        picker.target = self;
+        picker.action = @selector(choose:);
+        for (NSMenuItem *item in menu.itemArray) if ([item.representedObject isEqual:DPChoice(patch)]) [picker selectItem:item];
+        [options insertObject:DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker) atIndex:0];
+    }
     if (options.count) [views addObjectsFromArray:@[DPHeader(@"Options"), DPGroup(options)]];
 
     NSURL *wiki = DPWikiURL(patch);
@@ -50,6 +60,10 @@
     DPPatchSwitch *toggle = [[DPPatchSwitch alloc] initWithPatch:patch];
     [_switches addObject:toggle];
     return toggle.withHiddenIcon;
+}
+
+- (void)choose:(NSPopUpButton *)picker {
+    DPSetChoice(_patch, picker.selectedItem.representedObject);
 }
 
 - (void)sync {
