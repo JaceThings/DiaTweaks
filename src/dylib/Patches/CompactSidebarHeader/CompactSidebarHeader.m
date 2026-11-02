@@ -2,14 +2,42 @@
 
 extern DPPatch DPCompactSidebarHeader;
 static const CGFloat DPHeaderTrim = 10;
+static const CGFloat DPTopTabsButtonInset = 14;  // Where Dia puts the window buttons, from the window's corner, with tabs at the top.
 static NSHashTable<NSView *> *DPSidebars;
-static char DPHeaderFrameKey;
+static char DPHeaderFrameKey, DPButtonsFrameKey;
 
 static NSRect DPLaidOutHeader(NSView *header) {
     return [DPDiaValue(header, &DPHeaderFrameKey, @(header.frame)) rectValue];
 }
 
-// The sidebar header's buttons keep their place and the pinned tabs move up into the empty space under them.
+// The close button's frame from the window's top left corner.
+static NSRect DPCloseButtonInWindow(NSView *lights) {
+    NSView *close = DPFindView(lights, ^BOOL(NSView *v) { return [v isKindOfClass:NSButton.class] && v == [v.window standardWindowButton:NSWindowCloseButton]; });
+    if (!close || !lights.window) return NSZeroRect;
+    NSRect r = [close convertRect:close.bounds toView:nil];
+    r.origin.y = NSHeight(lights.window.contentView.superview.bounds) - NSMaxY(r);
+    return r;
+}
+
+// With tabs at the top Dia moves the window buttons into the corner; the compact header puts them in the same spot. A
+// sidebar floating over the page has them elsewhere, so only buttons already near the corner move.
+static void DPHeader_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPHeader_layout, self);
+    NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
+    if (!lights || row == self) return;
+    NSRect laidOut = [DPDiaValue(row, &DPButtonsFrameKey, @(row.frame)) rectValue], frame = laidOut;
+    row.frame = laidOut;
+    NSRect close = DPCloseButtonInWindow(lights);
+    CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
+    if (DPCompactSidebarHeader.on && !NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
+        frame.origin.x += dx;
+        frame.origin.y += self.isFlipped ? dy : -dy;
+    }
+    DPOverride(row, &DPButtonsFrameKey, @(laidOut), @(frame));
+    row.frame = frame;
+}
+
+// The pinned tabs move up into the empty space under the window buttons.
 static void DPCompactHeader(NSView *sidebar) {
     NSView *header = DPSubview(sidebar, DPDiaSidebarHeader);
     if (!header) return;
@@ -35,6 +63,7 @@ static void DPSidebar_viewDidLayout(NSViewController *self, SEL _cmd) {
 static void DPInstallCompactSidebarHeader(void) {
     DPSidebars = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaSidebarController, @selector(viewDidLayout), (IMP)DPSidebar_viewDidLayout);
+    DPHook(DPDiaSidebarHeader, @selector(layout), (IMP)DPHeader_layout);
 }
 
 static void DPApplyCompactSidebarHeader(DPPatch *patch) { DPRelayoutViews(DPSidebars); }
@@ -45,6 +74,10 @@ static NSString *DPVerifyCompactSidebarHeader(DPPatch *patch) {
         if (header.hiddenOrHasHiddenAncestor || !header.superview.isFlipped) continue;
         CGFloat trimmed = NSHeight(DPLaidOutHeader(header)) - NSHeight(header.frame);
         if (fabs(trimmed - (patch->on ? DPHeaderTrim : 0)) > 0.5) return patch->on ? @"header is full height" : @"header is still trimmed";
+        NSView *lights = DPFindView(header, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); });
+        NSRect close = lights ? DPCloseButtonInWindow(lights) : NSZeroRect;
+        BOOL cornered = fabs(NSMinX(close) - DPTopTabsButtonInset) < 0.5 && fabs(NSMinY(close) - DPTopTabsButtonInset) < 0.5;
+        if (patch->on && !NSIsEmptyRect(close) && !cornered) return @"window buttons aren't where top tabs put them";
     }
     return nil;
 }
@@ -57,7 +90,7 @@ DP_PATCH(DPCompactSidebarHeader) {
     .detail = @"Move the pinned tabs up into the empty space under the window buttons.",
     .symbol = @"rectangle.compress.vertical",
     .tint = @"systemMintColor",
-    .classes = DPClasses(DPDiaSidebarController, DPDiaSidebarHeader),
+    .classes = DPClasses(DPDiaSidebarController, DPDiaSidebarHeader, DPDiaTrafficLights),
     .install = DPInstallCompactSidebarHeader,
     .apply = DPApplyCompactSidebarHeader,
     .verify = DPVerifyCompactSidebarHeader,
