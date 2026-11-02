@@ -22,6 +22,7 @@ static NSString *const kDiaReleaseNotes = @"https://www.diabrowser.com/release-n
 static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
 static const char *gCommand;
 static FILE *gLog;
+static BOOL installAgent(void);
 
 #pragma mark - Output
 
@@ -484,7 +485,8 @@ static BOOL apply(void) {
 
 static BOOL applyChosen(BOOL dia, BOOL tweaks) {
     if (!dia && !tweaks) dia = tweaks = YES;
-    return (!tweaks || applyTweaks()) && (!dia || apply());
+    // Updates can add or replace the relay, and older installs may never have registered it.
+    return (!tweaks || applyTweaks()) && (!dia || apply()) && installAgent();
 }
 
 static BOOL install(BOOL relaunch) {
@@ -559,6 +561,17 @@ static BOOL installAgent(void) {
     return makeDir(agentPlist().stringByDeletingLastPathComponent)
         && ([agent writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
         && check(@[ @"/bin/launchctl", @"bootstrap", [NSString stringWithFormat:@"gui/%d", getuid()], agentPlist() ]);
+}
+
+// A release is applied by the previous diapatch binary. Repair older updates once the new dylib loads.
+static BOOL ensureAgent(void) {
+    if (env("DIAPATCH_NO_AGENT")) return YES;
+    NSMutableDictionary *environment = [NSMutableDictionary dictionary];
+    for (NSString *name in @[ @"DIAPATCH_HOME", @"DIAPATCH_APP" ]) environment[name] = env(name.UTF8String);
+    NSDictionary *wanted = DPPasswordsAgentPlist(gHome, inHome(@"bin/diapatch"), environment);
+    if ([[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:wanted]
+        && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0) return YES;
+    return installAgent();
 }
 
 // Only the copy the dylib registered: another app's override of Apple's host isn't DiaTweaks' to remove.
@@ -677,9 +690,10 @@ static const char kUsage[] =
     "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
     "  passwords-relay  what launchd runs when the patched Dia's iCloud Passwords extension connects\n"
+    "  passwords-setup  repair a missing iCloud Passwords relay registration\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
     "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch),\n"
-    "  DIAPATCH_NO_AGENT (install leaves the iCloud Passwords relay's launchd job alone)\n";
+    "  DIAPATCH_NO_AGENT (install/apply leave the iCloud Passwords relay's launchd job alone)\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
@@ -700,6 +714,7 @@ int main(int argc, const char *argv[]) {
         NSArray<NSString *> *allowed = @{
             @"install" : @[ @"--relaunch" ], @"build" : @[], @"update" : @[], @"self-update" : @[], @"status" : @[ @"--json" ],
             @"apply" : @[ @"--wait", @"--relaunch", @"--dia", @"--tweaks" ], @"check" : @[ @"--json" ], @"uninstall" : @[ @"--wait", @"--relaunch", @"--purge" ],
+            @"passwords-setup" : @[],
         }[command];
         NSMutableSet<NSString *> *flags = [NSMutableSet set];
         pid_t pid = 0;
@@ -734,6 +749,7 @@ int main(int argc, const char *argv[]) {
             : [command isEqualToString:@"build"]       ? build(gPristine) && say(@"staged patched Dia %@", versionOf(gStaged))
             : [command isEqualToString:@"update"]      ? update()
             : [command isEqualToString:@"self-update"] ? stageTweaks()
+            : [command isEqualToString:@"passwords-setup"] ? ensureAgent()
             : [command isEqualToString:@"apply"]       ? applyChosen([flags containsObject:@"--dia"], [flags containsObject:@"--tweaks"])
                                                        : uninstall([flags containsObject:@"--purge"]);
         // open sometimes fails with -600 right after Dia quits itself.

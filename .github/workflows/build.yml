@@ -14,4 +14,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make
+      - run: tests/auth-and-pip
       - run: scripts/check-tweak-docs

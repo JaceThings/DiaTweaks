@@ -179,7 +179,8 @@ static NSString *page(NSString *title, NSString *detail) {
 static BOOL atOrigin(NSString *session, NSString *origin) {
     for (int tries = 0; tries < 50; tries++, usleep(100000)) {
         NSArray *state = evaluate(session, @"[location.origin, document.readyState]");
-        if ([state.lastObject isEqual:@"complete"]) return [state.firstObject isEqual:origin];
+        // Page.navigate can return while about:blank (or the previous document) is still complete.
+        if ([state.firstObject isEqual:origin] && [state.lastObject isEqual:@"complete"]) return YES;
     }
     return NO;
 }
@@ -205,21 +206,24 @@ static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id
     send(@"Browser.setWindowBounds", @{ @"windowId" : windowId, @"bounds" : sheetBounds() }, nil);
     NSString *session = send(@"Target.attachToTarget", @{ @"targetId" : targetId, @"flatten" : @YES }, nil)[@"result"][@"sessionId"];
     // Any page at the origin works, and robots.txt runs none of the site's scripts.
+    BOOL loaded = NO;
     for (NSString *path in @[ @"/robots.txt", @"/" ]) {
         send(@"Page.navigate", @{ @"url" : [origin stringByAppendingString:path] }, session);
-        if (atOrigin(session, origin)) break;
+        if ((loaded = atOrigin(session, origin))) break;
     }
+    if (!loaded) return failure(@"The passkey copy of Dia couldn't load the requesting site's origin.");
     evaluate(session, page(@"Use your passkey for {site}", @"DiaTweaks opened this window to reach Apple Passwords. It closes by itself."));
     tellDia(@"show", pid);
     // WebAuthn refuses a page without focus, which it only gets once Dia has brought the copy forward.
     for (int tries = 0; tries < 30; tries++, usleep(100000))
         if ([evaluate(session, @"document.hasFocus()") boolValue]) break;
 
-    NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options, @"origin" : origin } options:0 error:nil];
     // The timeout stops a picker left open from blocking every request after it.
-    NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
+    NSString *script = [NSString stringWithFormat:@"(async ({ kind, options, origin }) => {"
                                                     "  const signal = AbortSignal.timeout(Math.min(options.timeout || 300000, 600000));"
                                                     "  try {"
+                                                    "    if (location.origin !== origin) throw new DOMException('The requesting site changed origin.', 'SecurityError');"
                                                     "    const credential = kind === 'create'"
                                                     "      ? await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(options), signal })"
                                                     "      : await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options), signal });"

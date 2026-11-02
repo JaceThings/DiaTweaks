@@ -1,0 +1,15 @@
+#!/bin/sh
+# AppKit/CDP fixtures. Does not restart Dia, read its profile, or change launchd jobs.
+set -eu
+cd "$(dirname "$0")/.."
+mkdir -p build
+flags='-fobjc-arc -O2 -Wall -Wextra -Wno-unused-parameter'
+clang $flags -Isrc/dylib -framework AppKit -framework QuartzCore \
+    tests/picture-in-picture.m src/dylib/StdPatch/Hook.m \
+    src/dylib/Patches/PictureInPictureOnAppSwitch/PictureInPictureOnAppSwitch.m -o build/test-picture-in-picture
+build/test-picture-in-picture
+clang $flags -framework Foundation -framework CoreGraphics tests/passkeys-navigation.m -o build/test-passkeys-navigation
+build/test-passkeys-navigation
+clang $flags -framework AppKit -framework CoreGraphics -framework Security tests/passwords-agent.m \
+    src/diapatch/Passwords*.m src/diapatch/Passkeys.m -o build/test-passwords-agent
+build/test-passwords-agent
