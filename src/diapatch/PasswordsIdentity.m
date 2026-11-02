@@ -65,7 +65,7 @@ BOOL DPPatchedDiaRunning(NSString *app) {
     return NO;
 }
 
-static pid_t parentOf(pid_t pid) {
+pid_t DPParentOf(pid_t pid) {
     struct proc_bsdinfo info;
     return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof info) == sizeof info ? (pid_t)info.pbi_ppid : 0;
 }
@@ -79,5 +79,9 @@ BOOL DPTrustedRelayPeer(int fd, NSString *app) {
     if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &tokenLength) != 0 || getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidLength) != 0)
         return NO;
     return runs(@{ (__bridge NSString *)kSecGuestAttributeAudit : [NSData dataWithBytes:&token length:sizeof token] }, cdhashOfSelf())
-        && DPRunsPatchedDia(parentOf(pid), app);
+        && DPRunsPatchedDia(DPParentOf(pid), app);
+}
+
+BOOL DPRunsThisDiapatch(audit_token_t token) {
+    return runs(@{ (__bridge NSString *)kSecGuestAttributeAudit : [NSData dataWithBytes:&token length:sizeof token] }, cdhashOfSelf());
 }

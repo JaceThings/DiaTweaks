@@ -2,7 +2,7 @@
 #include <libproc.h>
 
 // Apple's iCloud Passwords extension asks for this host by name, and Chromium prefers a user's copy of a host over the
-// system's, so registering it here sends the extension to diapatch, which relays it through the original Dia.
+// system's, so registering it here sends the extension to diapatch, which has the original Dia start Apple's helper.
 
 extern DPPatch DPICloudPasswords;
 
@@ -38,8 +38,9 @@ static void DPRegisterHost(BOOL on) {
     [[NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted error:nil] writeToFile:DPHostManifestPath() atomically:YES];
 }
 
-// The relay quits the original Dia a few seconds after this one quits. Opened again before then, Dia would find it
-// still running and refuse to start ("Dia is already open"), so it's stopped first; this runs before Dia checks.
+// The relay quits the original Dia a few seconds after this one quits, and a copy that starts Apple's helper or answers
+// a passkey can be cut short. Opened again while one runs, Dia would refuse to start ("Dia is already open"), so it's
+// stopped first; this runs before Dia checks.
 static void DPStopOriginalDia(void) {
     char path[PROC_PIDPATHINFO_MAXSIZE];
     NSString *pristine = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
@@ -66,7 +67,7 @@ DP_PATCH(DPICloudPasswords) {
     .key = @"icloudPasswords",
     .order = 101,
     .title = @"Allow iCloud Passwords",
-    .detail = @"Lets the iCloud Passwords extension fill passwords from Apple Passwords, which a patched Dia can't reach. While the extension is connected, the original Dia that DiaTweaks keeps runs in the background without windows and talks to Apple Passwords for it. Experimental.",
+    .detail = @"Lets the iCloud Passwords extension fill passwords from Apple Passwords, which a patched Dia can't reach. Each time the extension connects, the original Dia that DiaTweaks keeps opens for a moment, without windows, to start Apple's helper for it. Experimental.",
     .symbol = @"key.fill",
     .tint = @"systemBlueColor",
     .section = @"Passwords",

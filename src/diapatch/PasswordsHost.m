@@ -1,8 +1,9 @@
 // Apple's iCloud Passwords helper carries a launch constraint that only lets browsers signed by their own developers
 // start it, and 1Password's helper checks the browser's signature, so neither works from the patched Dia, signed on this
-// Mac. This host stands in for them: browsers Apple trusts get Apple's helper itself, and the patched Dia goes through
-// the relay, where the original Dia starts the helper.
+// Mac. This host stands in for them: browsers Apple trusts get Apple's helper itself, the original Dia starts Apple's
+// helper on this host's stdio for the patched Dia, and 1Password goes through the relay.
 #import <poll.h>
+#import <sys/event.h>
 #import <sys/socket.h>
 #import <sys/un.h>
 #import "Passwords.h"
@@ -10,17 +11,10 @@
 
 static NSString *const kAppleHost = @"/Library/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json";
 
-const DPPasswordsService DPPasswordsServices[2] = {
-    {
-        .origins = { "chrome-extension://pejdijmoenmkgeppbflobdenhhabjlaj/", "chrome-extension://mfbcdcnpokpoajjciilocoachedjkima/" },
-        .host = "com.apple.passwordmanager",
-        .key =
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAk4xPYZla5XqlDN0PPiLCQAYRqdaR06jSl3sntEE5jHoe7XldFqhsdBSp4L8mozwjCwi6z5YtEp"
-        "TV1L2k4WYmDuiwoH7YKGlQD/YbC8QMcPvGLWOr8WYfXWtECKv0Nx7Tahk8nCIDWgJVm8YmPIDhPv4o5VVrq6aUveCKvTOskHWFyRzSTC2VKpzIVX7F65Uz"
-        "qqOmqLfMpo6lfaLcKSC7G6oQLA/wS7hcGZEwZ11si6XWR4o/hDuUSt6zdacy/sc7H80eH3lMnEmvb6HoB7+KvxfGIU7dqRmhA/w/X0qkiIJYeoo4tZrNxB"
-        "j7TTLz9hnHUbMRwJqsoIU+pkoprgFWDQIDAQAB",
-        .socket = "passwords.sock",
-    },
+static const char *const kAppleOrigins[] = { "chrome-extension://pejdijmoenmkgeppbflobdenhhabjlaj/",
+                                             "chrome-extension://mfbcdcnpokpoajjciilocoachedjkima/" };
+
+const DPPasswordsService DPPasswordsServices[DPPasswordsServiceCount] = {
     {
         .origins = { "chrome-extension://aeblfdkhhhdcdjpifhhbdiojplfjncoa/" },
         .host = "com.1password.1password",
@@ -34,17 +28,19 @@ const DPPasswordsService DPPasswordsServices[2] = {
 };
 
 const DPPasswordsService *DPPasswordsServiceFor(const char *origin) {
-    for (const DPPasswordsService *service = DPPasswordsServices; service < DPPasswordsServices + 2; service++)
+    for (const DPPasswordsService *service = DPPasswordsServices; service < DPPasswordsServices + DPPasswordsServiceCount; service++)
         for (const char *const *known = service->origins; *known; known++)
             if (!strcmp(origin, *known)) return service;
     return NULL;
 }
 
-BOOL DPIsPasswordsOrigin(const char *origin) { return DPPasswordsServiceFor(origin) != NULL; }
+static BOOL isAppleOrigin(const char *origin) { return !strcmp(origin, kAppleOrigins[0]) || !strcmp(origin, kAppleOrigins[1]); }
+
+BOOL DPIsPasswordsOrigin(const char *origin) { return isAppleOrigin(origin) || DPPasswordsServiceFor(origin) != NULL; }
 
 NSString *DPPasswordsSocket(NSString *home, const DPPasswordsService *service) { return [home stringByAppendingPathComponent:@(service->socket)]; }
 
-static NSString *appleHelper(void) {
+NSString *DPAppleHelper(void) {
     NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:kAppleHost] ?: NSData.data options:0 error:nil];
     return [host isKindOfClass:NSDictionary.class] && [host[@"path"] isKindOfClass:NSString.class] ? host[@"path"] : nil;
 }
@@ -57,17 +53,35 @@ static BOOL copyAll(int from, int to) {
     return got > 0;
 }
 
+static void waitForExit(pid_t pid) {
+    int queue = kqueue();
+    struct kevent change, event;
+    EV_SET(&change, pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, NULL);
+    if (queue >= 0 && kevent(queue, &change, 1, NULL, 0, NULL) == 0) kevent(queue, NULL, 0, &event, 1, NULL);
+}
+
+// Chromium hears the helper has gone from the pipes closing, which they only do once this holds no end of them.
+static int runThroughOriginal(NSString *home, int argc, const char *argv[]) {
+    pid_t helper = DPStartHelperThroughOriginal(home, argc, argv);
+    if (!helper) return 1;
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    waitForExit(helper);
+    return 0;
+}
+
 // exec keeps the browser that started this as the helper's parent, which is what the launch constraint checks.
 int DPRunPasswordsHost(NSString *home, NSString *app, int argc, const char *argv[]) {
     const DPPasswordsService *service = DPPasswordsServiceFor(argv[1]);
     if (!DPRunsPatchedDia(getppid(), app)) {
-        if (service != &DPPasswordsServices[0]) return 1;  // only Apple's host is registered for other browsers
-        NSString *helper = appleHelper();
+        if (service) return 1;  // only Apple's host is registered for other browsers
+        NSString *helper = DPAppleHelper();
         if (!helper) return 1;
         argv[0] = helper.fileSystemRepresentation;
         execv(argv[0], (char *const *)argv);
         return 1;
     }
+    if (!service) return runThroughOriginal(home, argc, argv);
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     if (strlcpy(address.sun_path, DPPasswordsSocket(home, service).fileSystemRepresentation, sizeof address.sun_path) >= sizeof address.sun_path) return 1;
     int relay = socket(AF_UNIX, SOCK_STREAM, 0);
