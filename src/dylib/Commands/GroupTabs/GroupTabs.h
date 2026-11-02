@@ -20,5 +20,9 @@ NSString *DPText(id value);
 NSString *DPDomainKey(NSString *urlString);
 NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups);
 
+// Order.m: where tabs sit, so undo can put them back.
+NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls);
+void DPRestorePlaces(id delegate, id browser, NSDictionary *places);
+
 void DPGroupTabsOnce(void);  // Grouping.m
 void DPInstallGroupMenus(void);  // Menu.m
