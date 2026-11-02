@@ -63,6 +63,7 @@ void DPApplyToolbarOpacity(DPToolbarHover *hover) {
     CGFloat alpha = 1 - DPHidden(hover) * (1 - hover.progress);
     if (hover.bar && hover.bar.alphaValue != alpha) hover.bar.alphaValue = alpha;
     if (hover.bookmarks && hover.bookmarks.alphaValue != alpha) hover.bookmarks.alphaValue = alpha;
+    DPRepaintTabs(hover.pane.window);
 }
 
 // Fades the bars out by `progress` and slides everything stacked under them up into their place.
