@@ -15,6 +15,8 @@
 #define DPDiaNewTabPage         "NewTabPage.NewTabPageContentView"
 #define DPDiaShadowView         "_TtC5ARCUI10ShadowView"
 #define DPDiaBrowser            "ArcBrowser"
+#define DPDiaMediaSession       "ArcWebContentsMediaSession"
+#define DPDiaWebContents        "ArcWebContents"
 #define DPDiaBrowserDelegate    "_TtC3ADK15ChromiumBrowser"
 #define DPDiaTabGroupProperties "ArcTabGroupProperties"
 #define DPDiaSettingsController "_TtC11Preferences38SidebarPreferencesWindowViewController"

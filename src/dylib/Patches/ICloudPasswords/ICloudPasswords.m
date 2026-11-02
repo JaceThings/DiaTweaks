@@ -16,6 +16,16 @@ static NSString *DPDiapatchPath(void) {
         stringByAppendingPathComponent:@"DiaPatches/bin/diapatch"];
 }
 
+static void DPEnsureRelay(void) {
+    if (!DPICloudPasswords.on) return;
+    // Applying an update runs the old installer. Ask the new binary to repair its launchd registration.
+    NSTask *task = [NSTask new];
+    task.executableURL = [NSURL fileURLWithPath:DPDiapatchPath()];
+    task.arguments = @[ @"passwords-setup" ];
+    task.standardOutput = task.standardError = NSFileHandle.fileHandleWithNullDevice;
+    if (![task launchAndReturnError:NULL]) NSLog(@"DiaPatches: couldn't repair the iCloud Passwords relay");
+}
+
 // Another app's override of Apple's host stays as it is.
 static BOOL DPHostIsOursOrAbsent(void) {
     NSData *data = [NSData dataWithContentsOfFile:DPHostManifestPath()];
@@ -58,9 +68,13 @@ static void DPStopOriginalDia(void) {
 static void DPInstallICloudPasswords(void) {
     DPStopOriginalDia();
     DPRegisterHost(DPICloudPasswords.on);
+    DPOnLaunch(^{ DPEnsureRelay(); });
 }
 
-static void DPApplyICloudPasswords(DPPatch *patch) { DPRegisterHost(patch->on); }
+static void DPApplyICloudPasswords(DPPatch *patch) {
+    DPRegisterHost(patch->on);
+    if (patch->on && patch->on == DPSavedOn(patch)) DPEnsureRelay();
+}
 
 DP_PATCH(DPICloudPasswords) {
     .key = @"icloudPasswords",
