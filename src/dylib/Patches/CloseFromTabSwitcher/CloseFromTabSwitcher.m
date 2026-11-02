@@ -104,7 +104,7 @@ static BOOL DPTakeEvent(NSEvent *event) {
     if (event.type == NSEventTypeFlagsChanged) return event.keyCode == 54 || event.keyCode == 55;
     // ⇧ may still be down from cycling backward, and ⌘⇧W would close the window.
     NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagOption);
-    return mods == NSEventModifierFlagCommand && [event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"] && DPCloseFocusedTab(switcher);
+    return (mods == NSEventModifierFlagCommand || !mods) && [event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"] && DPCloseFocusedTab(switcher);
 }
 
 // Every event comes through here, before the switcher's own key handling can take it.
@@ -124,7 +124,7 @@ DP_PATCH(DPCloseFromTabSwitcher) {
     .defaultOn = YES,
     .order = 85,
     .title = @"Close tabs from the tab switcher",
-    .detail = @"Press ⌘W while the tab switcher (⌃⇥) is open to close the highlighted tab and keep switching.",
+    .detail = @"Press W or ⌘W while the tab switcher (⌃⇥) is open to close the highlighted tab and keep switching.",
     .symbol = @"rectangle.on.rectangle.slash",
     .tint = @"systemOrangeColor",
     .section = @"Tabs",
