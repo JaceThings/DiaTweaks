@@ -286,10 +286,28 @@ static void DPPresentCommandBar(NSView *page) {
     overlay.watch = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
         if (weak) DPWatchNewTab(weak); else [timer invalidate];
     }];
-    // Going back now, before Dia draws the new tab, keeps its page from flashing up. Dia finishes the switch to the new
-    // tab after, and titles the window after it, so it's gone back to once more when that's done.
+    // Going back now, before Dia draws the new tab, keeps its page from flashing up. Dia is still switching to the new
+    // tab though, and going back takes the page's web view out of the window: the page keeps showing, but there's
+    // nothing to click. So the web view is put back before the window draws. Dia also titles the window after the new
+    // tab, so it's gone back to once more when that's done.
     if (overlay.returnTab) {
+        NSView *web = DPFindView(overlay.host.contentView, ^BOOL(NSView *view) {
+            return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor;
+        });
+        NSView *paneHost = web.superview;
         DPFocusTab(overlay.returnTab);
+        if (web) {
+            CFRunLoopObserverRef beforeDraw = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, NO, 0, ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
+                if (web.superview || !paneHost.window) return;
+                [paneHost addSubview:web positioned:NSWindowBelow relativeTo:nil];
+                [NSLayoutConstraint activateConstraints:@[  // Removing it took Dia's constraints with it.
+                    [web.topAnchor constraintEqualToAnchor:paneHost.topAnchor], [web.bottomAnchor constraintEqualToAnchor:paneHost.bottomAnchor],
+                    [web.leadingAnchor constraintEqualToAnchor:paneHost.leadingAnchor], [web.trailingAnchor constraintEqualToAnchor:paneHost.trailingAnchor],
+                ]];
+            });
+            CFRunLoopAddObserver(CFRunLoopGetMain(), beforeDraw, kCFRunLoopCommonModes);
+            CFRelease(beforeDraw);
+        }
         dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             if (!weak.superview) return;
