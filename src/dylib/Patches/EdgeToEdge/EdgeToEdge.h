@@ -13,6 +13,7 @@ NSView *DPChatCard(NSView *container);          // The page's card while Chat is
 CGFloat DPBaseCornerRadius(NSView *container);  // Dia's radius for the container, before edge-to-edge grows it.
 void DPAnimateLayer(NSView *container, CALayer *layer, NSString *key, id value);  // In step with Dia's animation of the page.
 void DPInstallRestyle(void);
+void DPInstallPopover(void);
 void DPRestyleContainer(NSView *container);
 void DPApplySquareCorners(NSView *container);
 void DPRoundCornerControls(NSView *container);
