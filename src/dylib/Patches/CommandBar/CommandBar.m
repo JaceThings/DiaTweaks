@@ -406,7 +406,7 @@ static NSMenu *DPCommandBarPositions(void) {
 
 // A row of the bar's options in Settings for one saved number: a slider with a field to type it in, or a switch.
 // Open bars pick a change up at once.
-@interface DPCommandBarTuneRow : NSStackView
+@interface DPCommandBarTuneRow : NSStackView <NSTextFieldDelegate>
 @property(copy) NSString *key;
 @property double scale;  // The saved number times this is what the row shows.
 @property NSSlider *slider;
@@ -425,6 +425,18 @@ static NSMenu *DPCommandBarPositions(void) {
         if (overlay) DPShowShade(overlay);
         overlay.needsLayout = YES;
     }
+}
+
+// Up and down step the field by 1, or by 10 with Shift.
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+    NSDictionary<NSString *, NSNumber *> *steps = @{ @"moveUp:" : @1, @"moveDown:" : @-1,
+                                                     @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 };
+    NSNumber *step = steps[NSStringFromSelector(command)];
+    if (!step) return NO;
+    self.field.doubleValue = textView.string.doubleValue + step.doubleValue;
+    [self tune:self.field];
+    [textView selectAll:nil];
+    return YES;
 }
 @end
 
@@ -453,6 +465,7 @@ static NSView *DPSliderRow(NSString *title, NSString *key, double max, double sc
     row.key = key, row.scale = scale, row.slider = slider, row.field = field;
     slider.target = field.target = row;
     field.action = @selector(tune:);
+    field.delegate = row;
     return row;
 }
 
