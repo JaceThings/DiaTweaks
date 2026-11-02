@@ -5,7 +5,7 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken;
-static char DPOverlayKey, DPHomeKey, DPRecentKey;
+static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey;
 
 @interface DPCommandBarOverlay : NSView
 @property(weak) NSView *page, *panel;
@@ -368,9 +368,44 @@ static void DPCapability_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     [DPBarText(overlay) insertText:@"@" replacementRange:DPBarText(overlay).selectedRange];
 }
 
+static NSMenuItem *DPMenuItemTitled(NSMenu *menu, NSString *title) {
+    for (NSMenuItem *item in menu.itemArray) {
+        if ([item.title isEqual:title]) return item;
+        NSMenuItem *found = DPMenuItemTitled(item.submenu, title);
+        if (found) return found;
+    }
+    return nil;
+}
+
+// Whether the key in hand is Dia's Close Tab shortcut, whatever it's set to.
+static BOOL DPClosingTab(void) {
+    NSEvent *event = NSApp.currentEvent;
+    if (event.type != NSEventTypeKeyDown && event.type != NSEventTypeKeyUp) return NO;
+    NSMenuItem *close = DPMenuItemTitled(NSApp.mainMenu, @"Close Tab");
+    NSEventModifierFlags mods = NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagControl;
+    return close.keyEquivalent.length && (event.modifierFlags & mods) == close.keyEquivalentModifierMask
+        && [event.charactersIgnoringModifiers caseInsensitiveCompare:close.keyEquivalent] == NSOrderedSame;
+}
+
+// Closing a window's last tab leaves it blank: Dia opens a new tab page there, which stays empty rather than showing
+// the bar. The blank tab closes once you've moved on from it, so it never lingers as a tab.
+static void DPCloseLeftBlank(NSWindow *window) {
+    if (!window || DPGet(window, &DPOverlayKey)) return;
+    NSMutableSet<NSString *> *blanks = DPGet(window, &DPBlankKey);
+    NSArray<NSString *> *recent = DPGet(window, &DPRecentKey);
+    if (recent.count < 2 || ![blanks containsObject:recent.firstObject] || [blanks containsObject:recent.lastObject]) return;
+    id blank = DPScriptTab(window, recent.firstObject);
+    if (!blank || !DPScriptTab(window, recent.lastObject)) return;
+    [blanks removeObject:recent.firstObject];
+    DPCloseTab(blank);
+}
+
 static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPContentPane_viewDidMoveToWindow, self);
-    if (self.window) DPNoteActiveTab(self.window);
+    if (!self.window) return;
+    DPNoteActiveTab(self.window);
+    __weak NSWindow *window = self.window;
+    dispatch_async(dispatch_get_main_queue(), ^{ DPCloseLeftBlank(window); });
 }
 
 static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
@@ -380,9 +415,23 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     if (!DPCommandBar.on) return;
     // Brought forward while its bar is open, by a shortcut or the tab switcher, the new tab gets a fresh new tab page;
     // the bar already open stays, and the page you were on stays in front.
+    NSString *active = DPActiveTabID(self.window);
     DPCommandBarOverlay *overlay = DPGet(self.window, &DPOverlayKey);
-    if (overlay && [DPActiveTabID(self.window) isEqual:[overlay.openedTab valueForKey:@"tabId"]]) {
+    if (overlay && [active isEqual:[overlay.openedTab valueForKey:@"tabId"]]) {
         if (overlay.returnTab) dispatch_async(dispatch_get_main_queue(), ^{ if (overlay.host) DPFocusTab(overlay.returnTab); });
+        return;
+    }
+    // Shown because the tab before it is closing, or as a blank tab the bar goes back to, the page stays empty. Dia opens
+    // the new tab before the last one goes, so a close is told by the shortcut, or after by the tab before being gone.
+    NSMutableSet<NSString *> *blanks = DPGet(self.window, &DPBlankKey);
+    NSArray *recent = DPGet(self.window, &DPRecentKey);
+    if (active && ([blanks containsObject:active] || DPClosingTab() || (recent.count > 1 && !DPScriptTab(self.window, recent.firstObject)))) {
+        if (!blanks) DPSet(self.window, &DPBlankKey, blanks = [NSMutableSet set]);
+        [blanks addObject:active];
+        DPSet(self, &DPBlankKey, @YES);
+        DPHidePage(self, YES);
+        // Closed some other way, like with the mouse, the bar opened over the tab that was going; that tab goes too.
+        if (overlay && !DPScriptTab(self.window, [overlay.returnTab valueForKey:@"tabId"])) DPCancelCommandBar(overlay);
         return;
     }
     if (overlay) DPCancelCommandBar(overlay);
@@ -404,14 +453,23 @@ static void DPApplyCommandBar(DPPatch *patch) {
             if (overlay.returnTab && tab) DPFocusTab(tab);
         }
     }
-    if (DPCommandBar.on)
-        for (NSView *page in DPFindViews(DPDiaNewTabPage)) DPPresentCommandBar(page);
+    for (NSView *page in DPFindViews(DPDiaNewTabPage)) {
+        if (DPCommandBar.on) {
+            if (!DPGet(page, &DPBlankKey)) DPPresentCommandBar(page);
+        } else if (DPGet(page, &DPBlankKey)) {
+            DPSet(page, &DPBlankKey, nil);
+            DPHidePage(page, NO);
+        }
+    }
+    if (!DPCommandBar.on)
+        for (NSWindow *window in NSApp.windows) DPSet(window, &DPBlankKey, nil);
 }
 
 static NSString *DPVerifyCommandBar(DPPatch *patch) {
     for (NSView *page in DPFindViews(DPDiaNewTabPage)) {
         DPCommandBarOverlay *overlay = DPGet(page, &DPOverlayKey);
-        if (DPCommandBar.on && !overlay) return @"a new tab page shows without the bar over it";
+        if (DPGet(page, &DPBlankKey) && !page.hidden) return @"a blank tab shows its new tab page";
+        if (DPCommandBar.on && !overlay && !DPGet(page, &DPBlankKey)) return @"a new tab page shows without the bar over it";
         if (overlay && overlay.panel.superview != overlay) return @"the bar isn't on the overlay";
     }
     for (NSWindow *window in NSApp.windows)
