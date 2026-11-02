@@ -30,6 +30,11 @@ NSString *DPBarSpaceOfWindow(NSWindow *window) {
 
 BOOL DPBarCanScript(NSWindow *window) { return DPActiveTab(window) != nil; }
 
+BOOL DPBarCanListSpaces(NSWindow *window) {
+    @try { return [[DPScriptedWindow(window) valueForKey:@"appleScriptProfiles"] count] > 0; }
+    @catch (__unused NSException *e) { return NO; }
+}
+
 NSString *DPBarURLOfWindow(NSWindow *window) {
     @try {
         id url = [DPActiveTab(window) valueForKey:@"URL"];
@@ -91,10 +96,11 @@ void DPBarOpenInNewTab(NSWindow *window, NSString *url) {
                  DPSelf(), DPQuoted(window.identifier), DPQuoted(url)]);
 }
 
-void DPBarFocusTab(NSString *windowId, NSString *tabId) {
+void DPBarFocusTab(NSString *windowId, NSString *space, NSString *tabId) {
     if (!windowId || !tabId) return;
-    DPRunScript([NSString stringWithFormat:@"tell %@\n  focus (first tab of (first window whose id is %@) whose id is %@)\nend tell",
-                 DPSelf(), DPQuoted(windowId), DPQuoted(tabId)]);
+    NSString *owner = [NSString stringWithFormat:@"(first window whose id is %@)", DPQuoted(windowId)];
+    if (space) owner = [NSString stringWithFormat:@"(first profile of %@ whose name is %@)", owner, DPQuoted(space)];
+    DPRunScript([NSString stringWithFormat:@"tell %@\n  focus (first tab of %@ whose id is %@)\nend tell", DPSelf(), owner, DPQuoted(tabId)]);
 }
 
 static NSMutableDictionary<NSString *, NSNumber *> *DPTabLastUsed;
@@ -109,29 +115,37 @@ void DPBarNoteActiveTab(NSWindow *window) {
     } @catch (__unused NSException *e) {}
 }
 
+static void DPAddTabs(NSMutableArray<DPBarItem *> *items, id owner, NSString *windowId, NSString *space) {
+    for (id tab in [owner valueForKey:@"appleScriptTabs"]) {
+        NSString *url = [tab valueForKey:@"URL"];
+        if (![url isKindOfClass:NSString.class] || !url.length || [url hasPrefix:@"dia://"]) continue;
+        DPBarItem *item = [DPBarItem new];
+        item.kind = DPBarKindTab;
+        item.title = [tab valueForKey:@"title"] ?: url;
+        item.url = url;
+        item.detail = @"Switch to Tab";
+        item.tabId = [tab valueForKey:@"tabId"];
+        item.windowId = windowId;
+        item.space = space;
+        item.symbol = @"square.on.square";
+        item.frecency = 3;
+        [items addObject:item];
+    }
+}
+
 NSArray<DPBarItem *> *DPBarLoadTabs(NSWindow *window, NSString *space) {
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     @try {
-        for (id scripted in DPScriptedWindows()) {
+        if (!space) DPAddTabs(items, DPScriptedWindow(window), window.identifier, nil);
+        else for (id scripted in DPScriptedWindows()) {
             // Private windows are in this list too. They have no space, so this keeps their tabs out of normal windows.
-            BOOL same = space ? [DPSpaceOf(scripted) isEqual:space] : [[scripted valueForKey:@"windowId"] isEqual:window.identifier];
-            if (!same) continue;
-            for (id tab in [scripted valueForKey:@"appleScriptTabs"]) {
-                NSString *url = [tab valueForKey:@"URL"];
-                if (![url isKindOfClass:NSString.class] || !url.length || [url hasPrefix:@"dia://"]) continue;
-                DPBarItem *item = [DPBarItem new];
-                item.kind = DPBarKindTab;
-                item.title = [tab valueForKey:@"title"] ?: url;
-                item.url = url;
-                item.detail = @"Switch to Tab";
-                item.tabId = [tab valueForKey:@"tabId"];
-                item.windowId = [scripted valueForKey:@"windowId"];
-                item.symbol = @"square.on.square";
-                item.frecency = 3;
-                [items addObject:item];
-            }
+            NSString *shown = DPSpaceOf(scripted), *windowId = [scripted valueForKey:@"windowId"];
+            if (shown && DPCommandBarCoversAllSpaces()) {
+                for (id profile in [scripted valueForKey:@"appleScriptProfiles"]) DPAddTabs(items, profile, windowId, [profile valueForKey:@"name"]);
+            } else if ([shown isEqual:space]) DPAddTabs(items, scripted, windowId, shown);
         }
     } @catch (__unused NSException *e) {}
-    DPBarSortByRecency(items, DPTabLastUsed);
-    return items;
+    NSMutableArray<DPBarItem *> *tabs = DPBarArrangeTabs(items, space, window.identifier);
+    DPBarSortByRecency(tabs, DPTabLastUsed);
+    return tabs;
 }

@@ -189,6 +189,25 @@ void DPBarSortByRecency(NSMutableArray<DPBarItem *> *tabs, NSDictionary<NSString
     }];
 }
 
+NSMutableArray<DPBarItem *> *DPBarArrangeTabs(NSArray<DPBarItem *> *tabs, NSString *space, NSString *windowId) {
+    NSInteger (^distance)(DPBarItem *) = ^NSInteger(DPBarItem *tab) {
+        return ([tab.space isEqual:space] ? 0 : 2) + ([tab.windowId isEqual:windowId] ? 0 : 1);
+    };
+    NSArray<DPBarItem *> *nearestFirst = [tabs sortedArrayWithOptions:NSSortStable usingComparator:^NSComparisonResult(DPBarItem *a, DPBarItem *b) {
+        return [@(distance(a)) compare:@(distance(b))];
+    }];
+    NSMutableArray<DPBarItem *> *arranged = [NSMutableArray new];
+    NSMutableSet<NSString *> *seen = [NSMutableSet new], *spaces = [NSMutableSet new];
+    for (DPBarItem *tab in nearestFirst) {
+        if (tab.space) [spaces addObject:tab.space];
+        if ([seen containsObject:tab.tabId]) continue;
+        if (tab.tabId) [seen addObject:tab.tabId];
+        [arranged addObject:tab];
+    }
+    if (spaces.count < 2) for (DPBarItem *tab in arranged) tab.space = nil;
+    return arranged;
+}
+
 BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab) {
     return forceNewTab || topRow != DPBarKindTab;
 }

@@ -118,8 +118,8 @@
     }
     // Opening a tab blocks the main thread, so the bar starts closing first.
     if (item.kind == DPBarKindTab) {
-        NSString *windowId = item.windowId, *tabId = item.tabId;
-        dispatch_async(dispatch_get_main_queue(), ^{ DPBarFocusTab(windowId, tabId); });
+        NSString *windowId = item.windowId, *space = item.space, *tabId = item.tabId;
+        dispatch_async(dispatch_get_main_queue(), ^{ DPBarFocusTab(windowId, space, tabId); });
         return;
     }
     NSString *url = item.url;

@@ -77,6 +77,19 @@ int main(void) {
     DPBarSortByRecency(tabs, @{@"old": @1, @"new": @2});
     SAME([[tabs valueForKey:@"tabId"] componentsJoinedByString:@","], @"new,old,never1,never2");
 
+    DPBarItem *(^spaceTab)(NSString *, NSString *, NSString *) = ^(NSString *tabId, NSString *space, NSString *windowId) {
+        DPBarItem *tab = [DPBarItem new];
+        tab.tabId = tabId;
+        tab.space = space;
+        tab.windowId = windowId;
+        return tab;
+    };
+    NSArray<DPBarItem *> *arranged = DPBarArrangeTabs(@[spaceTab(@"other", @"B", @"w1"), spaceTab(@"pinned", @"A", @"w2"), spaceTab(@"pinned", @"A", @"w1"), spaceTab(@"own", @"A", @"w1")], @"A", @"w1");
+    SAME([[arranged valueForKey:@"tabId"] componentsJoinedByString:@","], @"pinned,own,other");
+    SAME(arranged[0].windowId, @"w1");
+    SAME(arranged[2].space, @"B");
+    CHECK(!DPBarArrangeTabs(@[spaceTab(@"own", @"A", @"w1")], @"A", @"w1")[0].space);
+
     SAME(DPSuggestURL(@"{google:baseSuggestURL}{google:suggestPath}?q={searchTerms}", @"a b"), @"https://suggestqueries.google.com/complete/search?client=firefox&oe=utf-8&q=a%20b");
     SAME(DPSuggestURL(@"https://duckduckgo.com/ac/?q={searchTerms}&type=list", @"x"), @"https://duckduckgo.com/ac/?q=x&type=list");
     CHECK(!DPSuggestURL(@"http://example.com/?q={searchTerms}", @"x"));

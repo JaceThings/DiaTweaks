@@ -17,7 +17,7 @@ typedef NS_ENUM(NSInteger, DPBarMatch) { DPBarMatchNone, DPBarMatchContains, DPB
 
 @interface DPBarItem : NSObject
 @property (nonatomic) DPBarKind kind;
-@property (nonatomic, copy) NSString *title, *detail, *url, *symbol, *tabId, *windowId;
+@property (nonatomic, copy) NSString *title, *detail, *url, *symbol, *tabId, *windowId, *space;
 @property (nonatomic, strong) NSMenuItem *menuItem;
 @property (nonatomic) NSInteger tier;  // Lower lists first.
 @property (nonatomic) double frecency, rank;
@@ -33,17 +33,19 @@ DPBarMatch DPBarMatchOf(NSArray<NSString *> *words, NSString *title, NSString *u
 NSInteger DPBarTier(DPBarKind kind, DPBarMatch match, NSUInteger queryLength);  // Negative means drop it.
 void DPBarSortItems(NSMutableArray<DPBarItem *> *items);
 void DPBarSortByRecency(NSMutableArray<DPBarItem *> *tabs, NSDictionary<NSString *, NSNumber *> *lastUsed);
+NSMutableArray<DPBarItem *> *DPBarArrangeTabs(NSArray<DPBarItem *> *tabs, NSString *space, NSString *windowId);
 BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab);
 NSString *DPSuggestURL(NSString *suggestTemplate, NSString *text);
 NSArray<NSString *> *DPParseSuggestions(NSData *json, NSString *query);
 
 BOOL DPBarCanScript(NSWindow *window);
+BOOL DPBarCanListSpaces(NSWindow *window);
 NSString *DPBarURLOfWindow(NSWindow *window);  // nil on a blank tab.
 void DPBarNavigate(NSWindow *window, NSString *url);
 void DPBarOpenInNewTab(NSWindow *window, NSString *url);
 BOOL DPBarCanOpenTabDirectly(void);
 void DPBarNoteActiveTab(NSWindow *window);
-void DPBarFocusTab(NSString *windowId, NSString *tabId);
+void DPBarFocusTab(NSString *windowId, NSString *space, NSString *tabId);
 NSString *DPBarSpaceOfWindow(NSWindow *window);  // nil for a private window, which has no space.
 NSArray<DPBarItem *> *DPBarLoadTabs(NSWindow *window, NSString *space);  // A nil space lists only `window`'s own tabs.
 
@@ -80,6 +82,7 @@ void DPBarQueryProfile(NSString *file, NSString *sql, NSArray *args, void (^row)
 BOOL DPCommandBarShow(NSWindow *window, BOOL newTab);  // NO if `window` isn't a browser window.
 BOOL DPCommandBarIsKey(void);
 BOOL DPCommandBarSuggests(void);
+BOOL DPCommandBarCoversAllSpaces(void);
 BOOL DPCommandBarIsShown(NSWindow *window);
 BOOL DPCommandBarAnimates(void);  // The option is on, and Reduce Motion is off.
 BOOL DPCommandBarIsAnimating(void);

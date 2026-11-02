@@ -1,8 +1,9 @@
 #import "CommandBar.h"
 
-extern DPPatch DPCommandBar, DPCommandBarAddress, DPCommandBarSuggestions;
+extern DPPatch DPCommandBar, DPCommandBarAddress, DPCommandBarSuggestions, DPCommandBarAllSpaces;
 
 BOOL DPCommandBarSuggests(void) { return DPCommandBarSuggestions.on; }
+BOOL DPCommandBarCoversAllSpaces(void) { return DPCommandBarAllSpaces.on; }
 
 static BOOL DPAddressOn(void) { return DPCommandBar.on && DPCommandBarAddress.on; }
 
@@ -136,6 +137,11 @@ static NSString *DPVerifyCommandBarAnimation(DPPatch *patch) {
     return DPCommandBarIsShown(window) ? @"the bar is still in use after closing" : nil;
 }
 
+static NSString *DPVerifyCommandBarAllSpaces(DPPatch *patch) {
+    NSWindow *window = DPAnyBrowserWindow();
+    return patch->on && window && !DPBarCanListSpaces(window) ? @"Dia's scripting bridge lists no spaces for this window" : nil;
+}
+
 DP_PATCH(DPCommandBar) {
     .key = @"commandBar",
     .order = 95,
@@ -184,4 +190,16 @@ DP_PATCH(DPCommandBarSuggestions) {
     .symbol = @"text.magnifyingglass",
     .tint = @"systemBlueColor",
     .requires = @"commandBar",
+};
+
+DP_PATCH(DPCommandBarAllSpaces) {
+    .key = @"commandBarAllSpaces",
+    .defaultOn = YES,
+    .order = 99,
+    .title = @"Find tabs in all spaces",
+    .detail = @"List open and pinned tabs from every space, labeled with their space. Picking one switches to that space.",
+    .symbol = @"square.stack",
+    .tint = @"systemBlueColor",
+    .requires = @"commandBar",
+    .verify = DPVerifyCommandBarAllSpaces,
 };
