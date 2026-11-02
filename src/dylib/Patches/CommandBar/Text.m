@@ -183,6 +183,12 @@ void DPBarSortItems(NSMutableArray<DPBarItem *> *items) {
     }];
 }
 
+void DPBarSortByRecency(NSMutableArray<DPBarItem *> *tabs, NSDictionary<NSString *, NSNumber *> *lastUsed) {
+    [tabs sortWithOptions:NSSortStable usingComparator:^NSComparisonResult(DPBarItem *a, DPBarItem *b) {
+        return [(lastUsed[b.tabId] ?: @0) compare:lastUsed[a.tabId] ?: @0];
+    }];
+}
+
 BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab) {
     return forceNewTab || topRow != DPBarKindTab;
 }

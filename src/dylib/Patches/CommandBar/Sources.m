@@ -25,16 +25,17 @@
     NSString *space = DPBarSpaceOfWindow(window);
     // Private windows get their own tabs and nothing from the profile. Nothing goes to the search engine either.
     _private = !space;
+    DPBarNoteActiveTab(window);
     DPBarUseSpace(space);
     _icons.disabled = _private;
     _commands = DPBarLoadCommands();
     _pages = DPBarLoadPages();
-    _tabs = DPBarLoadTabs(window, space);
+    _activeURL = DPBarURLOfWindow(window);
+    _tabs = [DPBarLoadTabs(window, space) filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"url != %@", _activeURL]];
     _bookmarks = _private ? @[] : DPBarLoadBookmarks();
     NSString *suggest = nil;
     _searchTemplate = DPBarLoadSearchTemplate(&suggest);
     _suggestTemplate = _private ? nil : suggest;
-    _activeURL = DPBarURLOfWindow(window);
     [_icons prepare];
 }
 
@@ -50,7 +51,7 @@ static void DPAddMatches(NSMutableArray<DPBarItem *> *all, NSArray<DPBarItem *> 
     }
 }
 
-static NSMutableArray<DPBarItem *> *DPRanked(NSMutableArray<DPBarItem *> *all, NSString *activeURL) {
+static NSMutableArray<DPBarItem *> *DPRanked(NSMutableArray<DPBarItem *> *all) {
     DPBarSortItems(all);
     NSMutableArray<DPBarItem *> *ranked = [NSMutableArray new];
     NSMutableSet<NSString *> *keys = [NSMutableSet new];
@@ -60,7 +61,7 @@ static NSMutableArray<DPBarItem *> *DPRanked(NSMutableArray<DPBarItem *> *all, N
         NSString *key = item.url ? [item.url stringByTrimmingCharactersInSet:slash] : item.title;
         NSString *site = item.url ? [NSURL URLWithString:item.url].host : nil;
         BOOL history = item.kind == DPBarKindHistory;
-        if (!key || [keys containsObject:key] || (item.kind == DPBarKindTab && [item.url isEqualToString:activeURL])) continue;
+        if (!key || [keys containsObject:key]) continue;
         if (history && site && [perSite countForObject:site] >= 2) continue;
         if (history && item.title && [perTitle countForObject:item.title] >= 2) continue;
         if (site) [perSite addObject:site];
@@ -92,7 +93,7 @@ static DPBarItem *DPTypedItem(NSString *text, NSString *searchURL) {
     NSArray<NSString *> *words = [[query componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
                                   filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]];
     NSArray<DPBarItem *> *commands = _commands, *pages = _pages, *tabs = _tabs, *bookmarks = _bookmarks;
-    NSString *activeURL = _activeURL, *searchURL = [self searchURLFor:text];
+    NSString *searchURL = [self searchURLFor:text];
     BOOL isPrivate = _private;
     dispatch_async(_queue, ^{
         // ponytail: racy read of _latest. Worst case is one wasted scan, since `done` rechecks on main.
@@ -113,7 +114,7 @@ static DPBarItem *DPTypedItem(NSString *text, NSString *searchURL) {
             if (item.kind == DPBarKindBookmark) item.rank = MAX(item.rank, byURL[item.url].rank + 0.25);
         }
 
-        NSMutableArray<DPBarItem *> *ranked = DPRanked(all, activeURL);
+        NSMutableArray<DPBarItem *> *ranked = DPRanked(all);
         // An address comes first so Return opens it. A search comes second if the top result is strong.
         DPBarItem *typed = DPTypedItem(trimmed, searchURL);
         [ranked insertObject:typed atIndex:typed.kind == DPBarKindSearch && ranked.count && ranked[0].tier <= 1 ? 1 : 0];

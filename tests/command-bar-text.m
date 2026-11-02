@@ -68,6 +68,15 @@ int main(void) {
     DPBarSortItems(items);
     SAME([[items valueForKey:@"title"] componentsJoinedByString:@","], @"New Window,New Incognito Window,popular,rare,weak but popular");
 
+    NSMutableArray<DPBarItem *> *tabs = [NSMutableArray new];
+    for (NSString *tabId in @[@"never1", @"old", @"never2", @"new"]) {
+        DPBarItem *tab = [DPBarItem new];
+        tab.tabId = tabId;
+        [tabs addObject:tab];
+    }
+    DPBarSortByRecency(tabs, @{@"old": @1, @"new": @2});
+    SAME([[tabs valueForKey:@"tabId"] componentsJoinedByString:@","], @"new,old,never1,never2");
+
     SAME(DPSuggestURL(@"{google:baseSuggestURL}{google:suggestPath}?q={searchTerms}", @"a b"), @"https://suggestqueries.google.com/complete/search?client=firefox&oe=utf-8&q=a%20b");
     SAME(DPSuggestURL(@"https://duckduckgo.com/ac/?q={searchTerms}&type=list", @"x"), @"https://duckduckgo.com/ac/?q=x&type=list");
     CHECK(!DPSuggestURL(@"http://example.com/?q={searchTerms}", @"x"));

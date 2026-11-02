@@ -1,6 +1,6 @@
 #import "Bar.h"
 
-static const CGFloat DPBarWidth = 760, DPBarInputHeight = 64;
+static const CGFloat DPBarWidth = 760, DPBarInputHeight = 64, DPBarCornerRadius = 16;
 
 @interface DPBarPanel : NSPanel
 @end
@@ -12,6 +12,7 @@ static const CGFloat DPBarWidth = 760, DPBarInputHeight = 64;
 
 @interface DPBar ()
 @property (nonatomic, strong) NSBox *divider;
+@property (nonatomic, strong) NSView *tint;
 @end
 
 @implementation DPBar
@@ -41,11 +42,23 @@ static const CGFloat DPBarWidth = 760, DPBarInputHeight = 64;
     _background.blendingMode = NSVisualEffectBlendingModeBehindWindow;
     _background.state = NSVisualEffectStateActive;
     _background.wantsLayer = YES;
-    _background.layer.cornerRadius = 16;
-    _background.layer.cornerCurve = kCACornerCurveContinuous;
+    _background.layer.cornerRadius = DPBarCornerRadius;
     _background.layer.masksToBounds = YES;
     _background.layer.borderWidth = 1;
+    NSImage *corners = [NSImage imageWithSize:NSMakeSize(DPBarCornerRadius * 2 + 1, DPBarCornerRadius * 2 + 1) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+        [NSColor.blackColor setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:rect xRadius:DPBarCornerRadius yRadius:DPBarCornerRadius] fill];
+        return YES;
+    }];
+    corners.capInsets = NSEdgeInsetsMake(DPBarCornerRadius, DPBarCornerRadius, DPBarCornerRadius, DPBarCornerRadius);
+    corners.resizingMode = NSImageResizingModeStretch;
+    _background.maskImage = corners;
     _panel.contentView = _background;
+
+    _tint = [[NSView alloc] initWithFrame:_background.bounds];
+    _tint.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    _tint.wantsLayer = YES;
+    [_background addSubview:_tint];
 
     _fieldIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
     _fieldIcon.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:18 weight:NSFontWeightRegular];
@@ -82,6 +95,7 @@ static const CGFloat DPBarWidth = 760, DPBarInputHeight = 64;
     self.background.material = DPBarIsDark(window.effectiveAppearance) ? NSVisualEffectMaterialHUDWindow : NSVisualEffectMaterialPopover;
     [self.background.effectiveAppearance performAsCurrentDrawingAppearance:^{
         self.background.layer.borderColor = DPBarColor(1, 0.12, 0, 0.10).CGColor;
+        self.tint.layer.backgroundColor = DPBarColor(0, 0.40, 1, 0.40).CGColor;
     }];
     DPBarDropProfileSnapshot();
     [self.sources prepareForWindow:window];
@@ -96,6 +110,10 @@ static const CGFloat DPBarWidth = 760, DPBarInputHeight = 64;
     [window addChildWindow:self.panel ordered:NSWindowAbove];
     [self.panel makeKeyAndOrderFront:nil];
     [self.panel makeFirstResponder:self.field];
+    ((NSTextView *)self.field.currentEditor).selectedTextAttributes = @{
+        NSBackgroundColorAttributeName: DPBarColor(1, 0.22, 0, 0.12),
+        NSForegroundColorAttributeName: NSColor.labelColor,
+    };
     [self.field.currentEditor selectAll:nil];
     if (newTab || !initial.length) [self runQuery];
     else {

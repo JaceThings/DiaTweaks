@@ -97,6 +97,18 @@ void DPBarFocusTab(NSString *windowId, NSString *tabId) {
                  DPSelf(), DPQuoted(windowId), DPQuoted(tabId)]);
 }
 
+static NSMutableDictionary<NSString *, NSNumber *> *DPTabLastUsed;
+
+void DPBarNoteActiveTab(NSWindow *window) {
+    static NSUInteger uses;
+    @try {
+        NSString *tab = [DPActiveTab(window) valueForKey:@"tabId"];
+        if (!tab) return;
+        if (!DPTabLastUsed) DPTabLastUsed = [NSMutableDictionary new];
+        DPTabLastUsed[tab] = @(++uses);
+    } @catch (__unused NSException *e) {}
+}
+
 NSArray<DPBarItem *> *DPBarLoadTabs(NSWindow *window, NSString *space) {
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     @try {
@@ -120,5 +132,6 @@ NSArray<DPBarItem *> *DPBarLoadTabs(NSWindow *window, NSString *space) {
             }
         }
     } @catch (__unused NSException *e) {}
+    DPBarSortByRecency(items, DPTabLastUsed);
     return items;
 }

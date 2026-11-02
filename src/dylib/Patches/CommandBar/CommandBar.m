@@ -59,12 +59,30 @@ static void DPTabStripButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     if (!DPCommandBar.on || !DPHasLabel(self, @"New tab") || !DPCommandBarShow(self.window, YES)) DPCallOriginal(DPTabStripButton_mouseDown, self, event);
 }
 
+static void DPNoteActiveTabSoon(void) {
+    if (!DPCommandBar.on) return;
+    static NSUInteger latest;
+    NSUInteger mine = ++latest;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (mine != latest) return;
+        NSWindow *window = NSApp.keyWindow;
+        if (DPIsKind(window, DPDiaBrowserWindow)) DPBarNoteActiveTab(window);
+    });
+}
+
+static void DPWindow_setTitle(NSWindow *self, SEL _cmd, NSString *title) {
+    if (self.isKeyWindow && ![title isEqualToString:self.title]) DPNoteActiveTabSoon();
+    DPCallOriginal(DPWindow_setTitle, self, title);
+}
+
 static void DPInstallCommandBar(void) {
     DPHook(DPDiaNewTabCell, @selector(mouseDown:), (IMP)DPNewTabCell_mouseDown);
     DPHook(DPDiaTabStripButton, @selector(mouseDown:), (IMP)DPTabStripButton_mouseDown);
+    DPHook(DPDiaBrowserWindow, @selector(setTitle:), (IMP)DPWindow_setTitle);
     DPOnQuit(^{ DPBarDropProfileSnapshot(); });
     DPOnLaunch(^{
         [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPHandleKey(event); }];
+        [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPNoteActiveTabSoon(); }];
     });
 }
 
@@ -101,6 +119,7 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
     Method button = class_getInstanceMethod(objc_getClass(DPDiaTabStripButton), @selector(mouseDown:));
     if (method_getImplementation(row) != (IMP)DPNewTabCell_mouseDown) return @"the New Tab row isn't hooked";
     if (method_getImplementation(button) != (IMP)DPTabStripButton_mouseDown) return @"the tab strip's + button isn't hooked";
+    if (method_getImplementation(class_getInstanceMethod(objc_getClass(DPDiaBrowserWindow), @selector(setTitle:))) != (IMP)DPWindow_setTitle) return @"the window title isn't hooked";
     return patch->on ? DPVerifyOpens(YES) : nil;
 }
 

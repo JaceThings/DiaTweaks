@@ -32,6 +32,7 @@ NSString *DPShortcutText(NSString *key, NSEventModifierFlags modifiers);
 DPBarMatch DPBarMatchOf(NSArray<NSString *> *words, NSString *title, NSString *url);
 NSInteger DPBarTier(DPBarKind kind, DPBarMatch match, NSUInteger queryLength);  // Negative means drop it.
 void DPBarSortItems(NSMutableArray<DPBarItem *> *items);
+void DPBarSortByRecency(NSMutableArray<DPBarItem *> *tabs, NSDictionary<NSString *, NSNumber *> *lastUsed);
 BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab);
 NSString *DPSuggestURL(NSString *suggestTemplate, NSString *text);
 NSArray<NSString *> *DPParseSuggestions(NSData *json, NSString *query);
@@ -41,6 +42,7 @@ NSString *DPBarURLOfWindow(NSWindow *window);  // nil on a blank tab.
 void DPBarNavigate(NSWindow *window, NSString *url);
 void DPBarOpenInNewTab(NSWindow *window, NSString *url);
 BOOL DPBarCanOpenTabDirectly(void);
+void DPBarNoteActiveTab(NSWindow *window);
 void DPBarFocusTab(NSString *windowId, NSString *tabId);
 NSString *DPBarSpaceOfWindow(NSWindow *window);  // nil for a private window, which has no space.
 NSArray<DPBarItem *> *DPBarLoadTabs(NSWindow *window, NSString *space);  // A nil space lists only `window`'s own tabs.
