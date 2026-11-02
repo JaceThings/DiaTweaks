@@ -58,12 +58,12 @@ static NSView *DPPanelIn(NSView *page) {
     return DPFindView(page, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaAssistantPanel); });
 }
 
-// Values Debug in Settings tunes, saved under their keys.
+// Values the bar's Settings page sets, saved under their keys.
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
 
 static double DPTuned(NSString *key) {
-    NSDictionary *fallbacks = @{ DPHeightKey : @0.3, DPDarknessKey : @0.3, DPBlurRadiusKey : @16, DPBlurWindowKey : @NO };
+    NSDictionary *fallbacks = @{ DPHeightKey : @0.3, DPDarknessKey : @0.24, DPBlurRadiusKey : @4, DPBlurWindowKey : @NO };
     return [([[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] objectForKey:key] ?: fallbacks[key]) doubleValue];
 }
 
@@ -131,7 +131,7 @@ static NSView *DPCardIn(NSWindow *window) {
     return pane;
 }
 
-// The darkening covers the page's card; the blur does too unless Debug says the whole window.
+// The darkening covers the page's card; the blur does too unless it's set to cover the sidebar too.
 static void DPPlaceShade(DPCommandBarOverlay *overlay) {
     NSView *card = DPCardIn(overlay.host);
     NSRect page = card ? [overlay.shade convertRect:card.bounds fromView:card] : overlay.shade.bounds;
@@ -404,18 +404,22 @@ static NSMenu *DPCommandBarPositions(void) {
     return menu;
 }
 
-// A Debug row in Settings: a slider or checkbox for one tuned value, which open bars pick up at once.
+// A row of the bar's options in Settings for one saved number: a slider with a field to type it in, or a switch.
+// Open bars pick a change up at once.
 @interface DPCommandBarTuneRow : NSStackView
-@property(copy) NSString *key, *format;
-@property double scale;
-@property NSTextField *value;
+@property(copy) NSString *key;
+@property double scale;  // The saved number times this is what the row shows.
+@property NSSlider *slider;
+@property NSTextField *field;
 @end
 
 @implementation DPCommandBarTuneRow
 - (void)tune:(NSControl *)control {
-    double value = [control isKindOfClass:NSButton.class] ? ((NSButton *)control).state : control.doubleValue;
-    [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] setDouble:value forKey:self.key];
-    self.value.stringValue = [NSString stringWithFormat:self.format, value * self.scale];
+    double shown = [control isKindOfClass:NSSwitch.class] ? ((NSSwitch *)control).state
+                                                          : round(MIN(MAX(control.doubleValue, 0), self.slider.maxValue));
+    self.slider.doubleValue = shown;
+    self.field.doubleValue = shown;
+    [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] setDouble:shown / self.scale forKey:self.key];
     for (NSWindow *window in NSApp.windows) {
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
         if (overlay) DPShowShade(overlay);
@@ -424,28 +428,51 @@ static NSMenu *DPCommandBarPositions(void) {
 }
 @end
 
-static NSView *DPTuneRow(NSString *title, NSString *key, double max, double scale, NSString *format) {
-    NSControl *control = max ? [NSSlider sliderWithValue:DPTuned(key) minValue:0 maxValue:max target:nil action:@selector(tune:)]
-                             : [NSButton checkboxWithTitle:@"" target:nil action:@selector(tune:)];
-    if (max) [control.widthAnchor constraintEqualToConstant:180].active = YES;
-    else ((NSButton *)control).state = DPTuned(key);
-    control.controlSize = NSControlSizeSmall;
-    NSTextField *value = [NSTextField labelWithString:max ? [NSString stringWithFormat:format, DPTuned(key) * scale] : @""];
-    value.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular];
+static NSTextField *DPTuneLabel(NSString *title) {
     NSTextField *label = [NSTextField labelWithString:title];
-    [label.widthAnchor constraintEqualToConstant:240].active = YES;
-    DPCommandBarTuneRow *row = [DPCommandBarTuneRow stackViewWithViews:@[label, control, value]];
-    row.key = key, row.format = format, row.scale = scale, row.value = value;
-    control.target = row;
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    return label;
+}
+
+static NSView *DPSliderRow(NSString *title, NSString *key, double max, double scale, NSString *unit) {
+    double shown = round(DPTuned(key) * scale);
+    NSSlider *slider = [NSSlider sliderWithValue:shown minValue:0 maxValue:max target:nil action:@selector(tune:)];
+    [slider setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSNumberFormatter *number = [NSNumberFormatter new];
+    number.maximumFractionDigits = 0;  // Out of range is clamped as it's saved, rather than refused.
+    NSTextField *field = [NSTextField textFieldWithString:@""];
+    field.formatter = number;
+    field.doubleValue = shown;
+    field.alignment = NSTextAlignmentRight;
+    [field.widthAnchor constraintEqualToConstant:44].active = YES;
+    NSStackView *controls = [NSStackView stackViewWithViews:@[slider, field, [NSTextField labelWithString:unit]]];
+    DPCommandBarTuneRow *row = [DPCommandBarTuneRow stackViewWithViews:@[DPTuneLabel(title), controls]];
+    row.orientation = NSUserInterfaceLayoutOrientationVertical;
+    row.alignment = NSLayoutAttributeLeading;
+    [controls.widthAnchor constraintEqualToAnchor:row.widthAnchor].active = YES;
+    row.key = key, row.scale = scale, row.slider = slider, row.field = field;
+    slider.target = field.target = row;
+    field.action = @selector(tune:);
     return row;
 }
 
-static NSArray<NSView *> *DPCommandBarDebug(void) {
+static NSView *DPSwitchRow(NSString *title, NSString *key) {
+    NSSwitch *toggle = [NSSwitch new];
+    toggle.state = DPTuned(key) ? NSControlStateValueOn : NSControlStateValueOff;
+    toggle.action = @selector(tune:);
+    DPCommandBarTuneRow *row = [DPCommandBarTuneRow stackViewWithViews:@[DPTuneLabel(title), toggle]];
+    row.distribution = NSStackViewDistributionFill;
+    row.key = key, row.scale = 1;
+    toggle.target = row;
+    return row;
+}
+
+static NSArray<NSView *> *DPCommandBarRows(void) {
     return @[
-        DPTuneRow(@"Room above the bar in macOS center", DPHeightKey, 0.5, 100, @"%.0f%%"),
-        DPTuneRow(@"Darkness", DPDarknessKey, 0.8, 100, @"%.0f%%"),
-        DPTuneRow(@"Blur radius", DPBlurRadiusKey, 60, 1, @"%.0f pt"),
-        DPTuneRow(@"Blur the sidebar too", DPBlurWindowKey, 0, 1, @""),
+        DPSliderRow(@"Room above the bar in macOS center", DPHeightKey, 50, 100, @"%"),
+        DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"),
+        DPSliderRow(@"Blur radius", DPBlurRadiusKey, 60, 1, @"pt"),
+        DPSwitchRow(@"Blur the sidebar too", DPBlurWindowKey),
     ];
 }
 
@@ -469,7 +496,7 @@ DP_PATCH(DPCommandBar) {
     .choice = @"commandBarPosition",
     .defaultChoice = @"macos",
     .choices = DPCommandBarPositions,
-    .debug = DPCommandBarDebug,
+    .rows = DPCommandBarRows,
     .install = DPInstallCommandBar,
     .apply = DPApplyCommandBar,
     .verify = DPVerifyCommandBar,

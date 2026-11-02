@@ -4,6 +4,7 @@
     DPPatch *_patch;
     NSMutableArray<DPPatchSwitch *> *_switches;
     NSTextField *_note;
+    NSArray<NSView *> *_rows;
 }
 
 - (instancetype)initWithPatch:(DPPatch *)patch {
@@ -39,12 +40,13 @@
         for (NSMenuItem *item in menu.itemArray) if ([item.representedObject isEqual:DPChoice(patch)]) [picker selectItem:item];
         [options insertObject:DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker) atIndex:0];
     }
-    if (options.count) [views addObjectsFromArray:@[DPHeader(@"Options"), DPGroup(options)]];
-    if (patch->debug && [[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] boolForKey:@"devTools"]) {
-        NSMutableArray<NSView *> *rows = [NSMutableArray new];
-        for (NSView *row in patch->debug()) [rows addObject:DPRow(row, [NSView new])];
-        [views addObjectsFromArray:@[DPHeader(@"Debug"), DPGroup(rows)]];
+    _rows = patch->rows ? patch->rows() : @[];
+    for (NSView *view in _rows) {
+        NSView *row = DPRow(view, [NSView new]);
+        [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
+        [options addObject:row];
     }
+    if (options.count) [views addObjectsFromArray:@[DPHeader(@"Options"), DPGroup(options)]];
 
     NSURL *wiki = DPWikiURL(patch);
     NSView *wikiRow = DPLinkRow(DPRow(DPLabel(@"Read more on the wiki", 13, NSFontWeightRegular, NSColor.labelColor),
@@ -73,6 +75,12 @@
 
 - (void)sync {
     for (DPPatchSwitch *toggle in _switches) [toggle sync];
+    for (NSView *row in _rows)  // Like its options' switches, only while the patch is on.
+        DPFindView(row, ^BOOL(NSView *view) {
+            BOOL label = [view isKindOfClass:NSTextField.class] && !((NSTextField *)view).editable;
+            if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on;
+            return NO;
+        });
     _note.stringValue = DPWhyDisabled(_patch) ?: @"";
     _note.hidden = !_note.stringValue.length;
 }
