@@ -5,6 +5,7 @@
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
 #define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
 #define DPDiaSidebarHeader      "_TtC10TabSidebar17SidebarHeaderView"
+#define DPDiaTrafficLights      "_TtC5ARCUI21WindowStandardButtons"
 #define DPDiaSidebarFooter      "_TtC10TabSidebar26SidebarContainerFooterView"
 #define DPDiaSidebarController  "_TtC10TabSidebar30SidebarContainerViewController"
 #define DPDiaTabStripController "_TtC8TabStrip31TabStripContainerViewController"
