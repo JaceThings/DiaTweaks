@@ -286,13 +286,17 @@ static void DPPresentCommandBar(NSView *page) {
     overlay.watch = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
         if (weak) DPWatchNewTab(weak); else [timer invalidate];
     }];
-    // Dia is still switching to the new tab; going back has to wait for it to finish.
-    if (overlay.returnTab)
-        dispatch_async(dispatch_get_main_queue(), ^{
+    // Going back now, before Dia draws the new tab, keeps its page from flashing up. Dia finishes the switch to the new
+    // tab after, and titles the window after it, so it's gone back to once more when that's done.
+    if (overlay.returnTab) {
+        DPFocusTab(overlay.returnTab);
+        dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             if (!weak.superview) return;
             DPFocusTab(weak.returnTab);
             dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
         });
+    }
 }
 
 #pragma mark Hooks
@@ -357,9 +361,12 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
         return;
     }
     if (overlay) DPCancelCommandBar(overlay);
-    // The bar lays itself out against the new tab page once that's in the window, so it's lifted after.
-    __weak NSView *page = self;
-    dispatch_async(dispatch_get_main_queue(), ^{ if (page.window) DPPresentCommandBar(page); });
+    // Lifted and gone back from before Dia first draws the new tab page, it never shows. The page has no size yet, so
+    // its pane lays it out first, which sizes the bar.
+    NSView *pane = self.superview;
+    while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
+    [pane layoutSubtreeIfNeeded];
+    DPPresentCommandBar(self);
 }
 
 static void DPApplyCommandBar(DPPatch *patch) {
