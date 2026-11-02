@@ -20,3 +20,6 @@
 #define DPDiaSettingsController "_TtC11Preferences38SidebarPreferencesWindowViewController"
 #define DPDiaSettingsSidebar    "_TtC11Preferences15SidebarListView"
 #define DPDiaSettingsSidebarCell "_TtC11PreferencesP33_4E27E2219272DF78406B73092738280415SidebarCellView"
+#define DPDiaBrowserWindow      "_TtC6Window14PlatformWindow"
+#define DPDiaNewTabCell         "_TtC7TabList14NewTabCellView"
+#define DPDiaTabStripButton     "_TtC10TabSurface16TabSurfaceButton"
