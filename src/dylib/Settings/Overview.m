@@ -3,6 +3,8 @@
 @interface DPOverviewView ()
 @property (nonatomic, strong) NSMapTable<DPPatchSwitch *, NSTextField *> *notes;
 @property (nonatomic, strong) NSMutableArray<NSArray *> *sections;  // header, group, rows
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *sectionHiders;  // "" when its tweaks don't share one
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSImageView *> *sectionEyes;
 @property (nonatomic, strong) NSTextField *noResults, *notice;
 @end
 
@@ -13,6 +15,8 @@
     self.searchText = [NSMapTable strongToStrongObjectsMapTable];
     self.notes = [NSMapTable strongToStrongObjectsMapTable];
     self.sections = [NSMutableArray new];
+    self.sectionHiders = [NSMutableDictionary new];
+    self.sectionEyes = [NSMutableDictionary new];
     [DPPreviewView preload];
 
     NSMutableArray<NSString *> *titles = [NSMutableArray new];
@@ -25,13 +29,27 @@
         [rows[title] addObject:row];
     };
     if (DPSafeMode) add(@"Safe Mode", [self makeSafeModeRow]);
-    for (NSUInteger i = 0; i < DPPatchCount; i++)
-        if (!DPRequired(DPPatches[i])) add(DPPatches[i]->section ?: @"Other", [self rowForPatch:DPPatches[i]]);
+    for (NSUInteger i = 0; i < DPPatchCount; i++) {
+        DPPatch *patch = DPPatches[i];
+        if (DPRequired(patch)) continue;
+        NSString *section = patch->section ?: @"Other", *hider = patch->disabledBy ?: @"", *shared = self.sectionHiders[section];
+        self.sectionHiders[section] = !shared || [shared isEqual:hider] ? hider : @"";
+        add(section, [self rowForPatch:patch]);
+    }
     for (NSView *row in [self makeUpdateRows]) add(@"Updates", row);
 
     NSMutableArray<NSView *> *views = [NSMutableArray new];
     for (NSString *title in titles) {
-        NSTextField *header = DPHeader(title);
+        NSView *header = DPHeader(title);
+        if (self.sectionHiders[title].length) {
+            NSImageView *eye = DPSymbol(@"eye.slash", 12, NSColor.secondaryLabelColor);
+            self.sectionEyes[title] = eye;
+            NSStackView *row = [NSStackView new];
+            row.detachesHiddenViews = NO;
+            [row addView:header inGravity:NSStackViewGravityLeading];
+            [row addView:eye inGravity:NSStackViewGravityTrailing];
+            header = row;
+        }
         NSView *group = DPGroup(rows[title]);
         [views addObjectsFromArray:@[header, group]];
         [self.sections addObject:@[header, group, rows[title]]];
@@ -66,8 +84,13 @@
 }
 
 - (void)syncWithQuery:(NSString *)query {
+    [self.sectionEyes enumerateKeysAndObjectsUsingBlock:^(NSString *section, NSImageView *eye, BOOL *stop) {
+        eye.toolTip = DPWhyHiddenBy(DPPatchNamed(self.sectionHiders[section]));
+        eye.hidden = !eye.toolTip;
+    }];
     for (DPPatchSwitch *toggle in self.notes) {
         [toggle sync];
+        if (self.sectionEyes[toggle.patch->section ?: @"Other"]) toggle.hiddenIcon.hidden = YES;
         NSMutableArray<NSString *> *options = [NSMutableArray new];
         if (toggle.patch->on) DPForEachOption(toggle.patch, ^(DPPatch *option) { if (option->on) [options addObject:option->title]; });
         NSTextField *note = [self.notes objectForKey:toggle];

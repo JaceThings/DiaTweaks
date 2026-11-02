@@ -37,6 +37,7 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option));
 NSString *DPWhyDisabled(DPPatch *patch);
 NSString *DPWhyHidden(DPPatch *patch);
+NSString *DPWhyHiddenBy(DPPatch *disabler);
 NSURL *DPWikiURL(DPPatch *patch);
 
 @interface DPPreviewView : DPFillView
