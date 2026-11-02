@@ -156,6 +156,10 @@ static void DPPlaceShade(DPCommandBarOverlay *overlay) {
 static void DPShowShade(DPCommandBarOverlay *overlay) {
     [overlay.shade removeFromSuperview];
     [overlay.windowBlur removeFromSuperview];
+    overlay.shade = overlay.windowBlur = nil;
+    // With no page behind it, in a new window or over a blank tab, there's nothing to shade.
+    NSString *returnID = [overlay.returnTab valueForKey:@"tabId"];
+    if (!returnID || [(NSSet *)DPGet(overlay.host, &DPBlankKey) containsObject:returnID]) return;
     CALayer *blur = DPCommandBarBlur.on ? DPBlurLayer() : nil;
     BOOL wholeWindow = blur && DPTuned(DPBlurWindowKey);
     NSMutableArray<CALayer *> *layers = [NSMutableArray array];
