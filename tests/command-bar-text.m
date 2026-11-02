@@ -53,6 +53,10 @@ int main(void) {
     CHECK(DPBarTier(DPBarKindTab, DPBarMatchExact, 5) == 0);
     CHECK(DPBarTier(DPBarKindTab, DPBarMatchNone, 5) < 0);
 
+    CHECK(!DPBarReturnTakesCompletion(DPBarKindTab, NO));
+    CHECK(DPBarReturnTakesCompletion(DPBarKindTab, YES));
+    CHECK(DPBarReturnTakesCompletion(DPBarKindHistory, NO));
+
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     for (NSArray *row in @[@[@"weak but popular", @2, @50.0], @[@"rare", @1, @0.5], @[@"popular", @1, @9.0], @[@"New Incognito Window", @0, @0.0], @[@"New Window", @0, @0.0]]) {
         DPBarItem *item = [DPBarItem new];

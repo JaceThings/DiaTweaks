@@ -183,6 +183,10 @@ void DPBarSortItems(NSMutableArray<DPBarItem *> *items) {
     }];
 }
 
+BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab) {
+    return forceNewTab || topRow != DPBarKindTab;
+}
+
 NSString *DPSuggestURL(NSString *suggestTemplate, NSString *text) {
     if (!suggestTemplate.length) return nil;
     // Google's template only works from inside Chrome, so this uses its public endpoint.

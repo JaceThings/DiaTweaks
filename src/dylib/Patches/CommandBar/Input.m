@@ -92,8 +92,8 @@
 }
 
 - (void)commitInNewTab:(BOOL)newTab {
-    // Top row with a completion showing opens the completion. Rows left over from older text never get opened.
-    BOOL completed = ![self.field.currentEditor.string isEqualToString:self.typed] && self.results.selected == 0;
+    BOOL completed = ![self.field.currentEditor.string isEqualToString:self.typed] && self.results.selected == 0
+        && DPBarReturnTakesCompletion([self.results itemAtRow:0].kind, newTab);
     BOOL stale = ![self.shownQuery isEqualToString:self.typed];
     [self activateRow:completed || stale ? -1 : self.results.selected forceNewTab:newTab];
 }
