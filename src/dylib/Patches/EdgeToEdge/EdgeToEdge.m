@@ -118,6 +118,7 @@ static void DPInstallEdgeToEdge(void) {
     DPContainers = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaContentContainer, @selector(setFrame:), (IMP)DPContainer_setFrame);
     DPInstallRestyle();
+    DPInstallPopover();
 }
 
 DP_PATCH(DPEdgeToEdge) {
