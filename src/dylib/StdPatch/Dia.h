@@ -40,3 +40,6 @@
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
+#define DPDiaBrowserWindow      "_TtC6Window14PlatformWindow"
+#define DPDiaNewTabCell         "_TtC7TabList14NewTabCellView"
+#define DPDiaTabStripButton     "_TtC10TabSurface16TabSurfaceButton"
