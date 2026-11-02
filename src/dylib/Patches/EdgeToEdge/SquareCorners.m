@@ -87,10 +87,14 @@ BOOL DPBesideSidebar(NSView *container) {
     return NSMinX(container.frame) > DPWindowPadding + 1 && !DPChatCard(container);
 }
 
+// Beside the sidebar edge-to-edge steps aside, unless square corners keep it on.
+BOOL DPSteppedAside(NSView *container) {
+    return DPBesideSidebar(container) && !DPSquareSidebarCorners.on;
+}
+
 // A full screen window has square corners, so the page squares the ones it shares with the screen.
-// Beside the sidebar edge-to-edge steps aside, so the page keeps its padding and its corners stay round.
 BOOL DPFullScreen(NSView *container) {
-    return (container.window.styleMask & NSWindowStyleMaskFullScreen) && !DPChatCard(container) && !DPBesideSidebar(container);
+    return (container.window.styleMask & NSWindowStyleMaskFullScreen) && !DPChatCard(container) && !DPSteppedAside(container);
 }
 
 // How far the page's left and right corners go square: by the sidebar, and wherever they meet a full screen's edges.
