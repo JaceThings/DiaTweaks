@@ -1,6 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPWindowMaterial;
+extern DPPatch DPWindowMaterial, DPTranslucentSidebar;
 static char DPHiddenKey, DPDiaHiddenKey, DPMaterialKey, DPGlassKey, DPOpaqueKey;
 
 static NSString *const DPMaterials[] = {
@@ -52,12 +52,21 @@ static void DPCollectEffects(NSView *view, NSMutableArray<NSVisualEffectView *> 
     for (NSView *sub in view.subviews) DPCollectEffects(sub, effects);
 }
 
+static NSView *DPTintIn(NSView *view);
+
+static NSVisualEffectMaterial DPWindowBackgroundMaterial(NSWindow *window) {
+    NSView *effect = DPFindView(DPTintIn(window.contentView.superview).superview, ^BOOL(NSView *view) {
+        return [view isKindOfClass:NSVisualEffectView.class] && !view.isHiddenOrHasHiddenAncestor;
+    });
+    return effect ? ((NSVisualEffectView *)effect).material : NSVisualEffectMaterialUnderWindowBackground;
+}
+
 // The window and the floating sidebar each stack effect views under a theme tint.
 static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
     NSView *content = tint.superview;
     if (!content) return;
     NSString *choice = DPWindowMaterial.on ? DPChoice(&DPWindowMaterial) : nil;
-    BOOL translucent = choice != nil, glass = [choice hasPrefix:@"glass."];
+    BOOL translucent = choice || (floating && DPTranslucentSidebar.on), glass = [choice hasPrefix:@"glass."];
     NSInteger value = choice.pathExtension.integerValue;
 
     NSMutableArray<NSView *> *backgrounds = [NSMutableArray array];
@@ -72,7 +81,7 @@ static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
     NSVisualEffectBlendingMode blending = floating ? NSVisualEffectBlendingModeWithinWindow : NSVisualEffectBlendingModeBehindWindow;
     for (NSVisualEffectView *effect in effects) {
         NSArray *dia = DPDiaValue(effect, &DPMaterialKey, @[ @(effect.material), @(effect.blendingMode), @(effect.state) ]);
-        NSArray *ours = translucent && !glass ? @[ @(value), @(blending), @(NSVisualEffectStateActive) ] : dia;
+        NSArray *ours = translucent && !glass ? @[ @(choice ? value : DPWindowBackgroundMaterial(tint.window)), @(blending), @(NSVisualEffectStateActive) ] : dia;
         DPOverride(effect, &DPMaterialKey, dia, ours);
         effect.material = [ours[0] integerValue];
         effect.blendingMode = [ours[1] integerValue];
@@ -137,22 +146,24 @@ static void DPBackgroundTile_updateLayer(NSView *self, SEL _cmd) {
     }
 }
 
-static void DPApplyWindowMaterial(DPPatch *patch) {
+void DPApplyWindowMaterial(DPPatch *patch) {
     for (NSView *frame in DPWindowFrames()) DPApplyMaterialUnder(DPTintIn(frame), NO);
     for (NSView *sidebar in DPFindViews(DPDiaFloatingSidebar)) DPApplyMaterialUnder(DPTintIn(sidebar), YES);
 }
 
-static NSString *DPVerifyWindowMaterial(DPPatch *patch) {
-    BOOL glass = [DPChoice(patch) hasPrefix:@"glass."];
-    for (NSView *host in [DPWindowFrames() arrayByAddingObjectsFromArray:DPFindViews(DPDiaFloatingSidebar)]) {
+NSString *DPVerifyWindowMaterial(DPPatch *patch) {
+    BOOL glass = DPWindowMaterial.on && [DPChoice(&DPWindowMaterial) hasPrefix:@"glass."];
+    NSArray<NSView *> *floating = DPFindViews(DPDiaFloatingSidebar);
+    for (NSView *host in [DPWindowFrames() arrayByAddingObjectsFromArray:floating]) {
         NSView *tint = DPTintIn(host);
+        BOOL translucent = DPWindowMaterial.on || (DPTranslucentSidebar.on && [floating containsObject:host]);
         if (!tint) return @"no theme color to replace";
-        if (tint.hidden != patch->on) return patch->on ? @"theme color still shows" : @"theme color still hidden";
-        if ((DPGet(tint.superview, &DPGlassKey) != nil) != (patch->on && glass)) return patch->on ? @"no glass behind the window" : @"glass left behind";
+        if (tint.hidden != translucent) return translucent ? @"theme color still shows" : @"theme color still hidden";
+        if ((DPGet(tint.superview, &DPGlassKey) != nil) != glass) return glass ? @"no glass behind the window" : @"glass left behind";
         NSVisualEffectView *effect = (NSVisualEffectView *)DPFindView(tint.superview, ^BOOL(NSView *view) {
             return [view isKindOfClass:NSVisualEffectView.class] && !view.isHiddenOrHasHiddenAncestor;
         });
-        if (patch->on && !glass && effect.material != DPChoice(patch).pathExtension.integerValue) return @"Dia's material came back";
+        if (DPWindowMaterial.on && !glass && effect.material != DPChoice(&DPWindowMaterial).pathExtension.integerValue) return @"Dia's material came back";
     }
     return nil;
 }
