@@ -23,12 +23,18 @@ DPDevPanel DPShownDevPanel(NSWindow *window);
 NSString *DPActiveTabID(NSWindow *window);
 NSWindow *DPFrontBrowserWindow(void);
 BOOL DPDevModeShown(NSWindow *window);  // Whether the window's page is local, or a site saved with Control-D, and not switched off.
+NSSet<NSString *> *DPDevTabIDs(void);  // The IDs of every tab whose site has Developer mode.
 void DPToggleDevMode(NSWindow *window);
 void DPWatchDevMode(void);  // The Control-D key, and a timer that notices navigation. Call once Dia has launched.
 
 // Banner.m
 NSView *DPMakeDevBanner(NSRect frame);
 NSMenu *DPColorChoices(void);  // The Settings menu of banner colors.
+
+// TabBorder.m
+void DPPlaceTabBorder(NSView *row);  // Shows or removes the hazard border on a sidebar tab, from the last refresh.
+void DPRefreshTabBorders(void);      // Asks again which tabs have Developer mode, and updates every sidebar tab.
+NSString *DPVerifyTabBorders(DPPatch *patch);
 
 // Layout.m
 void DPPlaceDevMode(NSView *bar);  // Shows or removes the banner and buttons in a toolbar.

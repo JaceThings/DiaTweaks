@@ -33,15 +33,26 @@ NSWindow *DPFrontBrowserWindow(void) {
     return nil;
 }
 
-static NSString *DPHost(NSWindow *window) {
-    NSURL *url = [NSURL URLWithString:[[DPActiveTab(window) valueForKey:@"URL"] description]];
+static NSString *DPHostOfURL(NSString *string) {
+    NSURL *url = [NSURL URLWithString:string];
     return [@[@"http", @"https"] containsObject:url.scheme] ? url.host : nil;
 }
 
-BOOL DPDevModeShown(NSWindow *window) {
-    NSString *host = DPHost(window);
+static NSString *DPHost(NSWindow *window) { return DPHostOfURL([[DPActiveTab(window) valueForKey:@"URL"] description]); }
+
+static BOOL DPShownForHost(NSString *host) {
     NSNumber *saved = host ? [DPPrefs() dictionaryForKey:DPSitesKey][host] : nil;
     return saved ? saved.boolValue : host && DPIsLocal(host);
+}
+
+BOOL DPDevModeShown(NSWindow *window) { return DPShownForHost(DPHost(window)); }
+
+NSSet<NSString *> *DPDevTabIDs(void) {
+    NSMutableSet<NSString *> *ids = [NSMutableSet new];
+    for (id script in [(id)NSApp.delegate valueForKey:@"appleScriptWindows"])
+        for (id tab in [script valueForKey:@"appleScriptTabs"])
+            if (DPShownForHost(DPHostOfURL([[tab valueForKey:@"URL"] description]))) [ids addObject:[[tab valueForKey:@"tabId"] description]];
+    return ids;
 }
 
 void DPToggleDevMode(NSWindow *window) {

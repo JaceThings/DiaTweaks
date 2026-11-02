@@ -68,6 +68,7 @@ void DPPlaceDevMode(NSView *bar) {
 }
 
 void DPRelayoutDevMode(BOOL onlyChanged) {
+    DPRefreshTabBorders();
     for (NSView *bar in DPFindViews(DPDiaToolbar)) {
         NSView *host = DPFieldIn(bar).superview;
         DPDevPanel shown = DPShownDevPanel(bar.window);
@@ -91,5 +92,5 @@ NSString *DPVerifyDevMode(DPPatch *patch) {
         for (DPDevButton *button in buttons)
             if (NSIntersectsRect(button.frame, field.frame)) return @"developer buttons overlap the address field";
     }
-    return nil;
+    return DPVerifyTabBorders(patch);
 }

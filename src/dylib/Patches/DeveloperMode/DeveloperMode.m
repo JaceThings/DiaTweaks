@@ -42,8 +42,14 @@ static void DPBar_layout(NSView *self, SEL _cmd) {
     DPPlaceDevMode(self);
 }
 
+static void DPRow_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPRow_layout, self);
+    DPPlaceTabBorder(self);
+}
+
 static void DPInstallDeveloperMode(void) {
     DPHook(DPDiaToolbar, @selector(layout), (IMP)DPBar_layout);
+    DPHook(DPDiaTabRow, @selector(layout), (IMP)DPRow_layout);
     DPInstallDevPanels();
     DPOnLaunch(^{ DPWatchDevMode(); });
 }
@@ -54,11 +60,11 @@ DP_PATCH(DPDeveloperMode) {
     .key = @"developerMode",
     .order = 49,
     .title = @"Developer mode",
-    .detail = @"Stripe the toolbar and add buttons for the inspector, console, network panel and a hard reload on local sites. Control-D turns it on or off for any site.",
+    .detail = @"Stripe the toolbar, outline the tabs in hazard stripes and add buttons for the inspector, console, network panel and a hard reload on local sites. Control-D turns it on or off for any site.",
     .symbol = @"hammer",
     .tint = @"systemIndigoColor",
     .section = @"Toolbar Items",
-    .classes = DPClasses(DPDiaToolbar, DPDiaAddressField, "ArcWebContentsDevTools"),
+    .classes = DPClasses(DPDiaToolbar, DPDiaAddressField, DPDiaTab, DPDiaTabRow, "ArcWebContentsDevTools"),
     .choice = @"developerModeColor",
     .defaultChoice = @"Indigo",
     .choices = DPColorChoices,
