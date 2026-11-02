@@ -40,3 +40,6 @@
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
+#define DPDiaAssistantPanel     "_TtC20AssistantPanelUIBase22AssistantPanelRootView"
+#define DPDiaCommandBarSuggestions "_TtC15BoostCommandBar15SuggestionsView"
+#define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
