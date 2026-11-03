@@ -7,7 +7,7 @@ static char DPDiaColorsKey;
 static __weak id DPDrawing;  // Dia's loading indicator while it draws.
 static NSData *DPLastDiaColors;  // For a pane whose field hasn't drawn yet, such as at the start of its first load.
 
-static NSArray<NSString *> *DPPresetNames(void) { return @[@"Blue", @"Purple", @"Pink", @"Orange", @"Green", @"Graphite"]; }
+static NSArray<NSString *> *DPPresetNames(void) { return @[@"Blue", @"Purple", @"Pink", @"Orange", @"Green", @"Graphite", @"Jace"]; }
 
 static NSArray<NSColor *> *DPPreset(NSString *name) {
     NSDictionary<NSString *, NSArray<NSColor *> *> *presets = @{
@@ -17,6 +17,7 @@ static NSArray<NSColor *> *DPPreset(NSString *name) {
         @"Orange" : @[NSColor.systemOrangeColor, NSColor.systemRedColor],
         @"Green" : @[NSColor.systemGreenColor, NSColor.systemMintColor],
         @"Graphite" : @[NSColor.systemGrayColor, NSColor.labelColor],
+        @"Jace" : @[NSColor.systemBrownColor, NSColor.systemOrangeColor],  // The brown DiaTweaks' maker keeps reaching for.
     };
     return presets[name];
 }
