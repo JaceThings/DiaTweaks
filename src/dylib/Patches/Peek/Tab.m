@@ -43,7 +43,7 @@ static NSView *DPPeekOriginTab(NSWindow *window, id source) {
 }
 
 // A content id from a tab's own state, used to recognise that tab again as the sidebar relays out and to tell when it
-// has been closed. Pinned tabs don't list one, so they get no close-tracking (and never a false close).
+// has been closed. Pinned tabs don't list one, so they are tracked by their view instead.
 static NSString *DPPeekTabContentKey(NSView *tab) {
     NSString *desc = DPTabStateDesc(tab);
     NSRange mark = [desc rangeOfString:@"contentIDs: ["];
@@ -70,7 +70,7 @@ static BOOL DPTabIsTop(NSView *tab) {
     return NO;
 }
 
-// A sidebar tab is the selected one when its selectionStyle is neither "none" nor an adjacency style.
+// A tab is the selected one when its selectionStyle is neither "none" (nil on a pinned tab) nor an adjacency style.
 static BOOL DPTabSelected(NSView *tab) {
     id state = [[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"];
     NSString *style = [[[state safeSwiftValueForKey:@"selectionStyle"] description] lowercaseString];
@@ -108,12 +108,18 @@ static BOOL DPTabSelected(NSView *tab) {
 
 - (void)watch:(NSTimer *)timer {
     if (!self.peek || self.peek.closing) { [self stop]; return; }
-    if (!self.contentKey) return;  // No stable id for this tab: keep the badge, never auto-close.
+    // A pinned tab lists no content id, so it is watched through the view the badge sits on. Its selectionStyle reads
+    // nil once another tab is selected, so only trust that while its state is readable at all.
+    if (!self.contentKey) {
+        NSView *tab = self.superview;
+        if (self.pinned && tab && DPTabStateDesc(tab) && !DPTabSelected(tab)) { [self stop]; [self.peek close:0]; }
+        return;
+    }
     NSView *tab = DPPeekTabWithContent(self.peek.window, self.contentKey);
     if (!tab) { if (++self.misses >= 2) { [self stop]; [self.peek close:0]; } return; }  // the tab was closed
     self.misses = 0;
     if (self.superview != tab) [tab addSubview:self];
-    if (!self.pinned && !DPTabSelected(tab)) { [self stop]; [self.peek close:0]; }  // switched to another tab
+    if (!DPTabSelected(tab)) { [self stop]; [self.peek close:0]; }  // switched to another tab
 }
 
 - (void)stop { [self.watch invalidate]; self.watch = nil; }
