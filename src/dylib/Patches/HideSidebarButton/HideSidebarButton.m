@@ -5,9 +5,9 @@ static BOOL DPIsSidebarButton(NSView *view) { return DPHasLabel(view, @"Toggle s
 DP_PATCH(DPHideSidebarButton) {
     .key = @"hideSidebarButton",
     .order = 50,
-    .title = @"Hide sidebar button",
+    .title = @"Hide Sidebar Button",
     .detail = @"Hide the sidebar toggle at the top left of the toolbar.",
-    .symbol = @"sidebar.left",
+    .symbol = @"rectangle.lefthalf.filled",
     .tint = @"systemPurpleColor",
     .section = @"Toolbar Items",
     .classes = DPClasses(DPDiaToolbar),

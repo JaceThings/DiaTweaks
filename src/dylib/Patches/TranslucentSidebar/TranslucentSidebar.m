@@ -6,9 +6,9 @@ NSString *DPVerifyWindowMaterial(DPPatch *patch);
 DP_PATCH(DPTranslucentSidebar) {
     .key = @"translucentSidebar",
     .order = 84,
-    .title = @"Translucent sidebar",
+    .title = @"Translucent Sidebar",
     .detail = @"Show the page through the sidebar when it floats over it, in the window’s material or the one chosen in Window material.",
-    .symbol = @"sidebar.squares.left",
+    .symbol = @"app.translucent",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaWindowFrame, DPDiaWindowTint, DPDiaFloatingSidebar),

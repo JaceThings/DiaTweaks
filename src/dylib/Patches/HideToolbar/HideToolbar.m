@@ -53,9 +53,9 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
 DP_PATCH(DPHideToolbar) {
     .key = @"hideToolbar",
     .order = 30,
-    .title = @"Hide toolbar",
+    .title = @"Hide Toolbar",
     .detail = @"Hide the bar with the address field, navigation buttons and extensions. Experimental.",
-    .symbol = @"menubar.rectangle",
+    .symbol = @"menubar.arrow.up.rectangle",
     .tint = @"systemIndigoColor",
     .section = @"Toolbar",
     .classes = DPClasses(DPDiaContentPane, DPDiaToolbar),

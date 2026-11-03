@@ -712,16 +712,16 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
 
 static NSArray<NSView *> *DPCommandBarRows(void) {
     return @[
-        DPSliderRow(@"Space above the bar", DPHeightKey, 50, 100, @"%"),
+        DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"),
         DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"),
-        DPSliderRow(@"Blur radius", DPBlurRadiusKey, 60, 1, @"pt"),
-        DPSwitchRow(@"Blur the sidebar too", DPBlurWindowKey),
+        DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
+        DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey),
     ];
 }
 
 static NSMenu *DPCommandBarPositions(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Position"];
-    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of the window", @"window" ] ]) {
+    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ] ]) {
         NSMenuItem *entry = [[NSMenuItem alloc] initWithTitle:item[0] action:nil keyEquivalent:@""];
         entry.representedObject = item[1];
         [menu addItem:entry];
@@ -732,9 +732,9 @@ static NSMenu *DPCommandBarPositions(void) {
 DP_PATCH(DPCommandBar) {
     .key = @"commandBar",
     .order = 87,
-    .title = @"Command bar",
+    .title = @"Open New Tabs in Command Bar",
     .detail = @"Open new tabs as Dia’s command bar over the current page, like Arc. Choose a result to open it in a new tab, or press Escape to go back.",
-    .symbol = @"command",
+    .symbol = @"command.square.fill",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",
     .classes = DPClasses(DPDiaContentPane, DPDiaNewTabPage, DPDiaAssistantPanel, DPDiaCommandBarSuggestions),
@@ -751,9 +751,9 @@ DP_PATCH(DPCommandBarBlur) {
     .key = @"commandBarBlur",
     .defaultOn = YES,
     .order = 88,
-    .title = @"Blur the page behind",
+    .title = @"Blur Page Behind",
     .detail = @"Blur the page behind the command bar.",
-    .symbol = @"drop",
+    .symbol = @"aqi.medium",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",
     .requires = @"commandBar",
@@ -764,9 +764,9 @@ DP_PATCH(DPCommandBarDarken) {
     .key = @"commandBarDarken",
     .defaultOn = YES,
     .order = 89,
-    .title = @"Darken the page behind",
+    .title = @"Darken Page Behind",
     .detail = @"Darken the page behind the command bar.",
-    .symbol = @"moon",
+    .symbol = @"moon.fill",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",
     .requires = @"commandBar",

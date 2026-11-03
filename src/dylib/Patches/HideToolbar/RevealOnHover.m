@@ -16,9 +16,9 @@ static NSString *DPVerifyRevealToolbar(DPPatch *patch) {
 DP_PATCH(DPRevealToolbarOnHover) {
     .key = @"revealToolbarOnHover",
     .order = 40,
-    .title = @"Reveal toolbar on hover",
+    .title = @"Show Toolbar on Hover",
     .detail = @"Show the toolbar when you move the pointer to the top of the page.",
-    .symbol = @"cursorarrow",
+    .symbol = @"cursorarrow.rays",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
     .apply = DPApplyReveal,

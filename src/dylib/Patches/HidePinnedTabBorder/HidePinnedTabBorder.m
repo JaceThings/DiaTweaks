@@ -14,9 +14,9 @@ static void DPInstallHidePinnedTabBorder(void) { DPHook(DPDiaPinnedTab, @selecto
 DP_PATCH(DPHidePinnedTabBorder) {
     .key = @"hidePinnedTabBorder",
     .order = 82,
-    .title = @"Hide pinned tab border",
+    .title = @"Hide Pinned Tab Border",
     .detail = @"Remove the colored border around the selected pinned tab.",
-    .symbol = @"square.dashed",
+    .symbol = @"pin.fill",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaPinnedTab, DPDiaPinnedTabOutline),

@@ -79,9 +79,9 @@ static void DPInstallShowAddressField(void) {
 DP_PATCH(DPShowAddressField) {
     .key = @"showAddressField",
     .order = 48,
-    .title = @"Always show address field",
+    .title = @"Always Show Address Field",
     .detail = @"Show the address field’s background and its bookmark, split view and site buttons without pointing at it.",
-    .symbol = @"link",
+    .symbol = @"link.circle.fill",
     .tint = @"systemPurpleColor",
     .section = @"Toolbar Items",
     .classes = DPClasses(DPDiaAddressField, DPDiaHoverTracker),
