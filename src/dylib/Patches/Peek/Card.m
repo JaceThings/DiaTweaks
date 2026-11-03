@@ -41,6 +41,7 @@
     if (self.paneObserver) [NSNotificationCenter.defaultCenter removeObserver:self.paneObserver];
     self.monitor = self.paneObserver = nil;
     self.controls.alphaValue = 0;
+    DPPeekHideTabBadge(self);
     return YES;
 }
 

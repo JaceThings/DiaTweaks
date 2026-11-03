@@ -17,6 +17,7 @@ extern DPPatch DPPeek;
 @property (nonatomic, weak) id sourceDelegate, source;  // The page it was opened from, and Dia's delegate for that page.
 @property (nonatomic, weak) NSView *pane;               // The page area it covers.
 @property (nonatomic, strong) id paneObserver, monitor;
+@property (nonatomic, strong) NSView *tabBadge;        // Marks the tab the peek came from while it's open. Tab.m.
 @property (nonatomic) NSRect link;  // What it grows out of and shrinks back into, in its own coordinates.
 @property (nonatomic) BOOL closing;
 - (NSRect)cardFrame;
@@ -37,6 +38,10 @@ DPPeekCard *DPPeekCardIn(NSWindow *window);
 DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin);  // Card.m
 NSView *DPPeekControls(id target, SEL action);                                      // Controls.m
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);                    // Controls.m
+
+// Tab.m
+void DPPeekShowTabBadge(DPPeekCard *peek, id source, id<DPPeekPage> page);  // Badges the tab the peek came from.
+void DPPeekHideTabBadge(DPPeekCard *peek);
 
 // Pages.m
 void DPPeekInstallPages(void);

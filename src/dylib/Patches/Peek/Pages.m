@@ -80,6 +80,7 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
     }
     peek.sourceDelegate = delegate;
     peek.source = source;
+    DPPeekShowTabBadge(peek, source, page);
 }
 
 @implementation DPPeekCard (Handoff)
