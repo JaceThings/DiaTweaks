@@ -43,3 +43,7 @@ void DPShowProgressLine(NSView *pane, CGFloat fraction);
 void DPFinishProgressLine(NSView *pane);  // Fills it, then fades it out.
 void DPRemoveProgressLine(NSView *pane);
 BOOL DPShowsProgressLine(NSView *pane);
+
+// ProgressShader.m
+CAMetalLayer *DPProgressShaderLayer(void);  // nil when Dia's loading shader can't be loaded.
+void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, NSColor *primary, NSColor *secondary);

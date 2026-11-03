@@ -1,13 +1,15 @@
 #import "HideToolbar.h"
 
-static const CGFloat DPLineHeight = 2;
-static const NSTimeInterval DPLineFade = 0.3;
+static const CGFloat DPGlowHeight = 24, DPLineHeight = 1;  // Dia's glow fades over its address field's height.
+static const NSTimeInterval DPLineFade = 0.3, DPCycle = 2;
 static char DPLineKey;
 
-// A thin line along the top of the pane that fills as the page loads, then fades. It never takes the pointer.
+// Along the top of the pane: Dia's loading glow when its shader loads, else a hairline. It never takes the pointer.
 @interface DPProgressLineView : NSView
+@property (nonatomic, strong) CAMetalLayer *glow;
 @property (nonatomic, strong) CALayer *fill;
-@property (nonatomic) CGFloat fraction;
+@property (nonatomic, strong) NSTimer *frames;
+@property (nonatomic) CGFloat fraction, shown;  // Where loading is, and where the glow has eased to.
 @property (nonatomic) BOOL finishing;
 @end
 
@@ -16,18 +18,35 @@ static char DPLineKey;
 - (instancetype)init {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     self.wantsLayer = YES;
-    self.fill = [CALayer layer];  // Not a view's own layer, so it animates its frame by itself.
-    [self.layer addSublayer:self.fill];
+    self.glow = DPProgressShaderLayer();
+    if (self.glow) {
+        self.glow.transform = CATransform3DMakeScale(1, -1, 1);  // Dia's glow rises from the bottom edge; this one hangs from the top.
+        // Dia's glow fills its field to the edge; over a page it has to fade out instead of stopping in a line.
+        CAGradientLayer *fade = [CAGradientLayer layer];
+        fade.colors = @[(id)NSColor.blackColor.CGColor, (id)NSColor.clearColor.CGColor];
+        fade.startPoint = CGPointMake(0.5, 0.35);
+        fade.endPoint = CGPointMake(0.5, 1);
+        self.glow.mask = fade;
+        [self.layer addSublayer:self.glow];
+    } else {
+        self.fill = [CALayer layer];  // Not a view's own layer, so it animates its frame by itself.
+        [self.layer addSublayer:self.fill];
+    }
     return self;
 }
+
+- (void)dealloc { [_frames invalidate]; }
 
 - (BOOL)wantsUpdateLayer { return YES; }
 
 - (void)updateLayer {
     self.fill.backgroundColor = [NSColor.controlAccentColor CGColor];  // Follows the accent color, light and dark.
+    [self draw];
 }
 
 - (NSView *)hitTest:(NSPoint)point { return nil; }
+
+- (CGFloat)height { return self.glow ? DPGlowHeight : DPLineHeight; }
 
 - (NSRect)fillFrame { return NSMakeRect(0, 0, round(NSWidth(self.bounds) * self.fraction), DPLineHeight); }
 
@@ -36,16 +55,44 @@ static char DPLineKey;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];  // Resizing with the window, not loading.
     self.fill.frame = self.fillFrame;
+    self.glow.frame = self.bounds;
+    self.glow.mask.frame = self.glow.bounds;
+    self.glow.contentsScale = self.window.backingScaleFactor ?: 2;
+    self.glow.drawableSize = CGSizeMake(NSWidth(self.bounds) * self.glow.contentsScale, NSHeight(self.bounds) * self.glow.contentsScale);
     [CATransaction commit];
+    [self draw];
+}
+
+- (void)draw {
+    if (!self.glow) return;
+    NSColor *accent = NSColor.controlAccentColor;
+    CGFloat cycle = fmod(CACurrentMediaTime(), DPCycle) / DPCycle;
+    DPDrawProgressShader(self.glow, self.shown, cycle, accent, [accent blendedColorWithFraction:0.4 ofColor:NSColor.systemPurpleColor]);
+}
+
+// The glow redraws each frame while it shows, easing toward the load's progress as Dia's does.
+- (void)viewDidMoveToWindow {
+    [self.frames invalidate];
+    self.frames = nil;
+    if (!self.window || !self.glow) return;
+    __weak DPProgressLineView *weakSelf = self;
+    self.frames = [NSTimer timerWithTimeInterval:1.0 / 60 repeats:YES block:^(NSTimer *timer) {
+        DPProgressLineView *me = weakSelf;
+        me.shown += (me.fraction - me.shown) * 0.15;
+        [me draw];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.frames forMode:NSRunLoopCommonModes];
 }
 
 - (void)setFraction:(CGFloat)fraction {
     _fraction = fraction;
+    if (fraction == 0) self.shown = 0;
     self.fill.frame = self.fillFrame;
 }
 
 - (void)placeIn:(NSView *)pane {
-    self.frame = NSMakeRect(0, pane.isFlipped ? 0 : NSHeight(pane.bounds) - DPLineHeight, NSWidth(pane.bounds), DPLineHeight);
+    CGFloat height = self.height;
+    self.frame = NSMakeRect(0, pane.isFlipped ? 0 : NSHeight(pane.bounds) - height, NSWidth(pane.bounds), height);
     self.autoresizingMask = NSViewWidthSizable | (pane.isFlipped ? NSViewMaxYMargin : NSViewMinYMargin);
     if (self.superview != pane || pane.subviews.lastObject != self) [pane addSubview:self positioned:NSWindowAbove relativeTo:nil];
 }
