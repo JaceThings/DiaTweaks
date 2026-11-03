@@ -58,11 +58,11 @@ static void DPInstallKeepWindowsActive(void) {
 
 DP_PATCH(DPKeepWindowsActive) {
     .key = @"keepWindowsActive",
-    .order = 90,
+    .order = 93,
     .title = @"Keep windows active",
-    .detail = @"Keep a window’s deep shadow, sidebar colour and window buttons after you click into another app. Experimental.",
+    .detail = @"Keep windows looking active, with their shadow, sidebar color and window buttons, when you switch to another app. Experimental.",
     .symbol = @"macwindow",
-    .tint = @"systemIndigoColor",
+    .tint = @"systemBrownColor",
     .section = @"Window",
     .install = DPInstallKeepWindowsActive,
     .apply = DPApplyKeepWindowsActive,

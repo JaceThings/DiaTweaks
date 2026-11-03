@@ -176,11 +176,11 @@ static void DPInstallWindowMaterial(void) {
 
 DP_PATCH(DPWindowMaterial) {
     .key = @"windowMaterial",
-    .order = 93,
+    .order = 96,
     .title = @"Window material",
     .detail = @"Show a material or Liquid Glass behind the tabs and sidebar instead of the theme color.",
     .symbol = @"square.on.square.intersection.dashed",
-    .tint = @"systemCyanColor",
+    .tint = @"systemBrownColor",
     .section = @"Window",
     .classes = DPClasses(DPDiaWindowFrame, DPDiaWindowTint, DPDiaWindowBackgroundTile, DPDiaFloatingSidebar),
     .choice = @"windowMaterialChoice",

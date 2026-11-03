@@ -8,7 +8,7 @@ DP_PATCH(DPHideRecentTabsButton) {
     .title = @"Hide recent tabs button",
     .detail = @"Hide the recent tabs button in the tab bar or sidebar.",
     .symbol = @"clock.arrow.circlepath",
-    .tint = @"systemPinkColor",
+    .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaSidebarFooter, DPDiaTabStripController),
     .hides = DPIsRecentTabsButton,

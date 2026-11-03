@@ -181,11 +181,11 @@ static void DPInstallWindowCorners(void) {
 
 DP_PATCH(DPWindowCorners) {
     .key = @"windowCorners",
-    .order = 91,
+    .order = 94,
     .title = @"macOS 26 window corners",
-    .detail = @"Round browser windows to 26 points like other apps on macOS 26, with the page's corners rounded to match.",
+    .detail = @"Round Dia’s windows like other apps on macOS 26, with the page’s corners to match.",
     .symbol = @"macwindow",
-    .tint = @"systemTealColor",
+    .tint = @"systemBrownColor",
     .section = @"Window",
     .classes = DPClasses(DPDiaWindow, DPDiaNavigationBar, DPDiaFloatingSidebar, DPDiaWindowBackgroundTile, DPDiaWindowBackground, DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter),
     .install = DPInstallWindowCorners,

@@ -35,8 +35,8 @@ DP_PATCH(DPOnePassword) {
     .key = @"onePassword",
     .order = 102,
     .title = @"Allow 1Password",
-    .detail = @"Lets the 1Password extension connect to the 1Password app, which turns away a patched Dia. While the extension is connected, the original Dia that DiaTweaks keeps runs in the background without windows and talks to 1Password for it. Experimental.",
+    .detail = @"Connect the 1Password extension to the 1Password app. The app turns away a patched Dia, so while the extension is connected, the original Dia that DiaTweaks keeps runs in the background to talk to it. Experimental.",
     .symbol = @"lock.shield.fill",
-    .tint = @"systemBlueColor",
+    .tint = @"systemGreenColor",
     .section = @"Passwords",
 };
