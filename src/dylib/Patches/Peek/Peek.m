@@ -67,4 +67,5 @@ DP_PATCH(DPPeek) {
     .classes = DPClasses(DPDiaBrowserContext, DPDiaWebContents, DPDiaWebContentsConfiguration, DPDiaContentPane),
     .install = DPInstallPeek,
     .verify = DPVerifyPeek,
+    .rows = DPPeekSettingsRows,
 };

@@ -43,6 +43,10 @@ void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);               
 void DPPeekShowTabBadge(DPPeekCard *peek, id source, id<DPPeekPage> page);  // Badges the tab the peek came from.
 void DPPeekHideTabBadge(DPPeekCard *peek);
 
+// Settings.m
+double DPPeekDarkness(void);                  // How dark the page behind a peek is, 0–1, from the settings slider.
+NSArray<NSView *> *DPPeekSettingsRows(void);  // The Peek settings page's extra rows.
+
 // Pages.m
 void DPPeekInstallPages(void);
 BOOL DPPeekCanOpen(id source);  // Peek knows which part of Dia made `source`, so can make a page beside it.
