@@ -68,4 +68,5 @@ DP_PATCH(DPPeek) {
     .install = DPInstallPeek,
     .verify = DPVerifyPeek,
     .rows = DPPeekSettingsRows,
+    .hint = @"Tip: right after Dia starts, open or switch to any tab once to start Peek.",
 };

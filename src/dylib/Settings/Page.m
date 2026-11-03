@@ -15,10 +15,19 @@
 
     DPPreviewView *preview = [[DPPreviewView alloc] initWithKey:patch->key];
     [preview.heightAnchor constraintEqualToAnchor:preview.widthAnchor multiplier:10.0 / 16].active = YES;
+    NSMutableArray<NSView *> *headingText = [@[
+        DPLabel(patch->title, 13, NSFontWeightSemibold, NSColor.labelColor),
+        DPLabel(patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
+    ] mutableCopy];
+    if (patch->hint) {
+        NSView *gap = [NSView new];  // A little space between the detail and the tip.
+        [gap.heightAnchor constraintEqualToConstant:5].active = YES;
+        [headingText addObjectsFromArray:@[gap, DPLabel(patch->hint, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]];
+    }
+    [headingText addObject:_note];
     NSStackView *heading = [NSStackView stackViewWithViews:@[
         DPIconTile(patch->symbol, [NSColor valueForKey:patch->tint]),
-        DPColumn(@[DPLabel(patch->title, 13, NSFontWeightSemibold, NSColor.labelColor),
-                   DPLabel(patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), _note], 2),
+        DPColumn(headingText, 2),
     ]];
     heading.spacing = 10;
     heading.alignment = NSLayoutAttributeTop;

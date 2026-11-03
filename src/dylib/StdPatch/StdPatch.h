@@ -12,6 +12,7 @@ struct DPPatch {
     BOOL defaultOn;
     int order;  // Places its section in Settings. In a section, the Hide patches go last, shortest title first.
     __unsafe_unretained NSString *title, *detail;
+    __unsafe_unretained NSString *hint;  // An optional tip shown under the detail on its Settings page.
     __unsafe_unretained NSString *symbol, *tint;  // The row icon's SF Symbol, then space-separated fallbacks for older macOS, and NSColor class property.
     __unsafe_unretained NSString *section;  // Its group in Settings.
     const char *const *classes;  // Dia classes it needs (DPClasses). If one is missing, it stays off and Settings says so.
