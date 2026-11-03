@@ -1,10 +1,12 @@
 #import "Patches/Peek/Peek.h"
 
-// Timed from screen recordings of Arc: about 0.15 s each way, moving straight away and slowing into place. The card is
-// laid out once at full size and only its layer is scaled, so the page never re-lays out mid-animation.
-static const CFTimeInterval DPPeekGrow = 0.16, DPPeekShrink = 0.15;
+// Timed from screen recordings of Arc: a flowy ~0.33 s open and ~0.28 s close that leave the click fast and decelerate
+// a long way into place. The card is laid out once at full size and only its layer is scaled, so the page never
+// re-lays out mid-animation.
+static const CFTimeInterval DPPeekGrow = 0.33, DPPeekShrink = 0.28;
 
-static CAMediaTimingFunction *DPPeekEase(void) { return [CAMediaTimingFunction functionWithControlPoints:0.2 :0.9 :0.25 :1]; }
+// A strong decelerate: quick off the click, then a long gentle settle, like Arc's spring without the overshoot.
+static CAMediaTimingFunction *DPPeekEase(void) { return [CAMediaTimingFunction functionWithControlPoints:0.2 :0.9 :0.2 :1]; }
 
 // Draws the card, laid out at `card`, squeezed into `rect`. A layer-backed view's layer scales about its origin, which
 // is the card's top left in this flipped view.
@@ -23,7 +25,7 @@ static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
     CABasicAnimation *appear = [CABasicAnimation animationWithKeyPath:@"opacity"];
     appear.fromValue = @0;
     appear.toValue = @1;
-    appear.duration = DPPeekGrow * 0.35;
+    appear.duration = DPPeekGrow * 0.5;
     CAAnimationGroup *group = [CAAnimationGroup animation];
     group.animations = @[grow, appear];
     group.duration = DPPeekGrow;
