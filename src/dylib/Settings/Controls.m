@@ -100,12 +100,12 @@ NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
 + (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description;
 @end
 
-// Falls back to Apple's private symbols, like the emoji face Messages uses.
+// Falls back to Apple's private symbols, like the emoji face Messages uses, then to an empty image: imageViewWithImage: throws on nil.
 NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color) {
     NSImage *image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
     if (!image && [NSImage respondsToSelector:@selector(imageWithPrivateSystemSymbolName:accessibilityDescription:)])
         image = [NSImage imageWithPrivateSystemSymbolName:symbol accessibilityDescription:nil];
-    NSImageView *view = [NSImageView imageViewWithImage:image];
+    NSImageView *view = [NSImageView imageViewWithImage:image ?: [NSImage new]];
     view.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold];
     view.contentTintColor = color;
     return view;
