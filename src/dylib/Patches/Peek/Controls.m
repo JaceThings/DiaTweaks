@@ -9,12 +9,28 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 @property (nonatomic, weak) NSView *pill;
 @property (nonatomic, copy) NSString *hintText;
 @property (nonatomic, copy) NSArray<NSString *> *hintKeys;
+@property (nonatomic, strong) CAShapeLayer *circle;
+@property (nonatomic, strong) CALayer *iconLayer;
 @end
 
 @implementation DPPeekButton
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
-- (BOOL)wantsUpdateLayer { return YES; }
-- (void)updateLayer { self.layer.backgroundColor = [NSColor colorWithWhite:0.08 alpha:self.isHighlighted ? 0.7 : 0.9].CGColor; }
+
+// The background is a shape-layer circle, not a rounded-corner fill, so it stays a true circle at any screen scale, and
+// the icon sits in its own centred layer above it.
+- (void)layout {
+    [super layout];
+    self.circle.frame = self.bounds;
+    CGPathRef path = CGPathCreateWithEllipseInRect(self.bounds, NULL);
+    self.circle.path = path;
+    CGPathRelease(path);
+    self.iconLayer.position = CGPointMake(NSMidX(self.bounds), NSMidY(self.bounds));
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    self.circle.fillColor = [NSColor colorWithWhite:0.08 alpha:highlighted ? 0.7 : 0.9].CGColor;
+}
 
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
@@ -25,10 +41,13 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 }
 
 - (void)grow:(BOOL)hovered {
+    // Scale about the centre with a transform, not a moved anchor point: moving the anchor shifts and flattens the circle.
+    CGFloat scale = 1.12, cx = NSWidth(self.bounds) / 2, cy = NSHeight(self.bounds) / 2;
+    CATransform3D grown = CATransform3DTranslate(CATransform3DScale(CATransform3DMakeTranslation(cx, cy, 0), scale, scale, 1), -cx, -cy, 0);
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.12;
         context.allowsImplicitAnimation = YES;
-        self.layer.transform = hovered ? CATransform3DMakeScale(1.12, 1.12, 1) : CATransform3DIdentity;
+        self.layer.transform = hovered ? grown : CATransform3DIdentity;
     }];
 }
 
@@ -173,20 +192,38 @@ NSView *DPPeekControls(id target, SEL action) {
     controls.clipsToBounds = NO;  // The hint pills reach right of the buttons.
     for (NSUInteger i = 0; i < specs.count; i++) {
         NSDictionary *spec = specs[i];
-        DPPeekButton *button = [DPPeekButton buttonWithImage:[NSImage imageWithSystemSymbolName:spec[@"symbol"] accessibilityDescription:spec[@"a11y"]]
-                                                      target:target action:action];
+        NSImage *base = [[NSImage imageWithSystemSymbolName:spec[@"symbol"] accessibilityDescription:spec[@"a11y"]]
+                         imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightSemibold]];
+        // A white copy of the symbol. Resolution-independent, so the icon layer stays crisp at any screen scale.
+        NSImage *white = [NSImage imageWithSize:base.size flipped:NO drawingHandler:^BOOL(NSRect rect) {
+            [base drawInRect:rect];
+            [NSColor.whiteColor set];
+            NSRectFillUsingOperation(rect, NSCompositingOperationSourceAtop);
+            return YES;
+        }];
+
+        DPPeekButton *button = [DPPeekButton buttonWithTitle:@"" target:target action:action];  // No cell image; the layers draw it.
         button.tag = i;
         button.bordered = NO;
         button.toolTip = nil;  // The hover pill is the hint.
+        [button setAccessibilityLabel:spec[@"a11y"]];
         button.hintText = spec[@"hint"];
         button.hintKeys = spec[@"keys"];
-        button.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:12 weight:NSFontWeightBold];
-        button.contentTintColor = NSColor.whiteColor;
-        button.imagePosition = NSImageOnly;
         button.wantsLayer = YES;
-        button.layer.cornerRadius = side / 2;
-        button.layer.cornerCurve = kCACornerCurveCircular;
-        button.layer.anchorPoint = CGPointMake(0.5, 0.5);  // So hover scales it about its centre.
+
+        CAShapeLayer *circle = [CAShapeLayer layer];
+        circle.fillColor = [NSColor colorWithWhite:0.08 alpha:0.9].CGColor;
+        [button.layer addSublayer:circle];
+        button.circle = circle;
+
+        CALayer *iconLayer = [CALayer layer];
+        iconLayer.contents = white;
+        iconLayer.contentsGravity = kCAGravityCenter;
+        iconLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor ?: 2;
+        iconLayer.bounds = (CGRect){CGPointZero, white.size};
+        [button.layer addSublayer:iconLayer];
+        button.iconLayer = iconLayer;
+
         button.frame = NSMakeRect(0, (specs.count - 1 - i) * (side + gap), side, side);
         [controls addSubview:button];
     }
