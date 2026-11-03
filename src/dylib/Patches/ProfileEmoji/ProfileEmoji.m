@@ -183,7 +183,7 @@ DP_PATCH(DPProfileEmoji) {
     .defaultOn = YES,
     .title = @"Profile Emoji",
     .detail = @"Show an emoji in place of each profile’s dot in the profile switcher. Choose them in Settings › Profiles.",
-    .symbol = @"emoji.face.grinning.inverse",
+    .symbol = @"emoji.face.grinning.inverse face.smiling.inverse",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaSpaceSwitcher, DPDiaSpaceSwitcherItem, DPDiaPageIndicatorDot, DPDiaProfilePane, DPDiaSettingsFormGroup),

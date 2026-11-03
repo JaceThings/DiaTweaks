@@ -100,12 +100,17 @@ NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
 + (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description;
 @end
 
-// Falls back to Apple's private symbols, like the emoji face Messages uses.
-NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color) {
-    NSImage *image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
-    if (!image && [NSImage respondsToSelector:@selector(imageWithPrivateSystemSymbolName:accessibilityDescription:)])
-        image = [NSImage imageWithPrivateSystemSymbolName:symbol accessibilityDescription:nil];
-    NSImageView *view = [NSImageView imageViewWithImage:image];
+// The first of `symbols` this macOS has, public or private, like the emoji face Messages uses. NSImageView throws on a
+// missing one, which crashed Settings.
+NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color) {
+    NSImage *image;
+    for (NSString *symbol in [symbols componentsSeparatedByString:@" "]) {
+        image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
+        if (!image && [NSImage respondsToSelector:@selector(imageWithPrivateSystemSymbolName:accessibilityDescription:)])
+            image = [NSImage imageWithPrivateSystemSymbolName:symbol accessibilityDescription:nil];
+        if (image) break;
+    }
+    NSImageView *view = image ? [NSImageView imageViewWithImage:image] : [NSImageView new];
     view.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold];
     view.contentTintColor = color;
     return view;

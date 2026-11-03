@@ -125,7 +125,7 @@ DP_PATCH(DPEdgeToEdge) {
     .order = 10,
     .title = @"Edge-to-Edge Web Pages",
     .detail = @"Remove the padding between web pages and the window edge.",
-    .symbol = @"arrow.up.left.and.arrow.down.right.rectangle.fill",
+    .symbol = @"arrow.up.left.and.arrow.down.right.rectangle.fill arrow.up.left.and.arrow.down.right.square.fill",
     .tint = @"systemBlueColor",
     .section = @"Page",
     .classes = DPClasses(DPDiaContentContainer, DPDiaShadowView),

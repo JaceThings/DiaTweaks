@@ -179,7 +179,7 @@ DP_PATCH(DPWindowMaterial) {
     .order = 96,
     .title = @"Window Material",
     .detail = @"Show a material or Liquid Glass behind the tabs and sidebar instead of the theme color.",
-    .symbol = @"circle.on.app.liquid.glass.fill",
+    .symbol = @"circle.on.app.liquid.glass.fill square.2.layers.3d.top.filled",
     .tint = @"systemBrownColor",
     .section = @"Window",
     .classes = DPClasses(DPDiaWindowFrame, DPDiaWindowTint, DPDiaWindowBackgroundTile, DPDiaFloatingSidebar),

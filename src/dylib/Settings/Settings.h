@@ -16,7 +16,7 @@ NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor 
 NSTextField *DPHeader(NSString *text);
 NSView *DPIconTile(NSString *symbol, NSColor *color);
 NSView *DPIconTileOfSize(NSString *symbol, NSColor *color, CGFloat size);
-NSImageView *DPSymbol(NSString *symbol, CGFloat size, NSColor *color);
+NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color);
 NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing);
 void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 
