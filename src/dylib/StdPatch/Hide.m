@@ -24,11 +24,13 @@ static void DPHidden_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     DPCallOriginal(DPHidden_setHidden, self, hidden || suppress);
 }
 
-// Dia only hides a view that says it's showing, so a view the patch hid tells Dia's own code it's showing, as Dia left
-// it. AppKit still gets the truth, or it would draw the view.
+// As its window appears, Dia hides some views, but only ones that say they're showing. Until then, a view the patch hid
+// tells Dia it's showing, as Dia left it. Dia's layout afterwards and AppKit get the truth, or they'd leave its space.
 static BOOL DPHidden_isHidden(NSView *self, SEL _cmd) {
     Dl_info caller;
-    if ([DPSuppressed containsObject:self] && dladdr(__builtin_return_address(0), &caller) && strstr(caller.dli_fname, "/Dia.app/")) return NO;
+    if (!self.window.isVisible && [DPSuppressed containsObject:self] && dladdr(__builtin_return_address(0), &caller)
+        && strstr(caller.dli_fname, "/Dia.app/"))
+        return NO;
     return DPCallOriginal(DPHidden_isHidden, self);
 }
 
