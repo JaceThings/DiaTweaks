@@ -1,5 +1,7 @@
 #import "Settings.h"
 
+static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an option's.
+
 @implementation DPPageView {
     DPPatch *_patch;
     NSMutableArray<DPPatchSwitch *> *_switches;
@@ -31,17 +33,10 @@
         if (option->unavailable) [lines addObject:DPLabel(DPWhyDisabled(option), 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
         NSView *text = DPColumn(lines, 2);
         [options addObject:DPRow(text, [self switchFor:option])];
+        // An option's own choice sits under its switch.
+        if (option->choices) [options addObject:[self choiceRowFor:option]];
     });
-    if (patch->choices) {
-        NSMenu *menu = patch->choices();
-        NSPopUpButton *picker = [NSPopUpButton new];
-        picker.menu = menu;
-        picker.controlSize = NSControlSizeSmall;
-        picker.target = self;
-        picker.action = @selector(choose:);
-        for (NSMenuItem *item in menu.itemArray) if ([item.representedObject isEqual:DPChoice(patch)]) [picker selectItem:item];
-        [options insertObject:DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker) atIndex:0];
-    }
+    if (patch->choices) [options insertObject:[self choiceRowFor:patch] atIndex:0];
     _rows = patch->rows ? patch->rows() : @[];
     for (NSView *view in _rows) {
         NSView *row = DPRow(view, [NSView new]);
@@ -71,8 +66,20 @@
     return toggle.withHiddenIcon;
 }
 
+- (NSView *)choiceRowFor:(DPPatch *)patch {
+    NSMenu *menu = patch->choices();
+    NSPopUpButton *picker = [NSPopUpButton new];
+    picker.menu = menu;
+    picker.controlSize = NSControlSizeSmall;
+    picker.target = self;
+    picker.action = @selector(choose:);
+    DPSet(picker, &DPChoicePatchKey, [NSValue valueWithPointer:patch]);
+    for (NSMenuItem *item in menu.itemArray) if ([item.representedObject isEqual:DPChoice(patch)]) [picker selectItem:item];
+    return DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker);
+}
+
 - (void)choose:(NSPopUpButton *)picker {
-    DPSetChoice(_patch, picker.selectedItem.representedObject);
+    DPSetChoice([DPGet(picker, &DPChoicePatchKey) pointerValue] ?: _patch, picker.selectedItem.representedObject);
 }
 
 - (void)sync {
