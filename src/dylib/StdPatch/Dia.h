@@ -16,7 +16,6 @@
 #define DPDiaLibraryButton      "_TtC10DiaLibrary17LibraryButtonView"
 #define DPDiaLibraryCell        "_TtC10TabSidebar15LibraryCellView"
 #define DPDiaPinnedTab          "_TtC5TabUI15TabDockItemView"
-#define DPDiaTab                "_TtC5TabUI7TabView"
 #define DPDiaPinnedTabOutline   "_TtC5TabUIP33_CFF5B89D7BC9743BBA6108D119E2E37020SelectionOutlineView"
 #define DPDiaContentPane        "_TtC11ContentPane15ContentPaneView"
 #define DPDiaContentContainer   "_TtC6Window20ContentContainerView"

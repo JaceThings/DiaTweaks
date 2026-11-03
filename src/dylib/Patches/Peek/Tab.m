@@ -11,7 +11,7 @@ static NSString *DPTabStateDesc(NSView *tab) {
 
 static NSArray<NSView *> *DPAllTabs(void) {
     NSMutableArray<NSView *> *tabs = [NSMutableArray array];
-    [tabs addObjectsFromArray:DPFindViews(DPDiaTab)];
+    [tabs addObjectsFromArray:DPFindViews(DPDiaTabView)];
     [tabs addObjectsFromArray:DPFindViews(DPDiaPinnedTab)];
     return tabs;
 }
