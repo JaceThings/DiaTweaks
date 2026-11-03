@@ -23,7 +23,7 @@ void DPRememberChatLocked(BOOL locked) {
 
 NSView *DPCompactToolbar(NSView *commandBar) {
     NSView *toolbar = commandBar ? DPCommandBarPart(commandBar, DPDiaCommandBarToolbar) : nil;
-    BOOL locked = toolbar && (DPChatLocked(toolbar) || [DPCommandBarDefaults() boolForKey:DPChatLockedKey]);
+    BOOL locked = toolbar && (DPCompactWithChat.on || DPChatLocked(toolbar) || [DPCommandBarDefaults() boolForKey:DPChatLockedKey]);
     return DPCompactCommandBar.on && locked ? toolbar : nil;
 }
 
@@ -32,18 +32,18 @@ NSView *DPGoButton(NSView *toolbar) {
     return [stack isKindOfClass:NSStackView.class] ? stack.views.lastObject : nil;
 }
 
-static void DPApplyCompactCommandBar(DPPatch *patch) {
+void DPApplyCompactCommandBar(DPPatch *patch) {
     for (NSView *commandBar in DPFindViews(DPDiaCommandBar)) commandBar.needsLayout = YES;
     DPResizeNewTabPanels();
     DPResizePopovers();
 }
 
-// A command bar that isn't open passes, as does one with chat usage, which keeps its bottom row.
+// A command bar that isn't open passes, as does one with chat usage, which keeps its bottom row unless asked not to.
 static NSString *DPVerifyCompactCommandBar(DPPatch *patch) {
     for (NSView *commandBar in DPFindViews(DPDiaCommandBar)) {
         NSView *toolbar = DPCommandBarPart(commandBar, DPDiaCommandBarToolbar), *go = DPGoButton(toolbar);
         NSView *input = DPCommandBarPart(commandBar, DPDiaCommandBarInput);
-        if (!go || !input || !DPChatLocked(toolbar)) continue;
+        if (!go || !input || !(DPChatLocked(toolbar) || DPCompactWithChat.on)) continue;
         NSRect goFrame = [go convertRect:go.bounds toView:input.superview];
         BOOL beside = NSMinY(goFrame) < NSMaxY(input.frame) && NSMaxY(goFrame) > NSMinY(input.frame);
         if (beside != patch->on) return patch->on ? @"Go is still under the input" : @"Go is still beside the input";

@@ -1,7 +1,8 @@
 // Without chat usage, the command bar's bottom row only holds Go and two buttons that can't be used.
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPCompactCommandBar;
+extern DPPatch DPCompactCommandBar, DPCompactWithChat;
+void DPApplyCompactCommandBar(DPPatch *patch);
 
 NSView *DPCommandBarPart(NSView *commandBar, const char *className);
 BOOL DPChatLocked(NSView *view);
