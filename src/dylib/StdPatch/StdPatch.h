@@ -10,7 +10,7 @@ typedef struct DPPatch DPPatch;
 struct DPPatch {
     __unsafe_unretained NSString *key;  // Its NSUserDefaults key in com.diapatches.
     BOOL defaultOn;
-    int order;  // Settings lists patches by ascending order.
+    int order;  // Places its section in Settings. In a section, the Hide patches go last, shortest title first.
     __unsafe_unretained NSString *title, *detail;
     __unsafe_unretained NSString *symbol, *tint;  // SF Symbol and NSColor class property for the row's icon.
     __unsafe_unretained NSString *section;  // Its group in Settings.
@@ -20,6 +20,7 @@ struct DPPatch {
     // A menu on the patch's Settings page, titled by the menu. Items' representedObjects are saved under `choice`.
     __unsafe_unretained NSString *choice, *defaultChoice;
     NSMenu *(*choices)(void);
+    NSArray<NSView *> *(*rows)(void);  // More rows for the Options on its Settings page, such as sliders.
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.
     void (*apply)(DPPatch *patch);  // Applies a toggle at once. Without it, `progress` eases toward `on` while every patch's `relayout` runs each frame.

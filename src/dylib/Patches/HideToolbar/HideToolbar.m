@@ -34,13 +34,14 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
         for (NSView *view in bars) {
             if (fabs(view.alphaValue - (hidden ? 0 : 1)) > 0.01) return hidden ? @"toolbar still shows" : @"toolbar is invisible";
             if (hidden && [view hitTest:NSMakePoint(NSMidX(view.frame), NSMidY(view.frame))]) return @"toolbar still takes clicks";
+            if (hidden && DPBottom(pane, view.frame) > 0.5) return @"toolbar still sets the cursor over the page";
         }
         CGFloat edge = DPBottom(pane, DPLaidOutFrame(bars.lastObject));
         for (NSView *view in pane.subviews) {
             NSRect laidOut = DPLaidOutFrame(view);
             if ([bars containsObject:view] || view.hidden || fabs(DPTop(pane, laidOut) - edge) > 0.5) continue;
             found = YES;
-            CGFloat shift = hidden ? edge - DPTop(pane, bar.frame) : 0;
+            CGFloat shift = hidden ? edge - DPTop(pane, DPLaidOutFrame(bar)) : 0;
             if (fabs(DPTop(pane, view.frame) - (DPTop(pane, laidOut) - shift)) > 0.5)
                 return hidden ? @"page didn't move up into the toolbar's place" : @"page isn't below the toolbar";
         }
@@ -52,10 +53,10 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
 DP_PATCH(DPHideToolbar) {
     .key = @"hideToolbar",
     .order = 30,
-    .title = @"Hide toolbar",
-    .detail = @"Remove the bar with the address, navigation buttons and extensions. Experimental.",
-    .symbol = @"menubar.rectangle",
-    .tint = @"systemGrayColor",
+    .title = @"Hide Toolbar",
+    .detail = @"Hide the bar with the address field, navigation buttons and extensions. Experimental.",
+    .symbol = @"menubar.arrow.up.rectangle",
+    .tint = @"systemIndigoColor",
     .section = @"Toolbar",
     .classes = DPClasses(DPDiaContentPane, DPDiaToolbar),
     .install = DPInstallHideToolbar,

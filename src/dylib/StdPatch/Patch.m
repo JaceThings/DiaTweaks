@@ -71,7 +71,7 @@ static int DPCompareOrder(const void *a, const void *b) {
     return (*(DPPatch *const *)a)->order - (*(DPPatch *const *)b)->order;
 }
 
-// The DP_PATCH entries, in Settings order.
+// The DP_PATCH entries, in Settings order: sections where their first patch's order puts them, and in each, the Hide ones last, shortest title first.
 static void DPReadPatches(void) {
     unsigned long size = 0;
     DPPatch **entries = (DPPatch **)getsectiondata(&__dso_handle, "__DATA", "__dppatches", &size);
@@ -80,6 +80,14 @@ static void DPReadPatches(void) {
     DPPatchCount = size / sizeof *sorted;
     qsort(sorted, DPPatchCount, sizeof *sorted, DPCompareOrder);
     DPPatches = sorted;
+    NSMutableArray<NSString *> *sections = [NSMutableArray new];
+    for (NSUInteger i = 0; i < DPPatchCount; i++) {
+        DPPatch *patch = sorted[i];
+        NSString *section = patch->section ?: DPRequired(patch)->section ?: @"Other";
+        if (![sections containsObject:section]) [sections addObject:section];
+        patch->order = (int)([sections indexOfObject:section] << 24 | [patch->title hasPrefix:@"Hide "] << 16 | patch->title.length << 8 | i);
+    }
+    qsort(sorted, DPPatchCount, sizeof *sorted, DPCompareOrder);
 }
 
 void DPLoadPatches(void) {

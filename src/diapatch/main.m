@@ -593,7 +593,7 @@ static BOOL purge(void) {
         say(@"deleted %@", link);
     }
     for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"release.plist", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
-                              @".diatweaks.lock", @".incoming", @"passwords-helper", @"passwords.sock", @"onepassword.sock" ])
+                              @".diatweaks.lock", @".incoming", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch" ])
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
         if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
@@ -697,6 +697,7 @@ static const char kUsage[] =
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
+        if (DPIsPasswordsHandoff(argc, argv)) return DPRunPasswordsHandoff();
         signal(SIGPIPE, SIG_IGN);
         gHome = env("DIAPATCH_HOME") ?: [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/DiaPatches"];
         gApp = env("DIAPATCH_APP") ?: @"/Applications/Dia.app";

@@ -5,8 +5,8 @@ static void DPApplyShowWithSidebar(DPPatch *patch) { DPRelayoutPanes(); }
 DP_PATCH(DPShowToolbarWithSidebar) {
     .key = @"showToolbarWithSidebar",
     .order = 45,
-    .title = @"Show toolbar with the sidebar",
-    .detail = @"Bring the hidden toolbar back while the sidebar is open, and hide it again when the sidebar closes.",
+    .title = @"Show Toolbar with Sidebar",
+    .detail = @"Show the toolbar while the sidebar is open.",
     .symbol = @"sidebar.left",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",

@@ -8,7 +8,7 @@
 NSString *const DPPasswordsAgent = @"com.diapatches.passwords";
 
 static const uint32_t kMaxFrame = 64 << 20;  // Chromium's own limit for messages to a host
-// Each wake of the iCloud Passwords extension reconnects, so the copy stays warm between them rather than restarting.
+// An extension reconnects each time its service worker wakes, so the copy stays warm between them rather than restarting.
 static const NSTimeInterval kIdleQuit = 600;
 
 static NSMutableDictionary<NSNumber *, NSNumber *> *gClients;  // id → socket
@@ -18,14 +18,14 @@ static FILE *gLog;
 static volatile sig_atomic_t gStopping;
 
 NSDictionary *DPPasswordsAgentPlist(NSString *home, NSString *diapatch, NSDictionary *environment) {
+    NSMutableDictionary *sockets = [NSMutableDictionary dictionary];
+    for (int i = 0; i < DPPasswordsServiceCount; i++)
+        sockets[@(DPPasswordsServices[i].socket)] = @{ @"SockPathName" : DPPasswordsSocket(home, &DPPasswordsServices[i]), @"SockPathMode" : @0600 };
     return @{
         @"Label" : DPPasswordsAgent,
         @"ProgramArguments" : @[ diapatch, @"passwords-relay" ],
         @"EnvironmentVariables" : environment,
-        @"Sockets" : @{
-            @(DPPasswordsServices[0].socket) : @{ @"SockPathName" : DPPasswordsSocket(home, &DPPasswordsServices[0]), @"SockPathMode" : @0600 },
-            @(DPPasswordsServices[1].socket) : @{ @"SockPathName" : DPPasswordsSocket(home, &DPPasswordsServices[1]), @"SockPathMode" : @0600 },
-        },
+        @"Sockets" : sockets,
         @"ProcessType" : @"Interactive",
     };
 }
@@ -112,8 +112,8 @@ static void accepted(int fd, const DPPasswordsService *service, NSString *home, 
 static void stop(int signal) { gStopping = 1; }
 
 int DPRunPasswordsRelay(NSString *home, NSString *app) {
-    int listeners[2];
-    for (int i = 0; i < 2; i++) {
+    int listeners[DPPasswordsServiceCount];
+    for (int i = 0; i < DPPasswordsServiceCount; i++) {
         int *fds = NULL;
         size_t count = 0;
         if (launch_activate_socket(DPPasswordsServices[i].socket, &fds, &count) != 0 || count != 1) return 1;
@@ -131,19 +131,20 @@ int DPRunPasswordsRelay(NSString *home, NSString *app) {
     NSDate *idleSince = NSDate.date;
     while (!gStopping && (gClients.count || (-idleSince.timeIntervalSinceNow < kIdleQuit && DPPatchedDiaRunning(app)))) {
         NSArray<NSNumber *> *ids = gClients.allKeys;
-        struct pollfd fds[3 + ids.count];
-        for (int i = 0; i < 2; i++) fds[i] = (struct pollfd){ .fd = listeners[i], .events = POLLIN };
-        fds[2] = (struct pollfd){ .fd = DPDevToolsInput(), .events = POLLIN };
-        for (NSUInteger i = 0; i < ids.count; i++) fds[3 + i] = (struct pollfd){ .fd = gClients[ids[i]].intValue, .events = POLLIN };
-        if (poll(fds, 3 + ids.count, 5000) < 0 && errno != EINTR) break;
-        for (int i = 0; i < 2; i++) {
+        const int devTools = DPPasswordsServiceCount, firstClient = devTools + 1;
+        struct pollfd fds[firstClient + ids.count];
+        for (int i = 0; i < DPPasswordsServiceCount; i++) fds[i] = (struct pollfd){ .fd = listeners[i], .events = POLLIN };
+        fds[devTools] = (struct pollfd){ .fd = DPDevToolsInput(), .events = POLLIN };
+        for (NSUInteger i = 0; i < ids.count; i++) fds[firstClient + i] = (struct pollfd){ .fd = gClients[ids[i]].intValue, .events = POLLIN };
+        if (poll(fds, firstClient + ids.count, 5000) < 0 && errno != EINTR) break;
+        for (int i = 0; i < DPPasswordsServiceCount; i++) {
             int fd = fds[i].revents ? accept(listeners[i], NULL, NULL) : -1;
             if (fd >= 0) accepted(fd, &DPPasswordsServices[i], home, app);
         }
-        if (fds[2].revents && !DPDevToolsRead()) break;
+        if (fds[devTools].revents && !DPDevToolsRead()) break;
         if (!deliver()) break;
         for (NSUInteger i = 0; i < ids.count; i++)
-            if (gClients[ids[i]] && fds[3 + i].revents && !forward(ids[i])) drop(ids[i], YES);
+            if (gClients[ids[i]] && fds[firstClient + i].revents && !forward(ids[i])) drop(ids[i], YES);
         if (gClients.count) idleSince = NSDate.date;
     }
     logLine(@"%@", gStopping ? @"stopping" : gClients.count ? @"the original Dia went away" : @"idle, quitting the original Dia");

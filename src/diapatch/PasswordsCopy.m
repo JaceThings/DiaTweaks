@@ -22,7 +22,7 @@ static NSString *const kRelayScript =
 NSString *const DPCopyFolder = @"/Applications/.DiaTweaks";
 
 static pid_t gDia;
-static NSString *gSessions[2];
+static NSString *gSessions[DPPasswordsServiceCount];
 
 static BOOL writeExtension(NSString *folder, const DPPasswordsService *service) {
     NSDictionary *manifest = @{
@@ -68,7 +68,7 @@ static pid_t launch(NSString *home) {
     NSString *data = [home stringByAppendingPathComponent:@"passwords-helper"];
     [NSFileManager.defaultManager createDirectoryAtPath:data withIntermediateDirectories:YES attributes:@{ NSFilePosixPermissions : @0700 } error:nil];
     NSMutableArray<NSString *> *extensions = [NSMutableArray array];
-    for (const DPPasswordsService *service = DPPasswordsServices; service < DPPasswordsServices + 2; service++) {
+    for (const DPPasswordsService *service = DPPasswordsServices; service < DPPasswordsServices + DPPasswordsServiceCount; service++) {
         NSString *extension = [data stringByAppendingPathComponent:[@"extension-" stringByAppendingString:@(service->host)]];
         if (!writeExtension(extension, service)) return 0;
         [extensions addObject:extension];
@@ -139,9 +139,13 @@ static void unregister(void) {
 
 BOOL DPCopyStart(NSString *home) {
     gDia = launch(home);
-    for (int i = 0; i < 2; i++) gSessions[i] = gDia ? attach(&DPPasswordsServices[i]) : nil;
+    BOOL attached = gDia != 0;
+    for (int i = 0; i < DPPasswordsServiceCount; i++) {
+        gSessions[i] = gDia ? attach(&DPPasswordsServices[i]) : nil;
+        attached = attached && gSessions[i];
+    }
     unregister();
-    return gSessions[0] && gSessions[1];
+    return attached;
 }
 
 void DPCopyEvaluate(const DPPasswordsService *service, NSString *expression) {

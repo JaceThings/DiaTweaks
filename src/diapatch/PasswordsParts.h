@@ -1,4 +1,4 @@
-// Shared between the iCloud Passwords host and relay; Passwords.h is what the rest of diapatch uses.
+// Shared between the passwords host, its hand-off and the relay; Passwords.h is what the rest of diapatch uses.
 #import <Foundation/Foundation.h>
 
 // `key` gives the relay extension the manager's extension ID, as each helper only answers its own extension.
@@ -9,11 +9,20 @@ typedef struct {
     const char *socket;
 } DPPasswordsService;
 
-extern const DPPasswordsService DPPasswordsServices[2];
+// The managers relayed through the original Dia. Apple's helper only checks its parent as it starts, so it isn't one.
+enum { DPPasswordsServiceCount = 1 };
+extern const DPPasswordsService DPPasswordsServices[DPPasswordsServiceCount];
 const DPPasswordsService *DPPasswordsServiceFor(const char *origin);
 NSString *DPPasswordsSocket(NSString *home, const DPPasswordsService *service);
 
+extern const char *const DPHandoffVariable;  // names the socket the original Dia's subprocess collects the host's stdio from
+NSString *DPAppleHelper(void);
+// Apple's helper on this process's stdio, started by the original Dia, which has quit by the time this returns.
+pid_t DPStartHelperThroughOriginal(NSString *home, int argc, const char *argv[]);
+
 BOOL DPRunsPatchedDia(pid_t pid, NSString *app);
+BOOL DPRunsThisDiapatch(audit_token_t token);
+pid_t DPParentOf(pid_t pid);
 BOOL DPPatchedDiaRunning(NSString *app);
 BOOL DPTrustedRelayPeer(int fd, NSString *app);
 

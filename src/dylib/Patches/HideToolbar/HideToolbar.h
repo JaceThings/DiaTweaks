@@ -1,7 +1,7 @@
 // Shared by hide toolbar and its options, which only work on top of it.
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab;
+extern DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPPlainSelectedTab;
 extern NSHashTable<NSView *> *DPPanes;  // Every content pane laid out so far.
 
 // Shows the hidden toolbar while the pointer is at the top of a pane, or in its place while an option keeps it there. One per pane.
@@ -26,3 +26,6 @@ NSString *DPVerifyKeptInPlace(DPPatch *patch);
 void DPApplyToolbar(NSView *pane);
 void DPApplyToolbarOpacity(DPToolbarHover *hover);
 void DPRelayoutPanes(void);
+
+// PlainTab.m
+void DPRepaintTabs(NSWindow *window);  // After the toolbar's opacity changes.

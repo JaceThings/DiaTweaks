@@ -6,9 +6,9 @@ static BOOL DPIsChatsButton(NSView *view) { return DPIsKind(view, DPDiaLibraryBu
 DP_PATCH(DPHideChatsButton) {
     .key = @"hideChatsButton",
     .order = 70,
-    .title = @"Hide Chats button",
+    .title = @"Hide Chats Button",
     .detail = @"Hide the Chats button in the tab bar or sidebar.",
-    .symbol = @"doc.plaintext",
+    .symbol = @"doc.plaintext.fill",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaLibraryButton, DPDiaLibraryCell),
