@@ -1,4 +1,5 @@
 #import "StdPatch/Hide.h"
+#import <dlfcn.h>
 
 NSHashTable<NSView *> *DPHideHosts, *DPSuppressed;
 static char DPHiderKey;
@@ -23,10 +24,19 @@ static void DPHidden_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     DPCallOriginal(DPHidden_setHidden, self, hidden || suppress);
 }
 
+// Dia only hides a view that says it's showing, so a view the patch hid tells Dia's own code it's showing, as Dia left
+// it. AppKit still gets the truth, or it would draw the view.
+static BOOL DPHidden_isHidden(NSView *self, SEL _cmd) {
+    Dl_info caller;
+    if ([DPSuppressed containsObject:self] && dladdr(__builtin_return_address(0), &caller) && strstr(caller.dli_fname, "/Dia.app/")) return NO;
+    return DPCallOriginal(DPHidden_isHidden, self);
+}
+
 static void DPEnforce(NSView *view) {
     DPPatch *patch = DPHider(view);
     if (!patch) return;
     DPHookClass(view.class, @selector(setHidden:), (IMP)DPHidden_setHidden);
+    DPHookClass(view.class, @selector(isHidden), (IMP)DPHidden_isHidden);
     if (!patch->on || view.hidden) return;
     // As if Dia showed it again: the hook hides it and remembers to restore it.
     DPHidden_setHidden(view, @selector(setHidden:), NO);
