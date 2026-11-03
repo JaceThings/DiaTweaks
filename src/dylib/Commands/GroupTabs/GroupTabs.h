@@ -25,4 +25,9 @@ NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls);
 void DPRestorePlaces(id delegate, id browser, NSDictionary *places);
 
 void DPGroupTabsOnce(void);  // Grouping.m
+// Grouping.m, also used by Tidy Tabs. An op is {op: create, title, ids} or {op: add, group, ids}; a create without a
+// title leaves the group for Dia's AI to name. Undo is Command-Z
+// right after, and ungroups `ids` and puts them back at `places`.
+void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger index, void (^done)(void));
+void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places);
 void DPInstallGroupMenus(void);  // Menu.m

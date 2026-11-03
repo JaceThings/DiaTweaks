@@ -31,14 +31,15 @@ static BOOL DPPinned(long long sid, NSString *url, NSSet<NSNumber *> *sessions, 
 static id DPGroupProperties(NSString *title) {
     Class cls = objc_getClass(DPDiaTabGroupProperties);
     id props = cls ? [cls new] : nil;
-    if ([props respondsToSelector:@selector(setTitle:)]) [props setTitle:title];
+    // No title leaves the group for Dia to name, as Tidy Tabs does.
+    if (title.length && [props respondsToSelector:@selector(setTitle:)]) [props setTitle:title];
     return props;
 }
 
 // Cleared by the next key press, so Command-Z only undoes a grouping right after it.
 static void (^DPUndoGrouping)(void);
 
-static void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places) {
+void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
@@ -60,7 +61,7 @@ static void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *pla
     };
 }
 
-static void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger index, void (^done)(void)) {
+void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger index, void (^done)(void)) {
     if (index >= ops.count) return done();
     NSDictionary *op = ops[index];
     void (^next)(id) = ^(id result) {
