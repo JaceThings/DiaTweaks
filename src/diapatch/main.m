@@ -464,6 +464,11 @@ static BOOL stageTweaks(void) {
 }
 
 static BOOL applyTweaks(void) {
+    // A release staged a while ago may since have been replaced, or overtaken by what's installed.
+    NSString *problem;
+    NSDictionary *latest = stagedRelease() ? latestTweaks(15, &problem) : nil;
+    if ([installedRelease()[@"digest"] isEqual:latest[@"digest"]]) removeTree(gStagedTweaks);
+    else if (tweaksAvailable(latest)) stageTweaks();  // if this fails, the staged release still installs
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
     NSDictionary<NSString *, NSString *> *targets = tweaksTargets();
