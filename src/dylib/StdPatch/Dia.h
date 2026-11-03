@@ -54,3 +54,6 @@
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
 #define DPDiaNewTabButton       "_TtC7TabList14NewTabCellView"
+#define DPDiaTabList            "_TtC7TabList11TabListView"
+#define DPDiaTabListSeparator   "_TtC7TabList20TabListSeparatorView"
+#define DPDiaTabListCollection  "_TtCC7TabList11TabListView14CollectionView"
