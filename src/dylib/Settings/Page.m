@@ -75,7 +75,7 @@
 
 - (void)sync {
     for (DPPatchSwitch *toggle in _switches) [toggle sync];
-    for (NSView *row in _rows)  // Like its options' switches, only while the patch is on.
+    for (NSView *row in _rows)
         DPFindView(row, ^BOOL(NSView *view) {
             BOOL label = [view isKindOfClass:NSTextField.class] && !((NSTextField *)view).editable;
             if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on;
