@@ -5,6 +5,7 @@
 // Swift, out of reach, so they're read as it hands them to its shader, per address field.
 static char DPDiaColorsKey;
 static __weak id DPDrawing;  // Dia's loading indicator while it draws.
+static NSData *DPLastDiaColors;  // For a pane whose field hasn't drawn yet, such as at the start of its first load.
 
 static NSArray<NSString *> *DPPresetNames(void) { return @[@"Blue", @"Purple", @"Pink", @"Orange", @"Green", @"Graphite"]; }
 
@@ -40,7 +41,7 @@ static NSData *DPDiaColorsIn(NSView *pane) {
     NSView *indicator = bar ? DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaLoadingIndicator); }) : nil;
     __block NSData *colors = DPGet(indicator, &DPDiaColorsKey);
     if (!colors && indicator) DPFindView(indicator, ^BOOL(NSView *view) { return (colors = DPGet(view, &DPDiaColorsKey)) != nil; });
-    return colors;
+    return colors ?: DPLastDiaColors;
 }
 
 void DPProgressColors(NSView *pane, NSString *choice, simd_float3 *primary, simd_float3 *secondary) {
@@ -71,6 +72,7 @@ static void DPEncoder_setFragmentBytes(id self, SEL _cmd, const void *bytes, NSU
     NSMutableData *colors = DPGet(drawing, &DPDiaColorsKey) ?: [NSMutableData dataWithLength:2 * sizeof(simd_float3)];
     memcpy((simd_float3 *)colors.mutableBytes + (index == slots[1]), bytes, 3 * sizeof(float));
     DPSet(drawing, &DPDiaColorsKey, colors);
+    DPLastDiaColors = colors;
 }
 
 void DPInstallProgressColors(void) {
