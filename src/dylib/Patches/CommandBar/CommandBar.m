@@ -1,5 +1,3 @@
-// A new tab opens as Dia's own command bar, lifted out of the new tab page and laid over the page you were on.
-// Tabs are found and switched through Dia's AppleScript objects.
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken;
@@ -26,8 +24,6 @@ static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey =
 @end
 
 static void DPCancelCommandBar(DPCommandBarOverlay *overlay);
-static void DPPlaceShade(NSView *shade, NSWindow *window);
-static NSView *DPCardIn(NSWindow *window);
 
 #pragma mark Settings
 
@@ -78,7 +74,6 @@ static NSString *DPActiveTabID(NSWindow *window) { return DPTabID([DPScriptWindo
 static void DPFocusTab(id tab) { [tab performSelector:@selector(focus:) withObject:nil]; }
 static void DPCloseTab(id tab) { [tab performSelector:@selector(close:) withObject:nil]; }
 
-// The last two tabs shown in the window, oldest first.
 static void DPNoteActiveTab(NSWindow *window) {
     NSString *active = DPActiveTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
@@ -90,7 +85,6 @@ static NSString *DPPreviousTabID(NSWindow *window) {
     return recent.count > 1 ? recent.firstObject : nil;
 }
 
-// Tabs left blank, without the bar, after the window's last tab closed.
 static NSMutableSet<NSString *> *DPBlanks(NSWindow *window) {
     NSMutableSet *blanks = DPGet(window, &DPBlankKey);
     if (!blanks && window) DPSet(window, &DPBlankKey, blanks = [NSMutableSet set]);
@@ -112,14 +106,12 @@ static void DPFocusBar(DPCommandBarOverlay *overlay) {
     if (text && overlay.host.firstResponder != text) [overlay.host makeFirstResponder:text];
 }
 
-// The bar's suggestions, with Dia's 8 points below them.
-static CGFloat DPSuggestionsHeight(NSView *panel) {
-    CGFloat height = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarSuggestions); }).intrinsicContentSize.height;
+static CGFloat DPSuggestionsHeight(NSView *suggestions) {
+    CGFloat height = suggestions.intrinsicContentSize.height;
     return height > 0 ? height + 8 : 0;
 }
 
-// In a flipped view. Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar,
-// which keeps its top where it opened as its suggestions grow.
+// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar.
 static NSRect DPBarFrame(NSView *view, NSSize size, CGFloat collapsedHeight) {
     NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame;
     NSPoint origin = NSMakePoint(NSMidX(bounds) - size.width / 2, NSMidY(bounds) - collapsedHeight / 2);
@@ -132,38 +124,6 @@ static NSRect DPBarFrame(NSView *view, NSSize size, CGFloat collapsedHeight) {
     CGFloat y = MAX(MIN(origin.y, NSMaxY(inside) - size.height), NSMinY(inside));
     return NSMakeRect(round(x), round(y), size.width, size.height);
 }
-
-@implementation DPCommandBarOverlay
-
-- (BOOL)isFlipped { return YES; }
-
-// A new tab's bar is placed by the height it opened at. ⌘L's popover keeps sizing its bar, from heights that come and go
-// as it opens, so it's placed by its height less its suggestions, and made as wide as the new tab page makes it.
-- (NSRect)frameForPanelSize:(NSSize)size {
-    if (!DPIsKind(self.page, DPDiaPopover)) {
-        if (!self.collapsedHeight) self.collapsedHeight = size.height;
-        return DPBarFrame(self, size, self.collapsedHeight);
-    }
-    size.width = MIN(652, NSWidth((DPCardIn(self.host) ?: self).bounds) - 28);
-    return DPBarFrame(self, size, size.height - DPSuggestionsHeight(self.panel));
-}
-
-- (void)layout {
-    [super layout];
-    if (self.panel) self.panel.frame = [self frameForPanelSize:self.panel.frame.size];
-    DPPlaceShade(self.shade, self.host);
-}
-
-- (NSView *)hitTest:(NSPoint)point {
-    NSView *hit = [super hitTest:point];
-    return !hit || (self.panel && [hit isDescendantOf:self.panel]) ? hit : self;
-}
-
-- (void)mouseDown:(NSEvent *)event { DPCancelCommandBar(self); }
-- (void)rightMouseDown:(NSEvent *)event {}
-- (void)scrollWheel:(NSEvent *)event {}
-
-@end
 
 #pragma mark Shade
 
@@ -178,7 +138,6 @@ static CALayer *DPBlurLayer(void) {
     return backdrop;
 }
 
-// The page's rounded card: the visible content pane, or its ancestor that clips it.
 static NSView *DPCardIn(NSWindow *window) {
     NSView *pane = DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaContentPane) && !view.isHiddenOrHasHiddenAncestor; });
     for (NSView *view = pane; view && view != window.contentView; view = view.superview)
@@ -198,7 +157,7 @@ static NSView *DPLayerView(NSRect frame, NSArray<CALayer *> *layers) {
     return view;
 }
 
-// Inside the card, so it moves and clips with it as the sidebar slides.
+// In the card, so it moves with it as the sidebar slides.
 static void DPPlaceShade(NSView *shade, NSWindow *window) {
     NSView *card = DPCardIn(window);
     if (!shade || !card || shade.superview == card) return;
@@ -206,7 +165,6 @@ static void DPPlaceShade(NSView *shade, NSWindow *window) {
     [card addSubview:shade];
 }
 
-// Blurs the whole window under the bar when the sidebar is blurred too.
 static NSView *DPAddWindowBlur(NSView *bar) {
     CALayer *blur = DPCommandBarBlur.on && DPTuned(DPBlurWindowKey) ? DPBlurLayer() : nil;
     if (!blur) return nil;
@@ -239,9 +197,41 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
     overlay.shade = DPAddShade(overlay.host, !overlay.windowBlur);
 }
 
+@implementation DPCommandBarOverlay
+
+- (BOOL)isFlipped { return YES; }
+
+// ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
+- (NSRect)frameForPanelSize:(NSSize)size {
+    if (!DPIsKind(self.page, DPDiaPopover)) {
+        if (!self.collapsedHeight) self.collapsedHeight = size.height;
+        return DPBarFrame(self, size, self.collapsedHeight);
+    }
+    size.width = MIN(652, NSWidth((DPCardIn(self.host) ?: self).bounds) - 28);
+    NSView *suggestions = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarSuggestions); });
+    return DPBarFrame(self, size, size.height - DPSuggestionsHeight(suggestions));
+}
+
+- (void)layout {
+    [super layout];
+    if (self.panel) self.panel.frame = [self frameForPanelSize:self.panel.frame.size];
+    DPPlaceShade(self.shade, self.host);
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+    NSView *hit = [super hitTest:point];
+    return !hit || (self.panel && [hit isDescendantOf:self.panel]) ? hit : self;
+}
+
+- (void)mouseDown:(NSEvent *)event { DPCancelCommandBar(self); }
+- (void)rightMouseDown:(NSEvent *)event {}
+- (void)scrollWheel:(NSEvent *)event {}
+
+@end
+
 #pragma mark Presenting
 
-// Relaid out so the toolbar options that keep it on new tab pages see the page come and go.
+// Relaid out so the toolbar options for new tab pages see it come and go.
 static void DPHidePage(NSView *page, BOOL hidden) {
     page.hidden = hidden;
     for (NSView *view = page.superview; view; view = view.superview)
@@ -260,7 +250,6 @@ static NSView *DPBlankPage(NSWindow *window) {
     return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaNewTabPage) && DPGet(view, &DPBlankKey); });
 }
 
-// Returns the tab the bar opened, still open.
 static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
     [overlay.watch invalidate];
     if (overlay.keyMonitor) [NSEvent removeMonitor:overlay.keyMonitor];
@@ -283,7 +272,7 @@ static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
 static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     NSView *page = overlay.page;
     BOOL overBlank = overlay.overBlank;
-    if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];  // As Escape closes it.
+    if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
     id tab = DPDismissCommandBar(overlay);
     if (overBlank) DPMakeBlank(page);
     else if (tab) DPCloseTab(tab);
@@ -325,7 +314,7 @@ static id DPWatchKeys(DPCommandBarOverlay *overlay) {
         if (!overlay || event.window != overlay.host) return event;
         if (event.type == NSEventTypeLeftMouseUp || event.keyCode == 36 || event.keyCode == 76) {
             overlay.picked = overlay.picked || DPBarText(overlay).string.length > 0;
-            if (overlay.openedTab) DPWatchSoon(overlay, 60);  // ⌘L's bar goes with its popover.
+            if (overlay.openedTab) DPWatchSoon(overlay, 60);
             return event;
         }
         BOOL escape = event.keyCode == 53;
@@ -333,16 +322,15 @@ static id DPWatchKeys(DPCommandBarOverlay *overlay) {
                      && [event.charactersIgnoringModifiers isEqualToString:@"w"];
         if (!escape && !close) return event;
         NSRect bar = [overlay.host convertRectToScreen:[overlay.panel convertRect:overlay.panel.bounds toView:nil]];
-        for (NSWindow *child in overlay.host.childWindows)  // Like the bar's @ menu, which Escape closes first.
+        for (NSWindow *child in overlay.host.childWindows)  // The @ menu, which Escape closes first.
             if (escape && child.visible && NSIntersectsRect(child.frame, bar)) return event;
         DPCancelCommandBar(overlay);
         return nil;
     }];
 }
 
-// Going back to the page before Dia first draws the new tab keeps the new tab page from flashing up, but Dia, still
-// switching tabs, takes the page's web view out of the window: the page shows, yet takes no clicks. So the web view is
-// put back before the window draws. Dia also titles the window after the new tab once its switch is done.
+// Going back before Dia first draws the new tab hides the new tab page, but Dia, mid-switch, then takes the page's web
+// view out of the window, leaving it unclickable, and later titles the window after the new tab. Both are undone here.
 static void DPGoBack(DPCommandBarOverlay *overlay) {
     NSView *web = DPFindView(overlay.host.contentView, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor; });
     NSView *paneHost = web.superview;
@@ -368,31 +356,21 @@ static void DPGoBack(DPCommandBarOverlay *overlay) {
     });
 }
 
-// ⌘L's popover sets the bar's text at 13 points with 19 above it, where the new tab page has 16 and 21. Dia puts back
-// the 19 as it opens, after sizing the bar by it, so this returns how much taller the bar is for the 21.
+// ⌘L's bar has 13 point text with 19 points above it, where the new tab page's has 16 and 21. Dia keeps putting back the
+// 19 after sizing the bar by it, so this returns the height the 21 adds.
 static CGFloat DPStyleAsNewTab(NSView *panel) {
     NSView *bar = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarRoot); });
     NSView *input = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarInput); });
     NSTextView *text = (NSTextView *)DPFindView(input, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
-    void **font = DPIvar(input, "font");
+    __strong NSFont **font = (__strong NSFont **)DPIvar(input, "font");
     double *top = DPIvar(bar, "layoutConfiguration");
     if (!text || !font || !top) return 0;
-    if (text.font.pointSize != 16) {
-        NSFont *big = [NSFont systemFontOfSize:16];
-        void *old = *font;
-        *font = (void *)CFBridgingRetain(big);
-        if (old) CFRelease(old);
-        text.font = big;
-        NSMutableDictionary *typing = [text.typingAttributes mutableCopy];
-        typing[NSFontAttributeName] = big;
-        text.typingAttributes = typing;
-    }
+    if (text.font.pointSize != 16) *font = text.font = [NSFont systemFontOfSize:16];
     CGFloat grown = 21 - *top;
     *top = 21;
     return grown;
 }
 
-// Lays the bar of a page, the new tab page or ⌘L's popover, over the window, shading the tab behind.
 static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     NSWindow *window = page.window;
     NSView *frame = window.contentView.superview, *panel = DPPanelIn(page);
@@ -409,9 +387,11 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     DPSet(panel, &DPHomeKey, panel.superview);
     [overlay addSubview:panel];
     NSMutableArray<NSView *> *shadows = [NSMutableArray array];
-    for (NSView *view in panel.subviews)  // ⌘L's popover draws its own in place of one.
-        if (DPIsKind(view, DPDiaShadowView) && view.hidden) [shadows addObject:view];
-    for (NSView *view in shadows) view.hidden = NO;
+    for (NSView *view in panel.subviews)  // ⌘L's popover hides one, drawing its own.
+        if (DPIsKind(view, DPDiaShadowView) && view.hidden) {
+            view.hidden = NO;
+            [shadows addObject:view];
+        }
     overlay.shownShadows = shadows;
     DPShowShade(overlay);
     panel.frame = [overlay frameForPanelSize:panel.frame.size];
@@ -421,7 +401,6 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     return overlay;
 }
 
-// Over a blank tab, the bar opens on that tab's own page, with nothing to go back to.
 static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
     id openedTab = [DPScriptWindow(window) valueForKey:@"activeTab"];
@@ -479,8 +458,7 @@ static DPCommandBarOverlay *DPOverlayAbove(NSView *view) {
     return (DPCommandBarOverlay *)view;
 }
 
-// The new tab page sized the bar to its suggestions; out of it, the bar is sized here, with Dia's 8 points below them.
-// ⌘L's popover still sizes its own.
+// The new tab page sizes its bar to the suggestions, so out of it, the bar is sized here. ⌘L's popover sizes its own.
 static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSuggestions_invalidateIntrinsicContentSize, self);
     DPCommandBarOverlay *overlay = DPOverlayAbove(self);
@@ -488,8 +466,8 @@ static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd)
     __weak NSView *suggestions = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         NSView *panel = overlay.panel;
-        CGFloat height = suggestions.intrinsicContentSize.height, want = overlay.collapsedHeight + height + (height > 0 ? 8 : 0);
-        if (!panel || height < 0 || NSHeight(panel.frame) == want) return;
+        CGFloat want = overlay.collapsedHeight + DPSuggestionsHeight(suggestions);
+        if (!panel || suggestions.intrinsicContentSize.height < 0 || NSHeight(panel.frame) == want) return;
         panel.frame = [overlay frameForPanelSize:NSMakeSize(NSWidth(panel.frame), want)];
         for (NSView *view = suggestions.superview; view && view != panel; view = view.superview) {
             view.frame = NSMakeRect(0, 0, NSWidth(view.frame), want);
@@ -499,7 +477,7 @@ static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd)
     });
 }
 
-// "Add tabs or files" opens its menu only on a showing new tab page; typing @ opens the same menu from the bar.
+// "Add tabs or files" only opens its menu on a showing new tab page, but @ opens the same one.
 static void DPCapability_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     DPCommandBarOverlay *overlay = DPOverlayAbove(self);
     if (!overlay.returnTab) return DPCallOriginal(DPCapability_mouseDown, self, event);
@@ -530,8 +508,7 @@ static void DPRemoveAnimations(CALayer *layer) {
     for (CALayer *sublayer in layer.sublayers) DPRemoveAnimations(sublayer);
 }
 
-// Dia builds ⌘L's bar over its first few frames, then fades it in, where a new tab's bar just appears. So the bar and its
-// shade show at once when Dia has shown the bar's toolbar and stopped resizing it, without the fade.
+// Dia builds ⌘L's bar over a few frames, then fades it in. It's shown once its toolbar is in and resizing has stopped.
 static void DPShowWhenBuilt(DPCommandBarOverlay *overlay) {
     overlay.alphaValue = overlay.shade.alphaValue = 0;
     CFTimeInterval opened = CACurrentMediaTime();
@@ -548,8 +525,7 @@ static void DPShowWhenBuilt(DPCommandBarOverlay *overlay) {
     [NSRunLoop.mainRunLoop addTimer:check forMode:NSRunLoopCommonModes];
 }
 
-// ⌘L's bar is the same panel, in a popover Dia slides out of the address field. With the toolbar out of sight, the
-// panel opens as a new tab's does instead, still editing the tab it's over, and goes back as the popover closes.
+// ⌘L's bar is the same panel, in a popover under the address field. With no toolbar showing, it's lifted like a new tab's.
 static void DPPopover_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPPopover_viewDidMoveToWindow, self);
     DPCommandBarOverlay *overlay = DPGet(self, &DPOverlayKey);
@@ -580,8 +556,8 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
         if (overlay.returnTab) dispatch_async(dispatch_get_main_queue(), ^{ if (overlay.host) DPFocusTab(overlay.returnTab); });
         return;
     }
-    // Dia opens the tab that replaces a closing last tab before closing it, so a close is told by its shortcut, or
-    // afterwards by the tab before being gone.
+    // Dia opens the tab replacing a closing last tab before closing it, so only the shortcut, or later the old tab
+    // being gone, tells a close.
     BOOL closing = DPIsShortcut(NSApp.currentEvent, @"Close Tab") || (previous && !DPScriptTab(window, previous));
     if (active && ([blanks containsObject:active] || closing)) {
         DPMakeBlank(self);
@@ -594,7 +570,7 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
         [blanks removeObject:previous];
         DPCloseTab(blank);
     }
-    // The page has no size until its pane lays it out, and the bar takes its size from it.
+    // The bar takes its size from the page, which has none until its pane lays it out.
     NSView *pane = self.superview;
     while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
     [pane layoutSubtreeIfNeeded];
@@ -654,7 +630,7 @@ static void DPInstallCommandBar(void) {
 
 @interface DPCommandBarTuneRow : NSStackView <NSTextFieldDelegate>
 @property(copy) NSString *key;
-@property double scale;  // From the saved value to the shown one.
+@property double scale;
 @property NSSlider *slider;
 @property NSTextField *field;
 @end
