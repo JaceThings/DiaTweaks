@@ -65,7 +65,6 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     CADisplayLink *_link;
     NSArray *_states;
     NSTimer *_flip;
-    NSTextField *_placeholder;
 }
 
 + (void)preload {
@@ -82,12 +81,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
 - (instancetype)initWithKey:(NSString *)key {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _key = key;
-    _placeholder = DPLabel(@"No preview yet", 12, NSFontWeightRegular, NSColor.tertiaryLabelColor);
-    _placeholder.translatesAutoresizingMaskIntoConstraints = NO;
-    _placeholder.hidden = YES;
-    [self addSubview:_placeholder];
-    [_placeholder.centerXAnchor constraintEqualToAnchor:self.centerXAnchor].active = YES;
-    [_placeholder.centerYAnchor constraintEqualToAnchor:self.centerYAnchor].active = YES;
+    self.hidden = YES;  // A tweak without a preview on the wiki goes without one.
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(load) name:DPTabLayoutMayHaveChanged object:nil];
     [self load];
     return self;
@@ -124,7 +118,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [self updatePlayback];
     _media = nil;
     _shown = file;
-    _placeholder.hidden = file != nil;
+    self.hidden = !file;
     if (!file) return;
     _media = [CALayer layer];
     _media.contentsGravity = kCAGravityResizeAspectFill;
