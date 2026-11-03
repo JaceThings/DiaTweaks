@@ -19,7 +19,7 @@ CGFloat DPBottom(NSView *pane, NSRect r) { return pane.isFlipped ? NSMaxY(r) : N
 // Dia lays the bookmarks bar out right under the toolbar, so it hides and shows with it.
 NSView *DPBookmarksUnder(NSView *pane, NSView *bar) {
     for (NSView *sub in pane.subviews)
-        if (DPIsKind(sub, DPDiaBookmarksBar) && !sub.hidden && fabs(DPTop(pane, DPLaidOutFrame(sub)) - DPBottom(pane, bar.frame)) < 0.5) return sub;
+        if (DPIsKind(sub, DPDiaBookmarksBar) && !sub.hidden && fabs(DPTop(pane, DPLaidOutFrame(sub)) - DPBottom(pane, DPLaidOutFrame(bar))) < 0.5) return sub;
     return nil;
 }
 
@@ -88,7 +88,14 @@ void DPApplyToolbar(NSView *pane) {
         for (NSView *view in bars) [pane addSubview:view positioned:NSWindowAbove relativeTo:nil];
     }
 
-    CGFloat edge = DPBottom(pane, DPLaidOutFrame(bars.lastObject)), shift = (edge - DPTop(pane, bar.frame)) * progress;
+    CGFloat edge = DPBottom(pane, DPLaidOutFrame(bars.lastObject)), shift = (edge - DPTop(pane, DPLaidOutFrame(bar))) * progress;
+    // Out of sight, the bars wait above the pane, where the address field's text cursor can't reach the page under them.
+    CGFloat lift = progress == 1 && !hover.revealed && hover.progress == 0 ? edge : 0;
+    for (NSView *view in bars) {
+        NSRect laidOut = DPLaidOutFrame(view), frame = laidOut;
+        frame.origin.y += pane.isFlipped ? -lift : lift;
+        DPAssignFrame(view, laidOut, frame);
+    }
     NSMutableArray<NSView *> *stack = [NSMutableArray new];
     for (NSView *sub in pane.subviews) if (![bars containsObject:sub]) [stack addObject:sub];
     [stack sortUsingComparator:^NSComparisonResult(NSView *a, NSView *b) {
