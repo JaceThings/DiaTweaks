@@ -106,8 +106,8 @@ static void DPFocusBar(DPCommandBarOverlay *overlay) {
     if (text && overlay.host.firstResponder != text) [overlay.host makeFirstResponder:text];
 }
 
-static CGFloat DPSuggestionsHeight(NSView *suggestions) {
-    CGFloat height = suggestions.intrinsicContentSize.height;
+static CGFloat DPSuggestionsHeight(NSView *panel) {
+    CGFloat height = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarSuggestions); }).intrinsicContentSize.height;
     return height > 0 ? height + 8 : 0;
 }
 
@@ -204,12 +204,11 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 // ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
 - (NSRect)frameForPanelSize:(NSSize)size {
     if (!DPIsKind(self.page, DPDiaPopover)) {
-        if (!self.collapsedHeight) self.collapsedHeight = size.height;
+        if (!self.collapsedHeight) self.collapsedHeight = size.height - DPSuggestionsHeight(self.panel);
         return DPBarFrame(self, size, self.collapsedHeight);
     }
     size.width = MIN(652, NSWidth((DPCardIn(self.host) ?: self).bounds) - 28);
-    NSView *suggestions = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarSuggestions); });
-    return DPBarFrame(self, size, size.height - DPSuggestionsHeight(suggestions));
+    return DPBarFrame(self, size, size.height - DPSuggestionsHeight(self.panel));
 }
 
 - (void)layout {
@@ -412,6 +411,8 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     if (overBlank) {
         [DPBlanks(window) removeObject:openedID];
         DPSet(page, &DPBlankKey, nil);
+        NSTextView *text = DPBarText(overlay);
+        [text insertText:@"" replacementRange:NSMakeRange(0, text.string.length)];
     }
     overlay.overBlank = overBlank;
     overlay.openedTab = openedTab;
@@ -466,7 +467,7 @@ static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd)
     __weak NSView *suggestions = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         NSView *panel = overlay.panel;
-        CGFloat want = overlay.collapsedHeight + DPSuggestionsHeight(suggestions);
+        CGFloat want = overlay.collapsedHeight + DPSuggestionsHeight(panel);
         if (!panel || suggestions.intrinsicContentSize.height < 0 || NSHeight(panel.frame) == want) return;
         panel.frame = [overlay frameForPanelSize:NSMakeSize(NSWidth(panel.frame), want)];
         for (NSView *view = suggestions.superview; view && view != panel; view = view.superview) {
