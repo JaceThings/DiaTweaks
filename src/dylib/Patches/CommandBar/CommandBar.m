@@ -204,7 +204,7 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 // ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
 - (NSRect)frameForPanelSize:(NSSize)size {
     if (!DPIsKind(self.page, DPDiaPopover)) {
-        if (!self.collapsedHeight) {  // From Dia's bar, which a tweak may clip the panel around.
+        if (!self.collapsedHeight) {  // From the bar, since a tweak may clip the panel.
             NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
             self.collapsedHeight = NSHeight(bar.frame) - DPSuggestionsHeight(self.panel);
         }
@@ -370,7 +370,7 @@ static CGFloat DPStyleAsNewTab(NSView *panel) {
     if (text.font.pointSize != 16) *font = text.font = [NSFont systemFontOfSize:16];
     CGFloat grown = 21 - *top;
     *top = 21;
-    bar.needsLayout = YES;  // Laid out now, so a tweak measuring the bar as the panel is sized sees it styled.
+    bar.needsLayout = YES;  // So a tweak measuring it while the panel sizes sees it styled.
     [bar layoutSubtreeIfNeeded];
     return grown;
 }

@@ -1,17 +1,18 @@
-// Without chat usage, the command bar's bottom row only holds Go and two buttons that can't be used.
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPCompactCommandBar, DPCompactWithChat;
-void DPApplyCompactCommandBar(DPPatch *patch);
 
 NSView *DPCommandBarPart(NSView *commandBar, const char *className);
 BOOL DPChatLocked(NSView *view);
 NSView *DPCompactToolbar(NSView *commandBar);  // The bottom row while the patch applies to this command bar, else nil.
 void DPRememberChatLocked(BOOL locked);
 NSView *DPGoButton(NSView *toolbar);
+void DPApplyCompactCommandBar(DPPatch *patch);
+CGFloat DPTrim(NSView *container);  // How much the patch shortened a popover or panel.
+void DPSetTrim(NSView *container, CGFloat trim);
 
 // Layout.m
-NSSize DPCompactSize(NSView *container, NSSize size);  // Drops the bottom row's height from a container sized to the command bar.
+NSSize DPCompactSize(NSView *container, NSSize size);
 void DPInstallCommandBarLayout(void);
 void DPResizePopovers(void);
 

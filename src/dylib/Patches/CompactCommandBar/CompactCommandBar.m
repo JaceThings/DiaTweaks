@@ -8,7 +8,7 @@ BOOL DPChatLocked(NSView *view) {
     return DPFindView(view, ^BOOL(NSView *v) { return [v.accessibilityLabel hasSuffix:@"only available when you have chat usage"]; }) != nil;
 }
 
-// Dia labels the buttons a moment after a command bar first shows, so until then it goes by the last one it labeled.
+// Dia labels the buttons a moment after the command bar shows, so until then the last label decides.
 static NSString *const DPChatLockedKey = @"commandBarChatLocked";
 
 static NSUserDefaults *DPCommandBarDefaults(void) {
@@ -21,15 +21,29 @@ void DPRememberChatLocked(BOOL locked) {
     if ([DPCommandBarDefaults() boolForKey:DPChatLockedKey] != locked) [DPCommandBarDefaults() setBool:locked forKey:DPChatLockedKey];
 }
 
+static BOOL DPCompacts(NSView *toolbar) {
+    return DPCompactWithChat.on || DPChatLocked(toolbar);
+}
+
 NSView *DPCompactToolbar(NSView *commandBar) {
-    NSView *toolbar = commandBar ? DPCommandBarPart(commandBar, DPDiaCommandBarToolbar) : nil;
-    BOOL locked = toolbar && (DPCompactWithChat.on || DPChatLocked(toolbar) || [DPCommandBarDefaults() boolForKey:DPChatLockedKey]);
-    return DPCompactCommandBar.on && locked ? toolbar : nil;
+    NSView *toolbar = DPCommandBarPart(commandBar, DPDiaCommandBarToolbar);
+    BOOL compacts = toolbar && (DPCompacts(toolbar) || [DPCommandBarDefaults() boolForKey:DPChatLockedKey]);
+    return DPCompactCommandBar.on && compacts ? toolbar : nil;
 }
 
 NSView *DPGoButton(NSView *toolbar) {
     NSStackView *stack = toolbar.subviews.firstObject;
     return [stack isKindOfClass:NSStackView.class] ? stack.views.lastObject : nil;
+}
+
+static char DPTrimKey;
+
+CGFloat DPTrim(NSView *container) {
+    return [DPGet(container, &DPTrimKey) doubleValue];
+}
+
+void DPSetTrim(NSView *container, CGFloat trim) {
+    DPSet(container, &DPTrimKey, trim > 0 ? @(trim) : nil);
 }
 
 void DPApplyCompactCommandBar(DPPatch *patch) {
@@ -38,16 +52,14 @@ void DPApplyCompactCommandBar(DPPatch *patch) {
     DPResizePopovers();
 }
 
-// A command bar that isn't open passes, as does one with chat usage, which keeps its bottom row unless asked not to.
 static NSString *DPVerifyCompactCommandBar(DPPatch *patch) {
     for (NSView *commandBar in DPFindViews(DPDiaCommandBar)) {
         NSView *toolbar = DPCommandBarPart(commandBar, DPDiaCommandBarToolbar), *go = DPGoButton(toolbar);
         NSView *input = DPCommandBarPart(commandBar, DPDiaCommandBarInput);
-        if (!go || !input || !(DPChatLocked(toolbar) || DPCompactWithChat.on)) continue;
+        if (!go || !input || !DPCompacts(toolbar)) continue;
         NSRect goFrame = [go convertRect:go.bounds toView:input.superview];
         BOOL beside = NSMinY(goFrame) < NSMaxY(input.frame) && NSMaxY(goFrame) > NSMinY(input.frame);
         if (beside != patch->on) return patch->on ? @"Go is still under the input" : @"Go is still beside the input";
-        // The new tab page's panel drops the empty row; the command bar inside keeps its height.
         NSView *panel = commandBar.superview.superview;
         if (DPIsKind(panel, DPDiaAssistantPanel) && DPIsKind(panel.superview.superview, DPDiaNewTabPage)
             && (NSHeight(panel.frame) < NSHeight(commandBar.frame) - 0.5) != patch->on)

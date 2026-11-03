@@ -1,32 +1,38 @@
 #import "CompactCommandBar.h"
 
 static const CGFloat DPCommandBarSpacing = 14;
-static char DPCompactedKey, DPPopoverTrimKey;
+static char DPCompactedKey;
 
-// The popover and the new tab page's panel size themselves to the command bar, so they drop the bottom row's height,
-// keeping as much space under the input (or the suggestions) as the input has between it and the suggestions.
+// Drops the bottom row, leaving as much space under the input, or the suggestions once there are some, as above the input.
 NSSize DPCompactSize(NSView *container, NSSize size) {
     NSView *commandBar = DPCommandBarPart(container, DPDiaCommandBar), *toolbar = DPCompactToolbar(commandBar);
     NSView *input = DPCommandBarPart(commandBar, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(commandBar, DPDiaCommandBarSuggestions);
     if (toolbar && input && suggestions) {
-        CGFloat gap = NSMinY(suggestions.frame) - NSMaxY(input.frame), below = NSMinY(input.frame) - gap;
-        size.height -= MAX(0, NSHeight(toolbar.frame) - below);
+        CGFloat emptyGap = suggestions.intrinsicContentSize.height > 0 ? 0 : NSMinY(suggestions.frame) - NSMaxY(input.frame);
+        size.height -= MAX(0, NSHeight(toolbar.frame) + emptyGap - NSMinY(input.frame));
     }
     return size;
 }
 
 static void DPPopover_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     NSSize compact = DPCompactSize(self, size);
-    DPSet(self, &DPPopoverTrimKey, compact.height < size.height ? @(size.height - compact.height) : nil);
+    DPSetTrim(self, size.height - compact.height);
     DPCallOriginal(DPPopover_setFrameSize, self, compact);
 }
 
-// A switch flip doesn't make Dia size an open popover again, so it's given its full size here to trim or not, keeping its top.
+// Shrunk with its container, the command bar would squeeze the suggestions to keep the row, so the container clips the row instead.
+static void DPCommandBar_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
+    CGFloat trim = 0;
+    for (NSView *view = self.superview; view && !trim; view = view.superview) trim = DPTrim(view);
+    DPCallOriginal(DPCommandBar_setFrameSize, self, NSMakeSize(size.width, size.height + trim));
+}
+
+// Dia doesn't resize an open popover when the switch flips.
 void DPResizePopovers(void) {
     for (NSView *popover in DPFindViews(DPDiaPopover)) {
         if (!DPCommandBarPart(popover, DPDiaCommandBar)) continue;
         NSRect before = popover.frame;
-        [popover setFrameSize:NSMakeSize(NSWidth(before), NSHeight(before) + [DPGet(popover, &DPPopoverTrimKey) doubleValue])];
+        [popover setFrameSize:NSMakeSize(NSWidth(before), NSHeight(before) + DPTrim(popover))];
         if (!popover.superview.isFlipped) [popover setFrameOrigin:NSMakePoint(NSMinX(before), NSMaxY(before) - NSHeight(popover.frame))];
     }
 }
@@ -37,8 +43,8 @@ static void DPPopover_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
     if (DPCompactToolbar(commandBar)) commandBar.needsLayout = YES;
 }
 
-// Go moves up beside the input, and the row is still full width so it keeps its place at the trailing edge.
-// Dia lets the popover run past the top of the window, so Go is centered in the part of the row that shows.
+// The row moves up over the input, keeping Go at the trailing edge. The popover can run past the window's top, so Go
+// centers in the part that shows.
 static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPCommandBar_layout, self);
     NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar);
@@ -47,8 +53,7 @@ static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     BOOL compact = DPCompactToolbar(self) != nil;
     if (!compact && !DPGet(stack, &DPCompactedKey)) return;
     DPSet(stack, &DPCompactedKey, compact ? @YES : nil);
-    // Faded rather than hidden: the add tabs button stretches to push Go to the trailing edge. Before Dia labels them,
-    // the buttons can't be told apart, so all but Go fade.
+    // Faded, not hidden: the add tabs button stretches to push Go to the trailing edge.
     for (NSView *view in stack.views)
         if (view != DPGoButton(toolbar)) view.alphaValue = !compact;
     NSView *input = DPCommandBarPart(self, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(self, DPDiaCommandBarSuggestions);
@@ -60,7 +65,6 @@ static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     toolbar.frame = frame;
 }
 
-// The text stops short of Go instead of running under it.
 static void DPCommandBarInput_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPCommandBarInput_layout, self);
     NSView *go = DPGoButton(DPCompactToolbar(self.superview)), *text = DPCommandBarPart(self, DPDiaCommandBarText);
@@ -70,8 +74,7 @@ static void DPCommandBarInput_layout(NSView *self, SEL _cmd) {
     text.frame = frame;
 }
 
-// Dia labels the buttons after the command bar's first layout. Dictation's label says whether there's chat usage, and if
-// that isn't what the command bar went by, it lays out again, along with whatever sizes itself to it.
+// Labels arrive after the first layout, so a label that changes the verdict lays the command bar out again.
 static void DPCommandBarButton_setAccessibilityLabel(NSView *self, SEL _cmd, NSString *label) {
     DPCallOriginal(DPCommandBarButton_setAccessibilityLabel, self, label);
     NSView *commandBar = self;
@@ -84,7 +87,7 @@ static void DPCommandBarButton_setAccessibilityLabel(NSView *self, SEL _cmd, NSS
     for (NSView *view = commandBar; view; view = view.superview) view.needsLayout = YES;
 }
 
-// The row now lies over the input, so only Go takes clicks.
+// The row lies over the input, so only Go takes clicks.
 static NSView *DPCommandBarToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
     NSView *hit = DPCallOriginal(DPCommandBarToolbar_hitTest, self, point), *commandBar = self.superview.superview;
     if (!hit || !DPIsKind(commandBar, DPDiaCommandBar) || !DPCompactToolbar(commandBar)) return hit;
@@ -95,6 +98,7 @@ void DPInstallCommandBarLayout(void) {
     DPHook(DPDiaPopover, @selector(setFrameSize:), (IMP)DPPopover_setFrameSize);
     DPHook(DPDiaPopover, @selector(setFrameOrigin:), (IMP)DPPopover_setFrameOrigin);
     DPInstallNewTabLayout();
+    DPHook(DPDiaCommandBar, @selector(setFrameSize:), (IMP)DPCommandBar_setFrameSize);
     DPHook(DPDiaCommandBar, @selector(layout), (IMP)DPCommandBar_layout);
     DPHook(DPDiaCommandBarButton, @selector(setAccessibilityLabel:), (IMP)DPCommandBarButton_setAccessibilityLabel);
     DPHook(DPDiaCommandBarInput, @selector(layout), (IMP)DPCommandBarInput_layout);
