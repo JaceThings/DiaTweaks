@@ -96,11 +96,11 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin
     peek.pane = pane;
     peek.page = page;
     peek.host = host;
-    NSVisualEffectView *blur = [NSVisualEffectView new];
-    blur.material = NSVisualEffectMaterialFullScreenUI;
-    blur.blendingMode = NSVisualEffectBlendingModeWithinWindow;
-    blur.state = NSVisualEffectStateActive;
-    blur.wantsLayer = YES;
+    // A translucent scrim rather than an NSVisualEffectView: Dia's page is GPU-composited, so a within-window blur
+    // can't sample it and falls back to an opaque dark fill. The page keeps rendering behind the card, so a light
+    // scrim leaves the original page visible and recedes it, as in Arc.
+    NSView *blur = DPLayerView();
+    blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:0.2].CGColor;
     peek.blur = blur;
     peek.card = DPLayerView();
     peek.card.layer.shadowOpacity = 0.35;
