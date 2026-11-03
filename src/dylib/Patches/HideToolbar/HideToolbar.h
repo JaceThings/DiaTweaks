@@ -2,7 +2,7 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPPlainSelectedTab;
-extern DPPatch DPPeekToolbarOnCopy;
+extern DPPatch DPPeekToolbarOnCopy, DPCopyToast;
 extern NSHashTable<NSView *> *DPPanes;  // Every content pane laid out so far.
 
 // Shows the hidden toolbar while the pointer is at the top of a pane, or in its place while an option keeps it there. One per pane.
@@ -32,3 +32,8 @@ void DPRelayoutPanes(void);
 
 // PlainTab.m
 void DPRepaintTabs(NSWindow *window);  // After the toolbar's opacity changes.
+
+// CopyToast.m
+void DPShowCopyToast(NSView *pane, NSString *message);
+void DPRemoveCopyToasts(void);
+NSString *DPVerifyNoCopyToast(DPPatch *patch);
