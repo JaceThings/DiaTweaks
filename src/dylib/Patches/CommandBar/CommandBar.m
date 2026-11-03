@@ -370,6 +370,8 @@ static CGFloat DPStyleAsNewTab(NSView *panel) {
     if (text.font.pointSize != 16) *font = text.font = [NSFont systemFontOfSize:16];
     CGFloat grown = 21 - *top;
     *top = 21;
+    bar.needsLayout = YES;  // Laid out now, so a tweak measuring the bar as the panel is sized sees it styled.
+    [bar layoutSubtreeIfNeeded];
     return grown;
 }
 
