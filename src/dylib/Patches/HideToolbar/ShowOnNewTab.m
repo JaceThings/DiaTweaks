@@ -8,7 +8,7 @@ DP_PATCH(DPShowToolbarOnNewTab) {
     .title = @"Show toolbar on new tab pages",
     .detail = @"Keep the toolbar and bookmarks bar on new tab pages, and hide them again once a site opens.",
     .symbol = @"plus.square.on.square",
-    .tint = @"systemOrangeColor",
+    .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
     .apply = DPApplyShowOnNewTab,
     .verify = DPVerifyKeptInPlace,

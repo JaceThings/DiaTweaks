@@ -70,12 +70,12 @@ static NSString *DPVerifyCompactCommandBar(DPPatch *patch) {
 
 DP_PATCH(DPCompactCommandBar) {
     .key = @"compactCommandBar",
-    .order = 97,
+    .order = 90,
     .section = @"Command Bar",
     .title = @"Compact command bar",
     .detail = @"Fit the command bar on one line when adding tabs, files and dictation need chat usage.",
     .symbol = @"rectangle.and.text.magnifyingglass",
-    .tint = @"systemCyanColor",
+    .tint = @"systemOrangeColor",
     .classes = DPClasses(DPDiaPopover, DPDiaAssistantPanel, DPDiaNewTabPage, DPDiaCommandBar, DPDiaCommandBarInput, DPDiaCommandBarText, DPDiaCommandBarSuggestions, DPDiaCommandBarToolbar, DPDiaCommandBarButton),
     .install = DPInstallCommandBarLayout,
     .apply = DPApplyCompactCommandBar,

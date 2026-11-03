@@ -92,7 +92,7 @@ DP_PATCH(DPPlainSelectedTab) {
     .title = @"Plain tab while the toolbar hides",
     .detail = @"Keep the selected tab at the top in the page color, not the site's, while the toolbar is hidden. It takes the site's color again as the toolbar shows.",
     .symbol = @"paintbrush",
-    .tint = @"systemPinkColor",
+    .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
     .classes = DPClasses(DPDiaColorFill, DPDiaTabShape, DPDiaTabStrip),
     .install = DPInstallPlainSelectedTab,

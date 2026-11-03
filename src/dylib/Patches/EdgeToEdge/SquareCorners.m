@@ -193,7 +193,7 @@ DP_PATCH(DPSquareSidebarCorners) {
     .title = @"Square corners by the sidebar",
     .detail = @"Let web pages meet the sidebar with straight edges.",
     .symbol = @"square",
-    .tint = @"systemIndigoColor",
+    .tint = @"systemBlueColor",
     .requires = @"edgeToEdge",
     .verify = DPVerifySquareCorners,
 };

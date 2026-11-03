@@ -19,7 +19,7 @@ DP_PATCH(DPRevealToolbarOnHover) {
     .title = @"Reveal toolbar on hover",
     .detail = @"Show the hidden toolbar while the pointer is at the top of the page.",
     .symbol = @"cursorarrow",
-    .tint = @"systemTealColor",
+    .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
     .apply = DPApplyReveal,
     .verify = DPVerifyRevealToolbar,

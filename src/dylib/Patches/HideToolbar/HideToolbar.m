@@ -56,7 +56,7 @@ DP_PATCH(DPHideToolbar) {
     .title = @"Hide toolbar",
     .detail = @"Remove the bar with the address, navigation buttons and extensions. Experimental.",
     .symbol = @"menubar.rectangle",
-    .tint = @"systemGrayColor",
+    .tint = @"systemIndigoColor",
     .section = @"Toolbar",
     .classes = DPClasses(DPDiaContentPane, DPDiaToolbar),
     .install = DPInstallHideToolbar,

@@ -17,7 +17,7 @@ DP_PATCH(DPHidePinnedTabBorder) {
     .title = @"Hide pinned tab border",
     .detail = @"Remove the colored border around the selected pinned tab.",
     .symbol = @"square.dashed",
-    .tint = @"systemIndigoColor",
+    .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaPinnedTab, DPDiaPinnedTabOutline),
     .hides = DPIsPinnedTabOutline,

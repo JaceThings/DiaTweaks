@@ -68,7 +68,7 @@ DP_PATCH(DPICloudPasswords) {
     .title = @"Allow iCloud Passwords",
     .detail = @"Lets the iCloud Passwords extension fill passwords from Apple Passwords, which a patched Dia can't reach. While the extension is connected, the original Dia that DiaTweaks keeps runs in the background without windows and talks to Apple Passwords for it. Experimental.",
     .symbol = @"key.fill",
-    .tint = @"systemBlueColor",
+    .tint = @"systemGreenColor",
     .section = @"Passwords",
     .install = DPInstallICloudPasswords,
     .apply = DPApplyICloudPasswords,

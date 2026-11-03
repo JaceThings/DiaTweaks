@@ -8,7 +8,7 @@ DP_PATCH(DPHideSidebarButton) {
     .title = @"Hide sidebar button",
     .detail = @"Hide the sidebar toggle at the top left of the toolbar.",
     .symbol = @"sidebar.left",
-    .tint = @"systemOrangeColor",
+    .tint = @"systemPurpleColor",
     .section = @"Toolbar Items",
     .classes = DPClasses(DPDiaToolbar),
     .disabledBy = @"hideToolbar",

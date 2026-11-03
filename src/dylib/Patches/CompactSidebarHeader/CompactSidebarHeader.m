@@ -89,7 +89,7 @@ DP_PATCH(DPCompactSidebarHeader) {
     .title = @"Compact sidebar header",
     .detail = @"Move the pinned tabs up into the empty space under the window buttons.",
     .symbol = @"rectangle.compress.vertical",
-    .tint = @"systemMintColor",
+    .tint = @"systemTealColor",
     .classes = DPClasses(DPDiaSidebarController, DPDiaSidebarHeader, DPDiaTrafficLights),
     .install = DPInstallCompactSidebarHeader,
     .apply = DPApplyCompactSidebarHeader,

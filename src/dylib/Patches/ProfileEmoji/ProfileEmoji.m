@@ -184,7 +184,7 @@ DP_PATCH(DPProfileEmoji) {
     .title = @"Profile emoji",
     .detail = @"Adds an emoji to each profile in Settings → Profiles, shown in place of the profile's dot in the profile switcher.",
     .symbol = @"face.smiling",
-    .tint = @"systemYellowColor",
+    .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaSpaceSwitcher, DPDiaSpaceSwitcherItem, DPDiaPageIndicatorDot, DPDiaProfilePane, DPDiaSettingsFormGroup),
     .install = DPInstallProfileEmoji,
