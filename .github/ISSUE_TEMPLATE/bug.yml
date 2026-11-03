@@ -23,6 +23,8 @@ body:
         - Show Toolbar on Hover
         - Show Toolbar on New Tabs
         - Show Toolbar with Sidebar
+        - Show Toast When Copying URL
+        - Show Toolbar When Copying URL
         - Hide Site Color in Tab Bar
         - Always Show Address Field
         - Hide Chat Button
