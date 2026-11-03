@@ -6,16 +6,17 @@
 // opens, so nothing reloads. Closing the Peek discards it. Until then Dia doesn't manage the page, so popups and
 // permission prompts from inside a Peek wait until it's expanded.
 static NSMapTable *DPPeekFactories;  // Each page -> the browser context or browser that made it.
+static __weak id DPPeekLastFactory;  // The context or browser that most recently made a page: the active profile.
 
 static id DPContext_create(id self, SEL _cmd, id configuration) {
     id page = DPCallOriginal(DPContext_create, self, configuration);
-    if (page) [DPPeekFactories setObject:self forKey:page];
+    if (page) { [DPPeekFactories setObject:self forKey:page]; DPPeekLastFactory = self; }
     return page;
 }
 
 static id DPBrowser_create(id self, SEL _cmd, id configuration) {
     id page = DPCallOriginal(DPBrowser_create, self, configuration);
-    if (page) [DPPeekFactories setObject:self forKey:page];
+    if (page) { [DPPeekFactories setObject:self forKey:page]; DPPeekLastFactory = self; }
     return page;
 }
 
@@ -29,7 +30,18 @@ static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     DPCallOriginal(DPPage_attach, self, host);
 }
 
-BOOL DPPeekCanOpen(id source) { return source && [DPPeekFactories objectForKey:source]; }
+// The browser context or browser that can make a peek's page in the same space as `source`. A page Peek caught at
+// creation is in the factory map. Dia makes older and restored tabs without going through the hooked createWebContents,
+// and their page (a Swift object) exposes no pointer to its context, so those fall back to the context that last made
+// a page: the profile the window is working in. Right for the usual single-profile setup, so a shift-click peeks from
+// every tab rather than only ones opened since the patch loaded.
+static id DPPeekContextForSource(id source) {
+    if (!source) return nil;
+    id factory = [DPPeekFactories objectForKey:source];
+    return factory ?: DPPeekLastFactory;
+}
+
+BOOL DPPeekCanOpen(id source) { return DPPeekContextForSource(source) != nil; }
 
 BOOL DPPeekShows(id page) {
     if (!page) return NO;
@@ -53,7 +65,7 @@ static BOOL DPPeekGive(id page, id delegate, id source, NSURL *url, NSInteger di
 
 // The page is set up for drawing, attached to a card, then loaded. If no card can show it, it opens as a tab.
 void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source) {
-    id factory = source ? [DPPeekFactories objectForKey:source] : nil;
+    id factory = DPPeekContextForSource(source);
     Class configuration = objc_getClass(DPDiaWebContentsConfiguration);
     if (!window || !url || !factory || !configuration || DPPeekCardIn(window)) return;
     id page = ((id (*)(id, SEL, id))objc_msgSend)(factory, @selector(createWebContents:), [configuration new]);
