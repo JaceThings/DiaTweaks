@@ -10,7 +10,7 @@ typedef struct DPPatch DPPatch;
 struct DPPatch {
     __unsafe_unretained NSString *key;  // Its NSUserDefaults key in com.diapatches.
     BOOL defaultOn;
-    int order;  // Settings lists patches by ascending order.
+    int order;  // Places its section in Settings. In a section, the Hide patches go last, shortest title first.
     __unsafe_unretained NSString *title, *detail;
     __unsafe_unretained NSString *symbol, *tint;  // SF Symbol and NSColor class property for the row's icon.
     __unsafe_unretained NSString *section;  // Its group in Settings.
