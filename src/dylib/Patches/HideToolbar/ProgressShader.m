@@ -55,12 +55,14 @@ CAMetalLayer *DPProgressShaderLayer(void) {
     return layer;
 }
 
-static simd_float3 DPRGB(NSColor *color) {
-    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-    return (simd_float3){rgb.redComponent, rgb.greenComponent, rgb.blueComponent};
+BOOL DPProgressColorSlots(NSUInteger slots[2]) {
+    if (!DPLoadShader()) return NO;
+    slots[0] = DPSlots[4];
+    slots[1] = DPSlots[5];
+    return YES;
 }
 
-void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, NSColor *primary, NSColor *secondary) {
+void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, simd_float3 primary, simd_float3 secondary) {
     if (layer.drawableSize.width < 1 || layer.drawableSize.height < 1) return;
     id<CAMetalDrawable> drawable = [layer nextDrawable];
     if (!drawable) return;
@@ -71,7 +73,7 @@ void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, 
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     float values[] = {progress, 1, cycle};
     simd_float2 resolution = {layer.drawableSize.width, layer.drawableSize.height};
-    simd_float3 colors[] = {DPRGB(primary), DPRGB(secondary)};
+    simd_float3 colors[] = {primary, secondary};
     id<MTLCommandBuffer> commands = [DPQueue commandBuffer];
     id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
     [encoder setRenderPipelineState:DPPipeline];

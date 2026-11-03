@@ -65,9 +65,10 @@ static char DPLineKey;
 
 - (void)draw {
     if (!self.glow) return;
-    NSColor *accent = NSColor.controlAccentColor;
+    simd_float3 primary, secondary;
+    DPProgressColors(self.superview, DPChoice(&DPShowLoadingProgress), &primary, &secondary);
     CGFloat cycle = fmod(CACurrentMediaTime(), DPCycle) / DPCycle;
-    DPDrawProgressShader(self.glow, self.shown, cycle, accent, [accent blendedColorWithFraction:0.4 ofColor:NSColor.systemPurpleColor]);
+    DPDrawProgressShader(self.glow, self.shown, cycle, primary, secondary);
 }
 
 // The glow redraws each frame while it shows, easing toward the load's progress as Dia's does.

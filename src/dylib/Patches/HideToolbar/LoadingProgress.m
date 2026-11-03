@@ -75,6 +75,7 @@ static void DPInstallLoadingProgress(void) {
     DPLoadingContents = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaWebContents, @selector(setIsLoading:), (IMP)DPContents_setIsLoading);
     DPHook(DPDiaWebContents, @selector(setLoadProgress:), (IMP)DPContents_setLoadProgress);
+    DPInstallProgressColors();
 }
 
 static void DPApplyLoadingProgress(DPPatch *patch) { DPRefreshProgress(); }
@@ -92,11 +93,14 @@ DP_PATCH(DPShowLoadingProgress) {
     .key = @"showLoadingProgress",
     .order = 43,
     .title = @"Show Loading Progress",
-    .detail = @"Show a thin line at the top of the page while it loads, where the hidden toolbar would show it.",
+    .detail = @"Show Dia's loading glow along the top of the page while it loads, where the hidden toolbar would show it.",
     .symbol = @"rectangle.topthird.inset.filled",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
     .classes = DPClasses(DPDiaWebContents, DPDiaReloadIcon),
+    .choice = @"loadingProgressColor",
+    .defaultChoice = @"dia",
+    .choices = DPProgressColorChoices,
     .install = DPInstallLoadingProgress,
     .apply = DPApplyLoadingProgress,
     .verify = DPVerifyLoadingProgress,
