@@ -204,7 +204,10 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 // ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
 - (NSRect)frameForPanelSize:(NSSize)size {
     if (!DPIsKind(self.page, DPDiaPopover)) {
-        if (!self.collapsedHeight) self.collapsedHeight = size.height - DPSuggestionsHeight(self.panel);
+        if (!self.collapsedHeight) {  // From Dia's bar, which a tweak may clip the panel around.
+            NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
+            self.collapsedHeight = NSHeight(bar.frame) - DPSuggestionsHeight(self.panel);
+        }
         return DPBarFrame(self, size, self.collapsedHeight);
     }
     size.width = MIN(652, NSWidth((DPCardIn(self.host) ?: self).bounds) - 28);
@@ -471,7 +474,7 @@ static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd)
         if (!panel || suggestions.intrinsicContentSize.height < 0 || NSHeight(panel.frame) == want) return;
         panel.frame = [overlay frameForPanelSize:NSMakeSize(NSWidth(panel.frame), want)];
         for (NSView *view = suggestions.superview; view && view != panel; view = view.superview) {
-            view.frame = NSMakeRect(0, 0, NSWidth(view.frame), want);
+            view.frame = NSMakeRect(0, 0, NSWidth(view.frame), NSHeight(panel.frame));
             view.needsLayout = YES;
         }
         [panel layoutSubtreeIfNeeded];

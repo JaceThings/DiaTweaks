@@ -1,11 +1,16 @@
 #import "CompactCommandBar.h"
 
-static char DPTrimKey;
+static char DPTrimKey, DPFullSizeKey;
 
-// The panel is also Dia's chat, so only the new tab page's one changes. The page pins its top, so it shrinks upward.
+// The panel is also Dia's chat, so only the new tab page's one changes, and the one Command bar lays over the page. Both
+// pin its top, so it shrinks upward. Command bar sets the panel's size again as it lays out, so a size this set is taken
+// back to the full one it came from.
 static void DPAssistantPanel_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
-    NSSize compact = DPIsKind(self.superview.superview, DPDiaNewTabPage) ? DPCompactSize(self, size) : size;
-    DPSet(self, &DPTrimKey, compact.height < size.height ? @(size.height - compact.height) : nil);
+    NSValue *full = DPDiaValue(self, &DPFullSizeKey, [NSValue valueWithSize:size]);
+    BOOL bar = DPIsKind(self.superview.superview, DPDiaNewTabPage) || DPIsKind(self.superview, "DPCommandBarOverlay");
+    NSSize compact = bar ? DPCompactSize(self, full.sizeValue) : full.sizeValue;
+    DPOverride(self, &DPFullSizeKey, full, [NSValue valueWithSize:compact]);
+    DPSet(self, &DPTrimKey, compact.height < full.sizeValue.height ? @(full.sizeValue.height - compact.height) : nil);
     DPCallOriginal(DPAssistantPanel_setFrameSize, self, compact);
 }
 
