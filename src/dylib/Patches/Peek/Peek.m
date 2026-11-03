@@ -59,7 +59,7 @@ static NSString *DPVerifyPeek(DPPatch *patch) {
 DP_PATCH(DPPeek) {
     .key = @"peek",
     .order = 104,
-    .title = @"Peek on Shift-click",
+    .title = @"Peek on Shift-Click",
     .detail = @"Shift-click a link to preview it in a card over the page, like Arc. Click outside, press Escape or ⌘W to close it, ⌘O to open it as a tab, or use the buttons beside it.",
     .symbol = @"eye.fill",
     .tint = @"systemMintColor",
