@@ -18,6 +18,7 @@
     self.host.frame = self.clip.bounds;
     NSSize size = self.controls.frame.size;
     self.controls.frame = (NSRect){{NSMaxX(self.card.frame) + 12, NSMinY(self.card.frame)}, size};
+    DPPeekLayoutHints(self.controls, NSWidth(self.bounds) - NSMaxX(self.controls.frame) - 8);
 }
 
 // Follows the page area as the sidebar opens and closes.
@@ -100,7 +101,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin
     // can't sample it and falls back to an opaque dark fill. The page keeps rendering behind the card, so a light
     // scrim leaves the original page visible and recedes it, as in Arc.
     NSView *blur = DPLayerView();
-    blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:0.2].CGColor;
+    blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:0.35].CGColor;
     peek.blur = blur;
     peek.card = DPLayerView();
     peek.card.layer.shadowOpacity = 0.35;

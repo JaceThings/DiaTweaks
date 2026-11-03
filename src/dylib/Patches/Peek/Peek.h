@@ -36,6 +36,7 @@ extern DPPatch DPPeek;
 DPPeekCard *DPPeekCardIn(NSWindow *window);
 DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin);  // Card.m
 NSView *DPPeekControls(id target, SEL action);                                      // Controls.m
+void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);                    // Controls.m
 
 // Pages.m
 void DPPeekInstallPages(void);
