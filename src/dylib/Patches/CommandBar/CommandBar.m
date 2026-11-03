@@ -358,8 +358,8 @@ static void DPGoBack(DPCommandBarOverlay *overlay) {
 // ⌘L's bar has 13 point text with 19 points above it, where the new tab page's has 16 and 21. Dia keeps putting back the
 // 19 after sizing the bar by it, so this returns the height the 21 adds.
 static CGFloat DPStyleAsNewTab(NSView *panel) {
-    NSView *bar = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarRoot); });
-    NSView *input = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarInput); });
+    NSView *bar = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
+    NSView *input = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarText); });
     NSTextView *text = (NSTextView *)DPFindView(input, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
     __strong NSFont **font = (__strong NSFont **)DPIvar(input, "font");
     double *top = DPIvar(bar, "layoutConfiguration");
