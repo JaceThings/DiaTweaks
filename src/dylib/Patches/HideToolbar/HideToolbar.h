@@ -2,7 +2,7 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPPlainSelectedTab;
-extern DPPatch DPPeekToolbarOnCopy, DPCopyToast;
+extern DPPatch DPPeekToolbarOnCopy, DPCopyToast, DPShowLoadingProgress;
 extern NSHashTable<NSView *> *DPPanes;  // Every content pane laid out so far.
 
 // Shows the hidden toolbar while the pointer is at the top of a pane, or in its place while an option keeps it there. One per pane.
@@ -37,3 +37,9 @@ void DPRepaintTabs(NSWindow *window);  // After the toolbar's opacity changes.
 void DPShowCopyToast(NSView *pane, NSString *message);
 void DPRemoveCopyToasts(void);
 NSString *DPVerifyNoCopyToast(DPPatch *patch);
+
+// ProgressLine.m
+void DPShowProgressLine(NSView *pane, CGFloat fraction);
+void DPFinishProgressLine(NSView *pane);  // Fills it, then fades it out.
+void DPRemoveProgressLine(NSView *pane);
+BOOL DPShowsProgressLine(NSView *pane);
