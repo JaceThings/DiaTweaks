@@ -183,7 +183,7 @@ DP_PATCH(DPWindowCorners) {
     .key = @"windowCorners",
     .order = 94,
     .title = @"macOS 26 window corners",
-    .detail = @"Round browser windows to 26 points like other apps on macOS 26, with the page's corners rounded to match.",
+    .detail = @"Round Dia’s windows like other apps on macOS 26, with the page’s corners to match.",
     .symbol = @"macwindow",
     .tint = @"systemBrownColor",
     .section = @"Window",

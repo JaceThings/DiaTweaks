@@ -37,7 +37,7 @@ DP_PATCH(DPQuietDownloads) {
     .key = @"quietDownloads",
     .order = 86,
     .title = @"Don't pop up downloads",
-    .detail = @"Stops the downloads list opening by itself each time a download starts. The downloads button still shows progress, and clicking it opens the list.",
+    .detail = @"Stop the downloads list from opening each time a download starts. The downloads button still shows progress.",
     .symbol = @"arrow.down.circle",
     .tint = @"systemPinkColor",
     .section = @"Tabs & Downloads",

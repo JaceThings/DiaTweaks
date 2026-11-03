@@ -73,7 +73,7 @@ DP_PATCH(DPCompactCommandBar) {
     .order = 90,
     .section = @"Command Bar",
     .title = @"Compact command bar",
-    .detail = @"Fit the command bar on one line when adding tabs, files and dictation need chat usage.",
+    .detail = @"Without chat usage, hide Add tabs or files and dictation so the command bar fits on one line.",
     .symbol = @"rectangle.and.text.magnifyingglass",
     .tint = @"systemOrangeColor",
     .classes = DPClasses(DPDiaPopover, DPDiaAssistantPanel, DPDiaNewTabPage, DPDiaCommandBar, DPDiaCommandBarInput, DPDiaCommandBarText, DPDiaCommandBarSuggestions, DPDiaCommandBarToolbar, DPDiaCommandBarButton),

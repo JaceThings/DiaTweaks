@@ -712,7 +712,7 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
 
 static NSArray<NSView *> *DPCommandBarRows(void) {
     return @[
-        DPSliderRow(@"Room above the bar in macOS center", DPHeightKey, 50, 100, @"%"),
+        DPSliderRow(@"Space above the bar", DPHeightKey, 50, 100, @"%"),
         DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"),
         DPSliderRow(@"Blur radius", DPBlurRadiusKey, 60, 1, @"pt"),
         DPSwitchRow(@"Blur the sidebar too", DPBlurWindowKey),
@@ -721,7 +721,7 @@ static NSArray<NSView *> *DPCommandBarRows(void) {
 
 static NSMenu *DPCommandBarPositions(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Position"];
-    for (NSArray *item in @[ @[ @"macOS center", @"macos" ], @[ @"Center of the window", @"window" ] ]) {
+    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of the window", @"window" ] ]) {
         NSMenuItem *entry = [[NSMenuItem alloc] initWithTitle:item[0] action:nil keyEquivalent:@""];
         entry.representedObject = item[1];
         [menu addItem:entry];
@@ -733,7 +733,7 @@ DP_PATCH(DPCommandBar) {
     .key = @"commandBar",
     .order = 87,
     .title = @"Command bar",
-    .detail = @"Open a new tab as Dia's command bar over the page you're on, instead of as a new tab page, like Arc. Pick something to open it in a new tab, or press Escape or click outside to go back.",
+    .detail = @"Open new tabs as Dia’s command bar over the current page, like Arc. Choose a result to open it in a new tab, or press Escape to go back.",
     .symbol = @"command",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",

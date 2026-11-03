@@ -80,7 +80,7 @@ DP_PATCH(DPShowAddressField) {
     .key = @"showAddressField",
     .order = 48,
     .title = @"Always show address field",
-    .detail = @"Keep the address field’s background and its bookmark, split view and site buttons showing without pointing at it.",
+    .detail = @"Show the address field’s background and its bookmark, split view and site buttons without pointing at it.",
     .symbol = @"link",
     .tint = @"systemPurpleColor",
     .section = @"Toolbar Items",

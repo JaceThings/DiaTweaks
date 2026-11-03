@@ -54,7 +54,7 @@ DP_PATCH(DPHideToolbar) {
     .key = @"hideToolbar",
     .order = 30,
     .title = @"Hide toolbar",
-    .detail = @"Remove the bar with the address, navigation buttons and extensions. Experimental.",
+    .detail = @"Hide the bar with the address field, navigation buttons and extensions. Experimental.",
     .symbol = @"menubar.rectangle",
     .tint = @"systemIndigoColor",
     .section = @"Toolbar",

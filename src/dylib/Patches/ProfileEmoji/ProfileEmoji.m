@@ -182,7 +182,7 @@ DP_PATCH(DPProfileEmoji) {
     .order = 78,
     .defaultOn = YES,
     .title = @"Profile emoji",
-    .detail = @"Adds an emoji to each profile in Settings → Profiles, shown in place of the profile's dot in the profile switcher.",
+    .detail = @"Show an emoji in place of each profile’s dot in the profile switcher. Choose them in Settings › Profiles.",
     .symbol = @"face.smiling",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",

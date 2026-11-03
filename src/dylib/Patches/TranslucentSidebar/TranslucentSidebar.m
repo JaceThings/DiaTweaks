@@ -7,7 +7,7 @@ DP_PATCH(DPTranslucentSidebar) {
     .key = @"translucentSidebar",
     .order = 84,
     .title = @"Translucent sidebar",
-    .detail = @"See the page through the sidebar when it floats over it, in the window's material, or the one picked under Window material when that's on.",
+    .detail = @"Show the page through the sidebar when it floats over it, in the window’s material or the one chosen in Window material.",
     .symbol = @"sidebar.squares.left",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
