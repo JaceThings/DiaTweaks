@@ -6,6 +6,7 @@ void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option)) {
 }
 
 NSString *DPWhyDisabled(DPPatch *patch) {
+    if (patch->inDia) return @"Dia does this itself in this version.";
     if (patch->unavailable) return @"Unavailable on this Dia version.";
     DPPatch *required = DPRequired(patch);
     return required && !required->on ? [NSString stringWithFormat:@"Needs %@.", required->title] : nil;

@@ -26,8 +26,10 @@
 
     NSMutableArray<NSView *> *options = [NSMutableArray new];
     DPForEachOption(patch, ^(DPPatch *option) {
-        NSView *text = DPColumn(@[DPLabel(option->title, 13, NSFontWeightRegular, NSColor.labelColor),
-                                  DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)], 2);
+        NSMutableArray<NSView *> *lines = [NSMutableArray arrayWithObjects:DPLabel(option->title, 13, NSFontWeightRegular, NSColor.labelColor),
+                                           DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), nil];
+        if (option->unavailable) [lines addObject:DPLabel(DPWhyDisabled(option), 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
+        NSView *text = DPColumn(lines, 2);
         [options addObject:DPRow(text, [self switchFor:option])];
     });
     if (patch->choices) {
