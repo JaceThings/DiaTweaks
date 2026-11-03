@@ -63,6 +63,20 @@ static NSView *DPPeekTabWithContent(NSWindow *window, NSString *key) {
     return nil;
 }
 
+// Tabs along the top of the window sit in the tab strip; tabs down the side do not.
+static BOOL DPTabIsTop(NSView *tab) {
+    for (NSView *view = tab; view; view = view.superview)
+        if ([NSStringFromClass(view.class) containsString:@"TabStrip"]) return YES;
+    return NO;
+}
+
+// A sidebar tab is the selected one when its selectionStyle is neither "none" nor an adjacency style.
+static BOOL DPTabSelected(NSView *tab) {
+    id state = [[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"];
+    NSString *style = [[[state safeSwiftValueForKey:@"selectionStyle"] description] lowercaseString];
+    return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
+}
+
 // A small 👀 marking the tab a peek came from. On a sidebar tab it hides while that tab is hovered, so Dia's close
 // button (which shares the spot) stays usable; a pinned tab keeps it the whole time. It never takes clicks, and a timer
 // keeps it on the tab as the sidebar relays out and closes the peek once the tab is gone.
@@ -70,6 +84,7 @@ static NSView *DPPeekTabWithContent(NSWindow *window, NSString *key) {
 @property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, copy) NSString *contentKey;
 @property (nonatomic) BOOL hidesOnHover;
+@property (nonatomic) BOOL pinned;
 @property (nonatomic, strong) NSTrackingArea *tabTracking;
 @property (nonatomic, strong) NSTimer *watch;
 @property (nonatomic) NSInteger misses;
@@ -95,8 +110,10 @@ static NSView *DPPeekTabWithContent(NSWindow *window, NSString *key) {
     if (!self.peek || self.peek.closing) { [self stop]; return; }
     if (!self.contentKey) return;  // No stable id for this tab: keep the badge, never auto-close.
     NSView *tab = DPPeekTabWithContent(self.peek.window, self.contentKey);
-    if (tab) { self.misses = 0; if (self.superview != tab) [tab addSubview:self]; }
-    else if (++self.misses >= 2) { [self stop]; [self.peek close:0]; }  // the tab was closed: close the peek too
+    if (!tab) { if (++self.misses >= 2) { [self stop]; [self.peek close:0]; } return; }  // the tab was closed
+    self.misses = 0;
+    if (self.superview != tab) [tab addSubview:self];
+    if (!self.pinned && !DPTabSelected(tab)) { [self stop]; [self.peek close:0]; }  // switched to another tab
 }
 
 - (void)stop { [self.watch invalidate]; self.watch = nil; }
@@ -105,18 +122,20 @@ static NSView *DPPeekTabWithContent(NSWindow *window, NSString *key) {
 void DPPeekShowTabBadge(DPPeekCard *peek, id source, id<DPPeekPage> page) {
     NSView *tab = DPPeekOriginTab(peek.window, source);
     if (!tab) return;
+    BOOL pinned = DPIsKind(tab, DPDiaPinnedTab);
     NSTextField *eyes = [NSTextField labelWithString:@"👀"];
-    eyes.font = [NSFont systemFontOfSize:13];
+    eyes.font = [NSFont systemFontOfSize:pinned ? 11 : 12];
+    eyes.alignment = NSTextAlignmentCenter;
     [eyes sizeToFit];
     CGFloat w = NSWidth(eyes.frame), h = NSHeight(eyes.frame);
-    BOOL pinned = DPIsKind(tab, DPDiaPinnedTab);
     CGFloat x, y;
     NSAutoresizingMaskOptions resize;
-    if (pinned) {  // perched on the top-right corner, overhanging a touch, like Arc
-        x = NSMaxX(tab.bounds) - w + 5;
-        y = tab.isFlipped ? -5 : NSMaxY(tab.bounds) - h + 5;
-        resize = NSViewMinXMargin | (tab.isFlipped ? NSViewMaxYMargin : NSViewMinYMargin);
-    } else {       // right end, centred
+    if (pinned) {  // at the top of the icon: centred across a top-strip tab, in the top-right of a sidebar tab
+        BOOL top = DPTabIsTop(tab);
+        x = top ? NSMidX(tab.bounds) - w / 2 : NSMaxX(tab.bounds) - w - 2;
+        y = tab.isFlipped ? 2 : NSMaxY(tab.bounds) - h - 2;
+        resize = (top ? NSViewMinXMargin | NSViewMaxXMargin : NSViewMinXMargin) | (tab.isFlipped ? NSViewMaxYMargin : NSViewMinYMargin);
+    } else {       // trailing end, centred on the row with the title and favicon
         x = NSMaxX(tab.bounds) - w - 6;
         y = NSMidY(tab.bounds) - h / 2;
         resize = NSViewMinXMargin | NSViewMinYMargin | NSViewMaxYMargin;
@@ -124,9 +143,13 @@ void DPPeekShowTabBadge(DPPeekCard *peek, id source, id<DPPeekPage> page) {
     DPPeekTabBadge *badge = [[DPPeekTabBadge alloc] initWithFrame:NSMakeRect(x, y, w, h)];
     badge.autoresizingMask = resize;
     badge.peek = peek;
+    badge.pinned = pinned;
     badge.contentKey = DPPeekTabContentKey(tab);
     badge.hidesOnHover = !pinned;
-    eyes.frame = badge.bounds;
+    // The emoji glyph sits low in a text field, so lift it to line up with the title. A top-strip row needs more lift
+    // than a taller sidebar row. The badge is unflipped: +y is up.
+    CGFloat lift = pinned ? 0 : (DPTabIsTop(tab) ? 2 : 0);
+    eyes.frame = NSOffsetRect(badge.bounds, 0, lift);
     eyes.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [badge addSubview:eyes];
     [tab addSubview:badge];
