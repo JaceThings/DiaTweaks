@@ -81,10 +81,11 @@ static id DPMesh(const CGPoint to[9]) {
 // The card's path between the link and its place, as iOS opens an app out of its icon: the card is a 3×3 mesh, and
 // each row of vertices rides its own spring, scaled from SpringBoard's row responses by how far down the page the link
 // is. Opening, the row nearest the link is slowest and the far row fastest, so the card's sides bend as it pulls out
-// of the link; closing flips them, so the row nearest the link lands first.
+// of the link; closing flips them, so the row nearest the link lands first. With the genie effect off, every row rides
+// the same spring, so the card keeps its shape and just grows out of the link.
 static CAKeyframeAnimation *DPPeekTravel(CALayer *layer, NSRect card, NSRect link, CGFloat linkY, BOOL opening,
                                          CFTimeInterval response, CGFloat dampingRatio, CFTimeInterval *duration) {
-    CGFloat ay = 2 * MIN(1, MAX(0, linkY)) - 1, g = ay >= 0 ? ay : 0.75 * ay;
+    CGFloat ay = 2 * MIN(1, MAX(0, linkY)) - 1, g = !DPPeekGenie() ? 0 : ay >= 0 ? ay : 0.75 * ay;
     if (!opening) g = -g;
     CFTimeInterval rows[3];
     *duration = 0;
@@ -117,6 +118,16 @@ static CAKeyframeAnimation *DPPeekTravel(CALayer *layer, NSRect card, NSRect lin
     travel.keyTimes = times;
     travel.duration = *duration;
     return travel;
+}
+
+// The page behind dimming or clearing on SpringBoard's 0.314 s spring, kept at the card's pace; it never bounces.
+static CASpringAnimation *DPPeekDim(BOOL dimming) {
+    CASpringAnimation *dim = DPPeekSpring(@"opacity", DPPeekResponse() * 0.314 / 0.24, 1);
+    dim.fromValue = dimming ? @0 : @1;
+    dim.toValue = dimming ? @1 : @0;
+    dim.fillMode = kCAFillModeBoth;
+    dim.removedOnCompletion = dimming;  // Clearing holds the end, so the page behind doesn't flash dark as the card goes.
+    return dim;
 }
 
 // Steps a card's growth every frame along the spring until it's settled.
@@ -161,58 +172,62 @@ static char DPGrowthKey;
 
 @implementation DPPeekCard (Motion)
 
-// Runs the card between the link and its place, and the page behind between clear and dimmed.
-- (void)move:(BOOL)opening completion:(void (^)(void))completion {
-    // The Settings sliders pick the spring; the dimming keeps iOS's pace relative to it, and never bounces.
+// Runs the card between the link and its place.
+- (void)move:(BOOL)opening {
     CFTimeInterval response = DPPeekResponse(), duration;
     CGFloat dampingRatio = 1 - DPPeekBounce();
     CAKeyframeAnimation *move = DPPeekTravel(self.card.layer, self.cardFrame, self.link, NSMidY(self.link) / MAX(1, NSHeight(self.bounds)), opening,
                                              response, dampingRatio, &duration);
-    CASpringAnimation *dim = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
-    dim.fromValue = opening ? @0 : @1;
-    dim.toValue = opening ? @1 : @0;
-
-    [CATransaction begin];
-    [CATransaction setCompletionBlock:completion];
     CAAnimationGroup *card = [CAAnimationGroup animation];
     card.animations = @[move, DPPeekFade(duration, response, dampingRatio, opening)];
     card.duration = duration;
-    for (CAAnimation *animation in @[card, dim]) {
-        animation.fillMode = kCAFillModeBoth;  // Backwards too, or a frame of the full card can show before it starts.
-        animation.removedOnCompletion = opening;  // Closing holds the end, so nothing flashes before the card goes.
-    }
+    card.fillMode = kCAFillModeBoth;  // Backwards too, or a frame of the full card can show before it starts.
+    card.removedOnCompletion = opening;  // Closing holds the end, so nothing flashes before the card goes.
+    [CATransaction setDisableActions:YES];
+    self.card.alphaValue = 1;
     [self.card.layer addAnimation:card forKey:@"peek"];
-    [self.blur.layer addAnimation:dim forKey:@"peek"];
-    [CATransaction commit];
 }
 
 // Out of the link; the controls follow once it's in place.
 - (void)animateIn {
     self.controls.alphaValue = 0;
-    [self move:YES completion:^{
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.12;
-            self.controls.animator.alphaValue = 1;
+    self.card.alphaValue = 0;  // Still drawing, just unseen, so the page paints its first frame meanwhile.
+    [self.blur.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
+    // The card waits for the page's first paint, up to a second, so the page is in it as it opens and not a blank.
+    CFTimeInterval start = CACurrentMediaTime();
+    __weak DPPeekCard *weak = self;
+    [NSTimer scheduledTimerWithTimeInterval:1 / 120.0 repeats:YES block:^(NSTimer *timer) {
+        DPPeekCard *peek = weak;
+        if (!peek || peek.closing) return [timer invalidate];
+        if (![[(NSObject *)peek.page valueForKey:@"isReadyToDisplay"] boolValue] && CACurrentMediaTime() - start < 1) return;
+        [timer invalidate];
+        [CATransaction begin];
+        [CATransaction setCompletionBlock:^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.12;
+                peek.controls.animator.alphaValue = 1;
+            }];
         }];
+        [peek move:YES];
+        [CATransaction commit];
     }];
 }
 
 // Back into the link.
 - (void)animateOut:(void (^)(void))completion {
-    [self move:NO completion:completion];
+    [CATransaction begin];
+    [CATransaction setCompletionBlock:completion];
+    [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
+    if (self.card.alphaValue > 0) [self move:NO];  // A card closed before it opened has nowhere to go back from.
+    [CATransaction commit];
 }
 
 // Out to fill the whole page area on the same spring, with the page behind clearing, before it becomes a tab there.
 // The card is resized for real each frame, not scaled, so the page lays itself out at each size as it grows.
 - (void)animateExpand:(void (^)(void))completion {
-    CFTimeInterval response = DPPeekResponse();
-    CASpringAnimation *clear = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
-    clear.fromValue = @1;
-    clear.toValue = @0;
-    clear.fillMode = kCAFillModeForwards;
-    clear.removedOnCompletion = NO;
-    [self.blur.layer addAnimation:clear forKey:@"peek"];
-    [DPPeekGrowth grow:self response:response dampingRatio:1 - DPPeekBounce() done:completion];
+    self.card.alphaValue = 1;
+    [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
+    [DPPeekGrowth grow:self response:DPPeekResponse() dampingRatio:1 - DPPeekBounce() done:completion];
 }
 
 @end

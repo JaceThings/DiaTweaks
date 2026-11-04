@@ -1,8 +1,9 @@
 #import "Patches/Peek/Peek.h"
 
 // Peek's sliders on its Settings page, the way the Command bar tunes itself: how dark the page behind gets, and the
-// spring the card moves on. Each is stored as the value it means, shown as a whole number.
-static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekSpeed", *const DPPeekBounceKey = @"peekBounce";
+// spring the card moves on, and whether it opens as a genie. Each is stored as the value it means, shown as a whole number.
+static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekSpeed", *const DPPeekBounceKey = @"peekBounce",
+                     *const DPPeekGenieKey = @"peekGenie";
 
 static NSUserDefaults *DPSettings(void) {
     static NSUserDefaults *settings;
@@ -14,12 +15,13 @@ static NSUserDefaults *DPSettings(void) {
 static double DPPeekTuned(NSString *key) {
     id value = [DPSettings() objectForKey:key];
     if (value) return [value doubleValue];
-    return [@{ DPPeekDarknessKey : @0.35, DPPeekSpeedKey : @1, DPPeekBounceKey : @0 }[key] doubleValue];
+    return [@{ DPPeekDarknessKey : @0.35, DPPeekSpeedKey : @0.85, DPPeekBounceKey : @0, DPPeekGenieKey : @NO }[key] doubleValue];
 }
 
 double DPPeekDarkness(void) { return DPPeekTuned(DPPeekDarknessKey); }
 double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // 100% is iOS's 0.24 s.
 double DPPeekBounce(void) { return DPPeekTuned(DPPeekBounceKey); }
+BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
 
 static void DPPeekApplyDarkness(void) {
     for (NSWindow *window in NSApp.windows)
@@ -35,7 +37,8 @@ static void DPPeekApplyDarkness(void) {
 
 @implementation DPPeekTuneRow
 - (void)tune:(NSControl *)control {
-    double shown = round(MIN(MAX(control.doubleValue, self.slider.minValue), self.slider.maxValue));
+    double shown = [control isKindOfClass:NSSwitch.class] ? ((NSSwitch *)control).state
+                                                          : round(MIN(MAX(control.doubleValue, self.slider.minValue), self.slider.maxValue));
     self.slider.doubleValue = shown;
     self.field.doubleValue = shown;
     [DPSettings() setDouble:shown / self.scale forKey:self.key];
@@ -81,10 +84,25 @@ static NSView *DPPeekSlider(NSString *title, NSString *key, double min, double m
     return row;
 }
 
+static NSView *DPPeekSwitch(NSString *title, NSString *key) {
+    NSSwitch *toggle = [NSSwitch new];
+    toggle.state = DPPeekTuned(key) ? NSControlStateValueOn : NSControlStateValueOff;
+    toggle.action = @selector(tune:);
+    NSTextField *label = [NSTextField labelWithString:title];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    DPPeekTuneRow *row = [DPPeekTuneRow stackViewWithViews:@[ label, toggle ]];
+    row.distribution = NSStackViewDistributionFill;
+    row.key = key;
+    row.scale = 1;
+    toggle.target = row;
+    return row;
+}
+
 NSArray<NSView *> *DPPeekSettingsRows(void) {
     return @[
         DPPeekSlider(@"Darken the page behind", DPPeekDarknessKey, 0, 100, 100, @"%"),
         DPPeekSlider(@"Speed", DPPeekSpeedKey, 25, 300, 100, @"%"),
         DPPeekSlider(@"Bounce", DPPeekBounceKey, 0, 60, 100, @"%"),
+        DPPeekSwitch(@"Genie effect", DPPeekGenieKey),
     ];
 }
