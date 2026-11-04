@@ -7,12 +7,26 @@ extern DPPatch DPCompactSidebar;
 static const CGFloat DPStripWidth = 64;       // Favorites stack in one column, with room round the selected tab.
 static const CGFloat DPLightsClearance = 10;  // Between the window buttons and the toolbar's first button.
 
+// Applies a change at once. The strip's own adjustments to Dia's rows happen as Dia lays them out, often inside one of
+// its animations, such as a folder opening, which would otherwise animate them too and slide the icons about.
+static inline void DPNow(void (^change)(void)) {
+    NSAnimationContext *context = NSAnimationContext.currentContext;
+    BOOL implicit = context.allowsImplicitAnimation;
+    context.allowsImplicitAnimation = NO;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    change();
+    [CATransaction commit];
+    context.allowsImplicitAnimation = implicit;
+}
+
 // Frames.m: where Auto-Hide Tabs parks the sidebar off the window, it shows as the strip instead. The host is the view
 // Dia parks: the sidebar itself, or the floating container once Dia has shown the sidebar in one.
 NSView *DPSidebarRootIn(NSWindow *window);
 NSView *DPHostIn(NSWindow *window);
 NSRect DPDiaHostFrame(NSView *host);     // Where Dia put it.
-BOOL DPDiaParked(NSView *host);          // Dia has it parked, as tabs auto-hide.
+BOOL DPDiaParked(NSView *host);          // Dia has it parked, as tabs auto-hide, or shows it from the strip.
+BOOL DPDiaRevealing(NSView *host);       // Dia shows it from the strip, at the window's edge.
 BOOL DPStripOn(NSView *host);            // On, with Dia's host parked and the strip not hidden with ⌘S.
 BOOL DPStripShown(NSWindow *window);
 CGFloat DPStripRight(NSWindow *window);  // Where the page starts, from the window's left edge.
@@ -23,6 +37,8 @@ void DPInstallCompactFrames(void);
 
 // Header.m: the window buttons stay over the toolbar, and only they take clicks there.
 CGFloat DPLightsRight(NSWindow *window);  // The window buttons' right edge from the window's left, or 0.
+CGFloat DPLightsLeft(NSWindow *window);   // And their left edge.
+CGFloat DPToolbarAlpha(NSWindow *window);
 void DPInstallCompactHeader(void);
 
 // Page.m: the page moves right of the strip, the toolbar's buttons right of the window buttons.
@@ -33,8 +49,13 @@ void DPInstallCompactPage(void);
 // Rows.m: the sidebar's rows, as icons centered in the strip.
 void DPInstallCompactRows(void);
 
+// Folders.m: folders as their icon, with their tabs under them at the strip's width.
+void DPInstallCompactFolders(void);
+
 // Chrome.m: the strip, the toolbar and the space around the page share one color, with the page as a card in it.
 CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance);  // NULL until Dia has made the toolbar.
+CGFloat DPToolbarBottom(NSWindow *window);  // Where the toolbar's bottom edge is once it shows, from the window's bottom.
+BOOL DPToolbarHidden(NSWindow *window);     // Hide toolbar keeps it out of sight.
 void DPApplyChrome(NSView *pane);
 void DPInstallCompactChrome(void);
 
@@ -46,6 +67,20 @@ CGFloat DPStripVisible(NSWindow *window);      // 1 with the strip in place, 0 w
 CGFloat DPStripSlideDistance(NSWindow *window);  // How far off the window's edge it slides.
 void DPMatchAutoHide(BOOL on);                 // Auto-Hide Tabs on with the patch, off without it, in the front window.
 void DPInstallCompactShortcut(void);
+
+// Reveal.m: with the toolbar hidden, the window buttons show as the pointer reaches the strip's top.
+CGFloat DPLightsReveal(NSWindow *window);  // 0 hidden, 1 shown, in between while they fade.
+CGFloat DPRevealRoom(NSWindow *window);    // How much wider the strip grows for them.
+void DPSettleReveal(NSWindow *window);     // Hides them when the toolbar shows again or the strip goes.
+void DPInstallCompactReveal(void);
+
+// List.m: the tabs start under the toolbar, or at the page's top while it's hidden.
+NSView *DPListIn(NSWindow *window);
+void DPPlaceListIn(NSWindow *window);  // Moves them as the toolbar or the window buttons show.
+void DPInstallCompactList(void);
+
+// Backdrop.m: the strip blurs with the page while the command bar is open.
+void DPInstallCompactBackdrop(void);
 
 // Expand.m: the strip's background, and the whole sidebar over the page while the pointer is on the strip.
 BOOL DPStripExpanded(NSView *host);

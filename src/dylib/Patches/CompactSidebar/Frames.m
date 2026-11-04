@@ -17,8 +17,11 @@ NSView *DPSidebarRootIn(NSWindow *window) {
     return nil;
 }
 
+// Right around it, or around the view Dia wraps it in for its rounded corners.
 static NSView *DPFloatAround(NSView *root) {
-    return DPIsKind(root.superview, DPDiaFloatingSidebar) ? root.superview : nil;
+    if (!DPIsKind(root, DPDiaSidebarRoot)) return nil;
+    NSView *around = DPIsKind(root.superview, DPDiaFloatingSidebar) ? root.superview : root.superview.superview;
+    return DPIsKind(around, DPDiaFloatingSidebar) ? around : nil;
 }
 
 NSView *DPHostIn(NSWindow *window) {
@@ -29,9 +32,18 @@ NSView *DPHostIn(NSWindow *window) {
 // The view Dia moves and hides: the container while the sidebar is in one, else the sidebar.
 static BOOL DPIsHost(NSView *view) { return DPIsKind(view, DPDiaFloatingSidebar) || !DPFloatAround(view); }
 
-// Parked: moved off the window's left edge, or for the floating container also just hidden where it last showed.
+// Dia showing the sidebar itself, from the window's edge, where the strip is: it's the strip, open.
+static BOOL DPDiaReveals(NSView *host, NSRect dia) {
+    return DPCompactSidebar.on && DPIsKind(host, DPDiaFloatingSidebar) && NSMaxX(dia) > 0 && ![DPGet(host, &DPHiddenKey) boolValue]
+        && !DPStripHiddenIn(host.window);
+}
+
+BOOL DPDiaRevealing(NSView *host) { return host && DPDiaReveals(host, DPDiaHostFrame(host)); }
+
+// Parked: moved off the window's left edge, or for the floating container also just hidden where it last showed. Or
+// shown by Dia from the strip.
 static BOOL DPParked(NSView *host, NSRect dia) {
-    return NSMaxX(dia) <= 0 || (DPIsKind(host, DPDiaFloatingSidebar) && [DPGet(host, &DPHiddenKey) boolValue]);
+    return NSMaxX(dia) <= 0 || (DPIsKind(host, DPDiaFloatingSidebar) && [DPGet(host, &DPHiddenKey) boolValue]) || DPDiaReveals(host, dia);
 }
 
 BOOL DPDiaParked(NSView *host) { return host && DPIsHost(host) && DPParked(host, DPDiaHostFrame(host)); }
@@ -52,9 +64,12 @@ static NSRect DPHostTarget(NSView *host) {
         CGFloat x = -DPStripSlideDistance(host.window) * (1 - DPStripVisible(host.window));
         return NSMakeRect(x, NSMinY(dia), MIN(NSWidth(dia), DPStripWidth), NSHeight(dia));
     }
+    // Dia sliding the sidebar in from the window's edge stops at the edge, as the strip opens it, not 3pt in.
+    if (DPDiaRevealing(host)) return NSMakeRect(MIN(NSMinX(dia), 0), NSMinY(dia), NSWidth(dia), NSHeight(dia));
     if (!DPStripOn(host)) return dia;
     BOOL open = DPStripExpanded(host);
-    return NSMakeRect(0, NSMinY(dia), open ? NSWidth(dia) : MIN(NSWidth(dia), DPStripWidth), NSHeight(dia));
+    CGFloat strip = MIN(NSWidth(dia), DPStripWidth + DPRevealRoom(host.window) * DPLightsReveal(host.window));
+    return NSMakeRect(0, NSMinY(dia), open ? NSWidth(dia) : strip, NSHeight(dia));
 }
 
 void DPPlaceHost(NSView *host) {
@@ -62,16 +77,27 @@ void DPPlaceHost(NSView *host) {
     // Shown as the strip, or hidden as Dia keeps what it parks, as when ⌘S hides the strip or the patch is off.
     BOOL strip = DPStripOn(host), sliding = DPDiaParked(host) && DPStripSliding(host.window);
     BOOL hidden = strip || sliding ? NO : [(DPGet(host, &DPHiddenKey) ?: @(DPDiaParked(host))) boolValue];
+    NSView *root = DPSidebarRootIn(host.window);
+    if (DPFloatAround(root) != host) root = nil;
+    BOOL rootHidden = !strip && !sliding && [DPGet(root, &DPHiddenKey) boolValue];
     DPPlacing = YES;
     if (!NSEqualRects(host.frame, target)) host.frame = target;
     if (host.hidden != hidden && DPIsHost(host)) host.hidden = hidden;
+    if (root && root.hidden != rootHidden) root.hidden = rootHidden;
     DPPlacing = NO;
     if (DPCompactSidebar.on) DPAttachStrip(host);
     DPLayoutStrip(host);
-    NSNumber *shown = @(strip);
-    if ([DPGet(host, &DPShownKey) isEqual:shown]) return;
-    DPSet(host, &DPShownKey, shown);
+    // The strip showing or going, or Dia docking the sidebar after it, moves the page, toolbar and window buttons.
+    NSNumber *state = @(strip * 2 + DPDiaParked(host));
+    if ([DPGet(host, &DPShownKey) isEqual:state]) return;
+    DPSet(host, &DPShownKey, state);
     DPRefreshWindow(host.window);
+}
+
+// The strip, and the sidebar inside it once Dia has put the sidebar in its floating container, which Dia also hides.
+static BOOL DPKeepsShowing(NSView *view) {
+    NSView *host = DPHostIn(view.window);
+    return DPStripOn(host) && (view == host || DPFloatAround(view) == host);
 }
 
 // Dia passes -0 for some edges; the frame AppKit keeps has +0.
@@ -105,19 +131,20 @@ static void DPDiaAsked(NSView *host, NSRect frame) {
         if (DPPlacing) return DPCallOriginal(Name##_setHidden, self, hidden);               \
         BOOL was = DPStripOn(self);                                                          \
         DPSet(self, &DPHiddenKey, @(hidden));                                               \
-        DPCallOriginal(Name##_setHidden, self, hidden && !DPStripOn(self));                 \
+        DPCallOriginal(Name##_setHidden, self, hidden && !DPKeepsShowing(self));            \
         if (DPStripOn(self) != was) DPPlaceHost(self); /* Hiding the container parks it. */ \
     }
 
 DP_HOST_HOOKS(DPFloat)
 DP_HOST_HOOKS(DPRoot)
 
-// The page and the toolbar's buttons make room for the strip, or take it back.
+// The page, the toolbar's buttons and the window buttons make room for the strip, or take it back.
 void DPRefreshWindow(NSWindow *window) {
     DPRelayoutCompactPanes(window);
     for (NSView *pane in DPFindViews(DPDiaContentPane)) if (pane.window == window) DPApplyChrome(pane);
     for (NSView *bar in DPFindViews(DPDiaToolbar)) if (bar.window == window) bar.needsLayout = YES;
     DPClearLightsIn(window);
+    DPSubview(DPSidebarRootIn(window), DPDiaSidebarHeader).needsLayout = YES;  // Its window buttons go back, or over the toolbar.
 }
 
 void DPRelayoutCompactSidebar(void) {

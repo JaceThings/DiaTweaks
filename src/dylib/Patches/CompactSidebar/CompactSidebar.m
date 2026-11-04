@@ -5,8 +5,12 @@ static void DPInstallCompactSidebar(void) {
     DPInstallCompactHeader();
     DPInstallCompactPage();
     DPInstallCompactRows();
+    DPInstallCompactList();
+    DPInstallCompactFolders();
     DPInstallCompactChrome();
     DPInstallCompactShortcut();
+    DPInstallCompactReveal();
+    DPInstallCompactBackdrop();
 }
 
 static void DPApplyCompactSidebar(DPPatch *patch) {
@@ -31,7 +35,8 @@ static NSString *DPVerifyCompactSidebar(DPPatch *patch) {
         }
         if (!showing) return @"no strip while tabs auto-hide";
         if (DPStripExpanded(host)) continue;
-        if (NSMinX(host.frame) != 0 || NSWidth(host.frame) > DPStripWidth + 0.5) return @"strip isn't at the window's edge";
+        CGFloat width = DPStripWidth + DPRevealRoom(window) * DPLightsReveal(window);
+        if (NSMinX(host.frame) != 0 || NSWidth(host.frame) > width + 0.5) return @"strip isn't at the window's edge";
         for (NSView *pane in DPFindViews(DPDiaContentPane)) {
             if (pane.window != window || pane.hiddenOrHasHiddenAncestor) continue;
             if (NSMinX([pane convertRect:pane.bounds toView:nil]) < DPStripRight(window) - 0.5) return @"page runs under the strip";
@@ -59,7 +64,7 @@ DP_PATCH(DPCompactSidebar) {
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaWindowController, DPDiaFloatingSidebar, DPDiaSidebarRoot, DPDiaSidebarController, DPDiaSidebarHeader,
-                         DPDiaTrafficLights, DPDiaContentContainer, DPDiaContentPane, DPDiaToolbar, DPDiaAddressField, DPDiaCallbackMenuItem),
+                         DPDiaTrafficLights, DPDiaContentContainer, DPDiaContentPane, DPDiaToolbar, DPDiaAddressField, DPDiaCallbackMenuItem, DPDiaTabListLayout),
     .install = DPInstallCompactSidebar,
     .apply = DPApplyCompactSidebar,
     .verify = DPVerifyCompactSidebar,
