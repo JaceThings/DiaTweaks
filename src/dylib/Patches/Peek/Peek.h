@@ -37,7 +37,9 @@ extern DPPatch DPPeek;
 @end
 
 DPPeekCard *DPPeekCardIn(NSWindow *window);
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSRect link);  // Card.m. `link` is on screen.
+// Card.m. `link` is on screen; `warm` is the host of a page loaded ahead by DPPeekWarm, or nil.
+DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warm, NSRect link);
+NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page);
 NSView *DPPeekControls(id target, SEL action);                                      // Controls.m
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);                    // Controls.m
 
@@ -56,5 +58,7 @@ NSArray<NSView *> *DPPeekSettingsRows(void);  // The Peek settings page's extra 
 void DPPeekInstallPages(void);
 BOOL DPPeekCanOpen(id source);  // Peek knows which part of Dia made `source`, so can make a page beside it.
 void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source);
+void DPPeekWarm(NSWindow *window, id source, NSURL *url);  // Starts loading `url` for a peek that may be about to open.
+void DPPeekCool(void);                                     // Drops the page DPPeekWarm loaded, if no peek took it.
 BOOL DPPeekShows(id page);
 void DPPeekLoad(id page, NSURL *url);

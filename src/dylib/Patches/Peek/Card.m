@@ -12,8 +12,10 @@ static const CGFloat DPPeekShadowRoom = 48;
 
 // Arc's card is nearly full height and inset at the sides, with the controls in the right margin.
 // Expanding grows it toward the whole page area.
+static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(area) * 0.09, MAX(10, NSHeight(area) * 0.012)); }
+
 - (NSRect)cardFrame {
-    NSRect card = NSInsetRect(self.bounds, NSWidth(self.bounds) * 0.09, MAX(10, NSHeight(self.bounds) * 0.012)), page = self.bounds;
+    NSRect card = DPPeekCardRect(self.bounds), page = self.bounds;
     CGFloat g = self.grown;
     return NSMakeRect(NSMinX(card) + (NSMinX(page) - NSMinX(card)) * g, NSMinY(card) + (NSMinY(page) - NSMinY(card)) * g,
                       NSWidth(card) + (NSWidth(page) - NSWidth(card)) * g, NSHeight(card) + (NSHeight(page) - NSHeight(card)) * g);
@@ -122,11 +124,29 @@ static id DPWatchKeys(DPPeekCard *card) {
     }];
 }
 
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSRect link) {
-    NSView *host = [page createPaneHostView], *pane = nil;
-    if (!window || !host || DPPeekCardIn(window)) return nil;
+// The window's page area: its largest content pane.
+static NSView *DPPeekPane(NSWindow *window) {
+    NSView *pane = nil;
     for (NSView *candidate in DPFindViews(DPDiaContentPane))
         if (candidate.window == window && NSWidth(candidate.bounds) * NSHeight(candidate.bounds) > NSWidth(pane.bounds) * NSHeight(pane.bounds)) pane = candidate;
+    return pane;
+}
+
+// A page loading ahead of a peek draws behind the page area, at the card's size, so it's painted once the card opens.
+NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
+    NSView *host = [page createPaneHostView], *pane = DPPeekPane(window);
+    if (!host || !pane) return nil;
+    NSView *holder = DPPeekHolder(window, pane);
+    NSRect area = [holder convertRect:pane.bounds fromView:pane];
+    host.frame = NSOffsetRect(DPPeekCardRect((NSRect){NSZeroPoint, area.size}), NSMinX(area), NSMinY(area));
+    [holder addSubview:host positioned:NSWindowBelow relativeTo:nil];
+    [page attachToPaneHostView:host];
+    return host;
+}
+
+DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warm, NSRect link) {
+    NSView *host = warm ?: [page createPaneHostView], *pane = DPPeekPane(window);
+    if (!window || !host || DPPeekCardIn(window)) return nil;
     NSView *holder = DPPeekHolder(window, pane);
     DPPeekCard *peek = [[DPPeekCard alloc] initWithFrame:pane ? [holder convertRect:pane.bounds fromView:pane] : holder.bounds];
     peek.autoresizingMask = pane ? NSViewNotSizable : NSViewWidthSizable | NSViewHeightSizable;
@@ -161,7 +181,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSRect link) {
     for (NSView *view in @[peek.blur, peek.card, peek.controls]) [peek addSubview:view];
     [holder addSubview:peek positioned:NSWindowAbove relativeTo:nil];
     [peek layoutSubtreeIfNeeded];
-    [page attachToPaneHostView:host];
+    if (!warm) [page attachToPaneHostView:host];
     [window makeFirstResponder:host];
     if (pane) {
         pane.postsFrameChangedNotifications = YES;

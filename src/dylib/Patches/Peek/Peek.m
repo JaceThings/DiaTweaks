@@ -37,13 +37,40 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
     return DPIgnoreAction;
 }
 
+// The link under the pointer, as Dia hears it for its status bubble, and the page it's on.
+static NSURL *DPPeekHovered;
+static __weak id DPPeekHoveredPage;
+
+// Shift alone held over a link starts loading it ahead of a Shift-click; anything else drops what was loading.
+static void DPPeekLookAhead(void) {
+    NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
+    id page = DPPeekHoveredPage;
+    if (DPPeek.on && mods == NSEventModifierFlagShift && DPPeekHovered && page && !DPPeekShows(page) && DPPeekCanOpen(page))
+        DPPeekWarm(NSApp.keyWindow, page, DPPeekHovered);
+    else DPPeekCool();
+}
+
+static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *text) {
+    DPCallOriginal(DPWebContent_status, self, webContents, text);
+    NSURL *url = text.length ? [NSURL URLWithString:text] : nil;
+    if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, a loading peek among them, clear theirs too.
+    DPPeekHovered = [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString] ? url : nil;
+    DPPeekHoveredPage = webContents;
+    DPPeekLookAhead();
+}
+
 static void DPInstallPeek(void) {
     DPPeekInstallPages();
     DPOnLaunch(^{
         // Dia's Swift classes resolve only once its runtime is up.
         DPHook(DPDiaWebContent, @selector(webContents:didCreateNewWebContent:targetURL:disposition:), (IMP)DPWebContent_didCreate);
         DPHook(DPDiaWebContent, @selector(webContents:decidePolicyForNavigationAction:), (IMP)DPWebContent_decidePolicy);
+        DPHook(DPDiaWebContent, @selector(webContents:didChangeStatusText:), (IMP)DPWebContent_status);
     });
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^NSEvent *(NSEvent *event) {
+        DPPeekLookAhead();
+        return event;
+    }];
 }
 
 // Nothing shows until a Shift-click, so it checks the link hooks are the ones answering.

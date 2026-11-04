@@ -8,6 +8,9 @@
 static NSMapTable *DPPeekFactories;  // Each page -> the browser context or browser that made it.
 static __weak id DPPeekLastFactory;  // The context or browser that most recently made a page: the active profile.
 static NSMapTable<NSWindow *, id> *DPPeekBrowsers;  // Each window -> the ArcBrowser Dia gave it.
+static id DPPeekWarmPage;  // A page loading ahead of a peek, its host, and what it's loading. DPPeekWarm.
+static NSView *DPPeekWarmView;
+static NSURL *DPPeekWarmURL;
 
 static id DPContext_create(id self, SEL _cmd, id configuration) {
     id page = DPCallOriginal(DPContext_create, self, configuration);
@@ -72,10 +75,10 @@ static BOOL DPPeekGive(id page, id delegate, id source, NSURL *url, NSInteger di
 // The box of the link under `origin` on screen, asked of the page it's on, so the card can grow out of exactly that. A
 // link that wraps gives the line that was clicked. Anything the page can't answer, such as a link in a frame, gets a
 // line-high box around the click.
-static void DPPeekFindLink(NSWindow *window, id source, NSPoint origin, void (^found)(NSRect link)) {
+static void DPPeekFindLink(NSWindow *window, id source, NSPoint origin, NSView *warm, void (^found)(NSRect link)) {
     NSRect fallback = NSMakeRect(origin.x - 40, origin.y - 10, 80, 20);
     NSView *web = DPFindView(window.contentView, ^BOOL(NSView *view) {
-        return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor
+        return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor && ![view isDescendantOf:warm]
             && NSPointInRect([view convertPoint:[window convertPointFromScreen:origin] fromView:nil], view.bounds);
     });
     if (!web || ![source respondsToSelector:@selector(executeJavascript:completion:)]) return found(fallback);
@@ -108,18 +111,63 @@ static void DPPeekFindLink(NSWindow *window, id source, NSPoint origin, void (^f
     ((void (*)(id, SEL, NSString *, id))objc_msgSend)(source, @selector(executeJavascript:completion:), script, answer);
 }
 
-// The page is set up for drawing, attached to a card, then loaded. If no card can show it, it opens as a tab.
-static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegate, id source) {
+// A page in the same space as `source`, set up for drawing. Peek attaches it to a host between the two calls.
+static id DPPeekMakePage(NSWindow *window, id source, void (^attach)(id page)) {
     id factory = DPPeekContextForSource(source, window);
     Class configuration = objc_getClass(DPDiaWebContentsConfiguration);
-    if (!window || !url || !factory || !configuration || DPPeekCardIn(window)) return;
+    if (!window || !factory || !configuration) return nil;
     id page = ((id (*)(id, SEL, id))objc_msgSend)(factory, @selector(createWebContents:), [configuration new]);
-    if (!page) return;
+    if (!page) return nil;
     if ([page respondsToSelector:@selector(bootstrapRendering)]) [page performSelector:@selector(bootstrapRendering)];
-    DPPeekCard *peek = DPPeekShowCard(window, page, link);
+    attach(page);
     if ([page respondsToSelector:@selector(bootstrapRenderingComplete)]) [page performSelector:@selector(bootstrapRenderingComplete)];
+    return page;
+}
+
+// Holding Shift over a link starts loading it, so by the click the page has usually drawn and is in the card as it
+// opens. Most pages take about half a second to first draw, longer than the card waits.
+void DPPeekWarm(NSWindow *window, id source, NSURL *url) {
+    if ([url isEqual:DPPeekWarmURL] || DPPeekCardIn(window)) return;
+    DPPeekCool();
+    __block NSView *host = nil;
+    id page = DPPeekMakePage(window, source, ^(id page) { host = DPPeekWarmHost(window, page); });
+    if (!page) return;
+    if (!host) return (void)[page performSelector:@selector(close)];
     DPPeekLoad(page, url);
+    DPPeekWarmPage = page;
+    DPPeekWarmView = host;
+    DPPeekWarmURL = url;
+}
+
+static void DPPeekLetGo(id page, NSView *host) {
+    if (!host) return;
+    [page detachFromPaneHostView:host];
+    [host removeFromSuperview];
+}
+
+void DPPeekCool(void) {
+    if (!DPPeekWarmPage) return;
+    DPPeekLetGo(DPPeekWarmPage, DPPeekWarmView);
+    [DPPeekWarmPage performSelector:@selector(close)];
+    DPPeekWarmPage = DPPeekWarmView = nil;
+    DPPeekWarmURL = nil;
+}
+
+// The page is attached to a card, or the one already loading for it is moved in. If no card can show it, it opens as
+// a tab.
+static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegate, id source, id warmPage, NSView *warm) {
+    if (!window || !url || DPPeekCardIn(window)) {
+        DPPeekLetGo(warmPage, warm);
+        if (warmPage) [warmPage performSelector:@selector(close)];
+        return;
+    }
+    __block DPPeekCard *peek = nil;
+    id page = warmPage ?: DPPeekMakePage(window, source, ^(id page) { peek = DPPeekShowCard(window, page, nil, link); });
+    if (!page) return;
+    if (warmPage) peek = DPPeekShowCard(window, page, warm, link);
+    else DPPeekLoad(page, url);
     if (!peek) {
+        DPPeekLetGo(page, warm);
         DPPeekGive(page, delegate, source, url, 2);  // NewForegroundTab
         return;
     }
@@ -128,8 +176,18 @@ static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegat
     DPPeekShowTabBadge(peek, source, page);
 }
 
+// The page loading ahead is taken at once, before letting go of Shift can drop it.
 void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source) {
-    DPPeekFindLink(window, source, origin, ^(NSRect link) { DPPeekOpenFrom(window, url, link, delegate, source); });
+    id warmPage = nil;
+    NSView *warm = nil;
+    if (DPPeekWarmPage && [url isEqual:DPPeekWarmURL] && DPPeekWarmView.window == window) {
+        warmPage = DPPeekWarmPage;
+        warm = DPPeekWarmView;
+        DPPeekWarmPage = DPPeekWarmView = nil;
+        DPPeekWarmURL = nil;
+    }
+    DPPeekCool();
+    DPPeekFindLink(window, source, origin, warm, ^(NSRect link) { DPPeekOpenFrom(window, url, link, delegate, source, warmPage, warm); });
 }
 
 @implementation DPPeekCard (Handoff)
