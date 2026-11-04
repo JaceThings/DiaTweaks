@@ -111,11 +111,17 @@ static CGFloat DPSuggestionsHeight(NSView *panel) {
     return height > 0 ? height + 8 : 0;
 }
 
-// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar.
+static NSView *DPCardIn(NSWindow *window);
+
+// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar. Centered on the page,
+// the bar moves as the sidebar opens and closes, so that's a position of its own.
 static NSRect DPBarFrame(NSView *view, NSSize size, CGFloat collapsedHeight) {
-    NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame;
-    NSPoint origin = NSMakePoint(NSMidX(bounds) - size.width / 2, NSMidY(bounds) - collapsedHeight / 2);
-    if ([DPChoice(&DPCommandBar) isEqual:@"macos"] && view.window.screen) {
+    NSString *position = DPChoice(&DPCommandBar);
+    NSView *card = [position isEqual:@"page"] ? DPCardIn(view.window) : nil;
+    if (NSIsEmptyRect(card.bounds)) card = nil;  // A new tab's page has no size until Dia lays it out.
+    NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame, page = card ? [view convertRect:card.bounds fromView:card] : bounds;
+    NSPoint origin = NSMakePoint(NSMidX(page) - size.width / 2, NSMidY(page) - collapsedHeight / 2);
+    if ([position isEqual:@"macos"] && view.window.screen) {
         NSPoint topLeft = NSMakePoint(NSMidX(screen) - size.width / 2, NSMaxY(screen) - (NSHeight(screen) - collapsedHeight) * DPTuned(DPHeightKey));
         origin = [view convertPoint:[view.window convertPointFromScreen:topLeft] fromView:nil];
     }
@@ -726,7 +732,7 @@ static NSArray<NSView *> *DPCommandBarRows(void) {
 
 static NSMenu *DPCommandBarPositions(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Position"];
-    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ] ]) {
+    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ], @[ @"Center of Page", @"page" ] ]) {
         NSMenuItem *entry = [[NSMenuItem alloc] initWithTitle:item[0] action:nil keyEquivalent:@""];
         entry.representedObject = item[1];
         [menu addItem:entry];
