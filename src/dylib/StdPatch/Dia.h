@@ -50,6 +50,7 @@
 #define DPDiaTabView            "_TtC5TabUI7TabView"
 #define DPDiaTabShape           "_TtC5TabUIP33_903BE4B7F5DFD8B21A7A465D1A9EF8E412TabShapeView"
 #define DPDiaChatUsage          "_TtC15BoostCommandBar13ChatUsageView"
+#define DPDiaStatusText         "_TtC10StatusText14StatusTextView"
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
