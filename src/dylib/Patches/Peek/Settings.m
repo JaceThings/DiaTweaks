@@ -34,7 +34,7 @@ BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
     self.field.doubleValue = shown;
     [DPSettings() setDouble:shown / self.scale forKey:self.key];
     for (NSWindow *window in NSApp.windows)
-        DPPeekCardIn(window).blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
+        DPPeekCardIn(window).dim.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
 }
 
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {

@@ -1,8 +1,5 @@
 #import "Patches/Peek/Peek.h"
 
-// ArcWebContentsNavigationDisposition, numbered differently from Chromium's. A Shift-click arrives as a popup.
-enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTab = 3, DPNewWindow = 5, DPPopup = 6 };
-
 static NSURL *DPPeekHovered;
 static __weak id DPPeekHoveredPage;
 

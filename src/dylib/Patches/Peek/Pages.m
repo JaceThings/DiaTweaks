@@ -1,8 +1,8 @@
 #import "Patches/Peek/Peek.h"
 #import <objc/message.h>
 
-static NSMapTable *DPPeekFactories;                  // page -> the browser context or browser that made it
-static NSMapTable<NSWindow *, id> *DPPeekBrowsers;  // window -> its ArcBrowser
+static NSMapTable *DPPeekFactories;
+static NSMapTable<NSWindow *, id> *DPPeekBrowsers;
 static __weak id DPPeekLastFactory;
 static id DPPeekWarmPage;
 static NSView *DPPeekWarmView;
@@ -64,16 +64,19 @@ void DPPeekLoad(id page, NSURL *url) {
 static BOOL DPPeekGive(id page, id delegate, id source, NSURL *url, DPPeekExit exit) {
     SEL adopt = @selector(webContents:didCreateNewWebContent:targetURL:disposition:);
     if (!page || !source || ![url isKindOfClass:NSURL.class] || ![delegate respondsToSelector:adopt]) return NO;
-    NSInteger disposition = exit == DPPeekSplit ? 9 : 2;  // ArcWebContentsNavigationDisposition SplitView, NewForegroundTab
+    NSInteger disposition = exit == DPPeekSplit ? DPSplitView : DPForegroundTab;
     ((void (*)(id, SEL, id, id, NSURL *, NSInteger))objc_msgSend)(delegate, adopt, source, page, url, disposition);
     return YES;
 }
 
+static void DPPeekDetach(id page, NSView *host) {
+    if (!host) return;
+    [page detachFromPaneHostView:host];
+    [host removeFromSuperview];
+}
+
 static void DPPeekDiscard(id page, NSView *host) {
-    if (host) {
-        [page detachFromPaneHostView:host];
-        [host removeFromSuperview];
-    }
+    DPPeekDetach(page, host);
     [page performSelector:@selector(close)];
 }
 
@@ -161,10 +164,7 @@ static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegat
     if (warmPage) peek = DPPeekShowCard(window, page, warmHost, link);
     else DPPeekLoad(page, url);
     if (!peek) {
-        if (warmHost) {
-            [page detachFromPaneHostView:warmHost];
-            [warmHost removeFromSuperview];
-        }
+        DPPeekDetach(page, warmHost);
         DPPeekGive(page, delegate, source, url, DPPeekTab);
         return;
     }

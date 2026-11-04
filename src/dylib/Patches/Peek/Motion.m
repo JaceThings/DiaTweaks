@@ -175,7 +175,7 @@ static char DPGrowthKey;
 @implementation DPPeekCard (Motion)
 
 - (void)animateIn {
-    self.controls.alphaValue = self.card.alphaValue = self.blur.alphaValue = 0;
+    self.controls.alphaValue = self.card.alphaValue = self.dim.alphaValue = 0;
     CFTimeInterval start = CACurrentMediaTime();
     __weak DPPeekCard *weak = self;
     [NSTimer scheduledTimerWithTimeInterval:1 / 120.0 repeats:YES block:^(NSTimer *timer) {
@@ -188,8 +188,8 @@ static char DPGrowthKey;
             if (!peek.closing) DPPeekRevealControls(peek.controls);
         }];
         DPPeekTravel(peek, YES);
-        peek.card.alphaValue = peek.blur.alphaValue = 1;
-        [peek.blur.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
+        peek.card.alphaValue = peek.dim.alphaValue = 1;
+        [peek.dim.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
         [CATransaction commit];
     }];
 }
@@ -198,15 +198,15 @@ static char DPGrowthKey;
     [CATransaction begin];
     [CATransaction setCompletionBlock:completion];
     if (self.card.alphaValue > 0) {  // Closed before it was shown.
-        [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
+        [self.dim.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
         DPPeekTravel(self, NO);
     }
     [CATransaction commit];
 }
 
 - (void)animateExpand:(void (^)(void))completion {
-    self.card.alphaValue = self.blur.alphaValue = 1;
-    [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
+    self.card.alphaValue = self.dim.alphaValue = 1;
+    [self.dim.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
     [DPPeekGrowth grow:self done:completion];
 }
 

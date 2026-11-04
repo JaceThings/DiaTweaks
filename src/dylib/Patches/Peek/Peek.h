@@ -4,6 +4,9 @@ extern DPPatch DPPeek;
 
 typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit };  // Also the controls' button tags.
 
+// ArcWebContentsNavigationDisposition, numbered differently from Chromium's. A Shift-click arrives as a popup.
+enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTab = 3, DPNewWindow = 5, DPPopup = 6, DPSplitView = 9 };
+
 @protocol DPPeekPage <NSObject>
 - (NSView *)createPaneHostView;
 - (void)attachToPaneHostView:(NSView *)host;
@@ -11,7 +14,7 @@ typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit }; 
 @end
 
 @interface DPPeekCard : NSView
-@property (nonatomic, strong) NSView *blur, *card, *shade, *clip, *host, *controls, *tabBadge;
+@property (nonatomic, strong) NSView *dim, *card, *shade, *clip, *host, *controls, *tabBadge;
 @property (nonatomic, strong) id<DPPeekPage> page;
 @property (nonatomic, weak) id sourceDelegate, source;
 @property (nonatomic, weak) NSView *pane;

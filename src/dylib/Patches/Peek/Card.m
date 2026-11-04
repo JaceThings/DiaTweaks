@@ -20,7 +20,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 - (void)layout {
     [super layout];
     NSRect card = self.cardFrame;
-    self.blur.frame = self.bounds;
+    self.dim.frame = self.bounds;
     self.card.frame = NSInsetRect(card, -DPPeekShadowRoom, -DPPeekShadowRoom);
     self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
     self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card) + 4}, self.controls.frame.size};
@@ -81,7 +81,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 - (void)handOver {
     [self stopWatching];
     [self removeFromSuperview];
-    // Off screen before the page leaves it, or it shows blank for a frame; a full-size card is swapped in the same one.
+    // Off screen before the page detaches, or it flashes blank. A full-size card is swapped for the tab in the same frame.
     if (self.grown < 1) [CATransaction flush];
     [self.page detachFromPaneHostView:self.host];
 }
@@ -149,15 +149,14 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     peek.pane = pane;
     peek.page = page;
     peek.host = host;
-    // Not NSVisualEffectView: the page is GPU-composited, so an in-window blur can't sample it.
-    peek.blur = DPLayerView();
-    peek.blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
+    peek.dim = DPLayerView();
+    peek.dim.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
     peek.card = DPLayerView();
     NSShadow *shadow = [NSShadow new];
     shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
     shadow.shadowBlurRadius = 24;
     shadow.shadowOffset = NSMakeSize(0, -6);
-    peek.shade = DPLayerView();  // The clip would cut its shadow off.
+    peek.shade = DPLayerView();
     peek.shade.shadow = shadow;
     peek.clip = DPLayerView();
     peek.clip.layer.masksToBounds = YES;
@@ -170,7 +169,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     [peek.clip addSubview:host];
     [peek.card addSubview:peek.shade];
     [peek.card addSubview:peek.clip];
-    for (NSView *view in @[peek.blur, peek.card, peek.controls]) [peek addSubview:view];
+    for (NSView *view in @[peek.dim, peek.card, peek.controls]) [peek addSubview:view];
     [holder addSubview:peek positioned:NSWindowAbove relativeTo:nil];
     [peek layoutSubtreeIfNeeded];
     if (!warmHost) [page attachToPaneHostView:host];
