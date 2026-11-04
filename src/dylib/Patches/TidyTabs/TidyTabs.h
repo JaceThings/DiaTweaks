@@ -48,6 +48,7 @@ NSScrollView *DPTidyListScroll(NSView *list);
 NSRect DPTidyHoverZone(NSView *list);
 
 void DPTidyTabsNow(NSWindow *window);  // Action.m
+NSString *DPTidyUnavailableReason(void);  // Model.swift: why Apple Intelligence can't tidy now, or nil.
 
 // Tabs.m: which tabs a tidy looks at.
 NSDictionary<NSString *, NSString *> *DPTidyLooseTabs(NSWindow *window);  // URL to title, below the divider.

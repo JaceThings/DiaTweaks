@@ -105,6 +105,17 @@ private func DPTidyUnavailable(_ availability: SystemLanguageModel.Availability)
 }
 #endif
 
+/// Why the model can't be used now, or nil when it can. The broom's tooltip shows it.
+@_cdecl("DPTidyUnavailableReason")
+public func DPTidyUnavailableReason() -> NSString? {
+    #if canImport(FoundationModels)
+    guard #available(macOS 26, *) else { return "Tidy Tabs needs macOS 26 or later." }
+    return DPTidyUnavailable(SystemLanguageModel.default.availability) as NSString?
+    #else
+    return "This build has no FoundationModels."
+    #endif
+}
+
 /// `tabs` holds dictionaries with "title" and "address" (host and path, no query). `done` gets an array of groups, each an array of 1-based tab
 /// numbers with two or more in it, or an error message. It's called on the main queue.
 @_cdecl("DPTidyAskModel")
@@ -112,9 +123,9 @@ public func DPTidyAskModel(_ tabs: NSArray, _ done: @escaping @convention(block)
     func finish(_ groups: NSArray?, _ error: String?) {
         DispatchQueue.main.async { done(groups, error as NSString?) }
     }
+    if let reason = DPTidyUnavailableReason() { return finish(nil, reason as String) }
     #if canImport(FoundationModels)
-    guard #available(macOS 26, *) else { return finish(nil, "Tidy Tabs needs macOS 26 or later.") }
-    if let reason = DPTidyUnavailable(SystemLanguageModel.default.availability) { return finish(nil, reason) }
+    guard #available(macOS 26, *) else { return }
     let lines = tabs.map { tab -> String in
         let tab = tab as? NSDictionary
         let title = String(((tab?["title"] as? String) ?? "").prefix(90))
@@ -134,7 +145,5 @@ public func DPTidyAskModel(_ tabs: NSArray, _ done: @escaping @convention(block)
             finish(nil, "The model couldn't group these tabs: \(error.localizedDescription)")
         }
     }
-    #else
-    finish(nil, "This build has no FoundationModels.")
     #endif
 }

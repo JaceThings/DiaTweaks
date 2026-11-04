@@ -75,9 +75,10 @@ void DPTidyBrushesBusy(BOOL busy) {
 
 - (void)tidy:(id)sender { DPTidyTabsNow(self.window); }
 
-// The broom looks the same while the model works; the divider's wave shows it, and a click then does nothing.
+// The broom looks the same while the model works; the divider's wave shows it, and a click then does nothing. Without
+// Apple Intelligence a click does nothing either, so the tooltip says why.
 - (void)showBusy {
-    self.toolTip = DPBrushesBusy ? @"Tidying…" : @"Tidy Tabs";
+    self.toolTip = DPBrushesBusy ? @"Tidying…" : DPTidyUnavailableReason() ?: @"Tidy Tabs";
 }
 
 - (void)viewDidMoveToWindow { [super viewDidMoveToWindow]; [self showBusy]; }
@@ -97,7 +98,7 @@ void DPTidyBrushesBusy(BOOL busy) {
     self.image = DPBroomImage(plain ? 11 : 14);
     [self restyle];
 }
-- (void)mouseEntered:(NSEvent *)event { self.hovered = YES; }
+- (void)mouseEntered:(NSEvent *)event { [self showBusy]; self.hovered = YES; }
 - (void)mouseExited:(NSEvent *)event { self.hovered = NO; }
 - (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; [self restyle]; }
 @end
