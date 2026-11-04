@@ -3,7 +3,8 @@
 // Like Zen, the strip, the toolbar and the space around the page share one color a shade darker than the page, and the
 // page sits in it as a card with rounded corners.
 static const CGFloat DPPageRadius = 10;
-static char DPChromeKey, DPRoundedKey;
+static char DPChromeKey, DPRoundedKey, DPBarAppearanceKey;
+static BOOL DPSettingAppearance;
 
 // A shade darker than a plain page in the window's appearance. Not Dia's toolbar color, which takes each site's color:
 // the strip and the space round the page would change with every site, and not all at the same moment.
@@ -38,6 +39,17 @@ CGFloat DPToolbarBottom(NSWindow *window) {
 BOOL DPToolbarHidden(NSWindow *window) { return DPToolbarAlpha(window) < 0.01; }
 
 
+// Dia gives the toolbar a light or dark appearance to suit each site's color. On the chrome, which doesn't take the
+// site's color, its buttons and text follow the window's instead, as the strip's do; Dia's comes back without the strip.
+static void DPMatchBarAppearance(NSView *bar) {
+    id dia = DPGet(bar, &DPBarAppearanceKey);
+    NSAppearance *want = DPStripPresent(bar.window) || dia == NSNull.null ? nil : dia;
+    if (bar.appearance == want || (!dia && !DPStripPresent(bar.window))) return;
+    DPSettingAppearance = YES;
+    bar.appearance = want;
+    DPSettingAppearance = NO;
+}
+
 void DPApplyChrome(NSView *pane) {
     NSView *bar = DPSubview(pane, DPDiaToolbar), *page = DPSubview(pane, DPDiaPage);
     BOOL on = DPStripPresent(pane.window) && bar;
@@ -65,9 +77,16 @@ void DPApplyChrome(NSView *pane) {
         page.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
         page.layer.masksToBounds = on;
     }
+    if (bar) DPMatchBarAppearance(bar);
     if (!on) return;
     if (!NSEqualRects(chrome.frame, pane.frame)) chrome.frame = pane.frame;
     chrome.layer.backgroundColor = DPChromeColor(pane.window, pane.effectiveAppearance);
+}
+
+static void DPBar_setAppearance(NSView *self, SEL _cmd, NSAppearance *appearance) {
+    if (DPSettingAppearance) return DPCallOriginal(DPBar_setAppearance, self, appearance);
+    DPSet(self, &DPBarAppearanceKey, appearance ?: NSNull.null);
+    DPCallOriginal(DPBar_setAppearance, self, DPStripPresent(self.window) ? nil : appearance);
 }
 
 static void DPPane_layout(NSView *self, SEL _cmd) {
@@ -77,4 +96,5 @@ static void DPPane_layout(NSView *self, SEL _cmd) {
 
 void DPInstallCompactChrome(void) {
     DPHook(DPDiaContentPane, @selector(layout), (IMP)DPPane_layout);
+    DPHook(DPDiaToolbar, @selector(setAppearance:), (IMP)DPBar_setAppearance);
 }
