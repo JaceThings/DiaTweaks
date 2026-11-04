@@ -4,10 +4,21 @@
 const char *const DPHideHostClasses[] = {DPDiaToolbar, DPDiaSidebarHeader, DPDiaSidebarFooter, NULL};
 static char DPGrownKey;
 
+// Dia centers the profile dots between the footer's buttons, so a hidden button would pull them off center.
+static void DPCenterSpaceSwitcher(NSView *footer) {
+    NSView *switcher = DPSubview(footer, DPDiaSpaceSwitcher);
+    BOOL patched = NO;
+    for (NSView *sub in footer.subviews) patched |= [DPSuppressed containsObject:sub];
+    if (!switcher || !patched) return;
+    CGFloat inset = MAX(NSMinX(switcher.frame), NSWidth(footer.bounds) - NSMaxX(switcher.frame));
+    switcher.frame = NSMakeRect(inset, NSMinY(switcher.frame), NSWidth(footer.bounds) - 2 * inset, NSHeight(switcher.frame));
+}
+
 static void DPBar_layout(NSView *self, SEL _cmd) {
     [DPHideHosts addObject:self];
     DPEnforceHides(self);
     DPCallOriginal(DPBar_layout, self);
+    if (DPIsKind(self, DPDiaSidebarFooter)) DPCenterSpaceSwitcher(self);
 }
 
 static void DPSetHeight(NSView *view, CGFloat height) {
