@@ -10,6 +10,11 @@ SWIFTFLAGS := -target arm64-apple-macos14.0 -O -parse-as-library -wmo -module-na
 	-Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
 PASSKEYS := src/dylib/Patches/Passkeys/extension
 EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectcreate,__TEXT,__pk_$(basename $(file)),$(PASSKEYS)/$(file))
+INTEGRATIONS := src/dylib/TabIntegrations
+CHATGPT := src/dylib/Patches/ChatGPTPreview
+INTEGRATION_INPUTS := $(shell find src/dylib/Patches -name integration.json -o -name '*.js')
+INTEGRATION_DIRS := src/dylib/Patches $(sort $(dir $(INTEGRATION_INPUTS)))
+INTEGRATION_SECTION := -Wl,-sectcreate,__TEXT,__tab_scripts,build/integration-scripts.json
 
 all: build/diapatch build/DiaPatches.dylib build/patches.json
 
@@ -19,8 +24,11 @@ build/diapatch: $(wildcard src/diapatch/*.[hm]) | build
 build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
-build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) | build
-	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -framework AppKit -framework QuartzCore -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
+build/integration-scripts.json: scripts/build-integration-scripts.py $(INTEGRATION_INPUTS) $(INTEGRATION_DIRS) | build
+	python3 scripts/build-integration-scripts.py $@
+
+build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) build/integration-scripts.json | build
+	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) $(INTEGRATION_SECTION) -framework AppKit -framework QuartzCore -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
 
 # The patch list for diatweaks. With DIAPATCH_MANIFEST set, the dylib writes it and exits as it loads, so diapatch never runs.
@@ -33,6 +41,23 @@ build:
 test: build/DiaPatches.dylib
 	./test.sh
 
+test-chatgpt: | build
+	node tests/chatgpt-preview-state.test.js
+	node tests/chatgpt-preview-collector.test.js
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore tests/chatgpt-preview-native.m $(CHATGPT)/Data.m $(CHATGPT)/Rows.m $(INTEGRATIONS)/Data.m $(wildcard $(INTEGRATIONS)/Row*.m) -o build/chatgpt-preview-native
+	build/chatgpt-preview-native
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/chatgpt-preview-cache.m $(CHATGPT)/Cache.m $(CHATGPT)/Data.m $(INTEGRATIONS)/Data.m $(INTEGRATIONS)/Cache.m -o build/chatgpt-preview-cache
+	build/chatgpt-preview-cache
+
+test-integrations: | build
+	python3 -B -m unittest discover -s tests -p 'test_integration_scripts.py'
+	clang $(CFLAGS) -Isrc/dylib -fsyntax-only tests/fixtures/tab-integrations/ExamplePreview/ExamplePreview.m
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-native.m $(foreach file,Registry Data Pages PageHooks Bridge ScriptBuilders Selection Cache,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-native
+	build/tab-integrations-native
+	node tests/tab-integrations-protocol.test.js
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-cache.m $(INTEGRATIONS)/Cache.m -o build/tab-integrations-cache
+	build/tab-integrations-cache
+
 # make patch NAME=HideFooButton starts a new patch in src/dylib/Patches/HideFooButton.
 patch:
 	@scripts/new-patch "$(NAME)"
@@ -40,4 +65,4 @@ patch:
 clean:
 	rm -rf build
 
-.PHONY: all clean test patch
+.PHONY: all clean test test-chatgpt test-integrations patch

@@ -8,6 +8,8 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site.
 
+The optional **ChatGPT Tab Preview** shows recent conversations and a separate preview pin when you hover a ChatGPT tab. See its [behavior and testing notes](docs/chatgpt-preview.md). Developers can add other sites using the [tab integration API](docs/tab-integrations.md).
+
 Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
 
 [See all tweaks →](https://github.com/JaceThings/DiaTweaks/wiki)
@@ -63,7 +65,7 @@ rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTw
 <details>
 <summary><strong>Is it safe?</strong></summary>
 
-Yes. It's built on your Mac from this code. It only changes how Dia looks, and never reads your pages, history or passwords.
+It's built on your Mac from this code. Most tweaks change Dia's interface. The optional ChatGPT Tab Preview reads conversation titles, links and status indicators from open ChatGPT pages. It does not collect message text or credentials, and is off by default.
 
 </details>
 
