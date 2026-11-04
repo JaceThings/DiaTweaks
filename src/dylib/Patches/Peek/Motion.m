@@ -1,6 +1,6 @@
 #import "Patches/Peek/Peek.h"
 
-// The card opens and closes on the curves an iPhone app opens with, read from iOS 27's SpringBoard in
+// By default the card opens and closes on the curves an iPhone app opens with, read from iOS 27's SpringBoard in
 // github.com/pausedstudio/app-open-teardown (EQUATIONS.md): one critically damped spring with a 0.24 s response moves
 // the card, the page fades in on SpringBoard's crossfade curve, and the page behind dims on its 0.314 s spring. The
 // card is laid out once at full size and only its layer is scaled, so the page never re-lays out mid-animation.
@@ -16,10 +16,13 @@ static CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval respons
     return spring;
 }
 
-// What's left of the main spring's way at `t`: 1 at the start, 0 at rest.
-static CGFloat DPPeekLeft(CFTimeInterval t) {
-    CGFloat w = 2 * M_PI / 0.24;
-    return (1 + w * t) * exp(-w * t);
+// What's left of a spring's way at `t`, from 1 at the start to 0 at rest, overshooting below 0 when it bounces.
+static CGFloat DPPeekLeft(CFTimeInterval t, CFTimeInterval response, CGFloat dampingRatio) {
+    if (t <= 0) return 1;
+    CGFloat w = 2 * M_PI / response;
+    if (dampingRatio >= 1) return (1 + w * t) * exp(-w * t);
+    CGFloat wd = w * sqrt(1 - dampingRatio * dampingRatio);
+    return exp(-dampingRatio * w * t) * (cos(wd * t) + dampingRatio * w / wd * sin(wd * t));
 }
 
 // kCAMediaTimingFunctionDefault, (0.25, 0.1) (0.25, 1), solved for y at x.
@@ -36,11 +39,11 @@ static CGFloat DPPeekEaseDefault(CGFloat x) {
 
 // The card's opacity over the main spring. SpringBoard has the app fully in by the time its icon has faded to 90%;
 // closing plays it backwards, so the card stays solid until it's nearly back in the link.
-static CAKeyframeAnimation *DPPeekFade(CFTimeInterval duration, BOOL opening) {
+static CAKeyframeAnimation *DPPeekFade(CFTimeInterval duration, CFTimeInterval response, CGFloat dampingRatio, BOOL opening) {
     NSMutableArray *values = [NSMutableArray new], *times = [NSMutableArray new];
     for (int i = 0; i <= 30; i++) {
         CFTimeInterval t = duration * i / 30;
-        CGFloat progress = 1 - DPPeekLeft(t);
+        CGFloat progress = 1 - DPPeekLeft(t, response, dampingRatio);
         if (!opening) progress = 1 - progress;
         CGFloat icon = 1 - DPPeekEaseDefault((progress - 0.15) / 0.45);
         [values addObject:@(MIN(1, MAX(0, 1 - (icon - 0.9) / 0.1)))];
@@ -66,17 +69,20 @@ static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
 - (void)move:(BOOL)opening completion:(void (^)(void))completion {
     NSValue *squeezed = [NSValue valueWithCATransform3D:DPPeekSqueeze(self.cardFrame, self.link)];
     NSValue *inPlace = [NSValue valueWithCATransform3D:CATransform3DIdentity];
-    CASpringAnimation *move = DPPeekSpring(@"transform", 0.24, 1);
+    // The Settings sliders pick the spring; the dimming keeps iOS's pace relative to it, and never bounces.
+    CFTimeInterval response = DPPeekResponse();
+    CGFloat dampingRatio = 1 - DPPeekBounce();
+    CASpringAnimation *move = DPPeekSpring(@"transform", response, dampingRatio);
     move.fromValue = opening ? squeezed : inPlace;
     move.toValue = opening ? inPlace : squeezed;
-    CASpringAnimation *dim = DPPeekSpring(@"opacity", 0.314, 1);
+    CASpringAnimation *dim = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
     dim.fromValue = opening ? @0 : @1;
     dim.toValue = opening ? @1 : @0;
 
     [CATransaction begin];
     [CATransaction setCompletionBlock:completion];
     CAAnimationGroup *card = [CAAnimationGroup animation];
-    card.animations = @[move, DPPeekFade(move.duration, opening)];
+    card.animations = @[move, DPPeekFade(move.duration, response, dampingRatio, opening)];
     card.duration = move.duration;
     for (CAAnimation *animation in @[card, dim]) {
         animation.fillMode = kCAFillModeForwards;
