@@ -7,7 +7,7 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
     NSMutableArray<DPPatchSwitch *> *_switches;
     NSTextField *_note;
     NSArray<NSView *> *_rows;
-    NSMutableArray<NSView *> *_optionChoices;  // Shown only while their option is on.
+    NSMutableArray<NSView *> *_optionChoices;  // An option's choice and rows, shown only while it's on.
 }
 
 - (instancetype)initWithPatch:(DPPatch *)patch {
@@ -56,12 +56,19 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
                                            DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), nil];
         if (option->unavailable) [lines addObject:DPLabel(DPWhyDisabled(option), 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
         add(title, DPRow(DPColumn(lines, 2), [self switchFor:option]));
-        // An option's own choice sits under its switch.
-        if (!option->choices) return;
-        NSView *row = [self choiceRowFor:option];
-        DPSet(row, &DPChoicePatchKey, [NSValue valueWithPointer:option]);
-        add(title, row);
-        [self->_optionChoices addObject:row];
+        // An option's own choice and rows sit under its switch, shown while it's on.
+        NSMutableArray<NSView *> *under = [NSMutableArray new];
+        if (option->choices) [under addObject:[self choiceRowFor:option]];
+        for (NSView *view in option->rows ? option->rows() : @[]) {
+            NSView *row = DPRow(view, [NSView new]);
+            [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
+            [under addObject:row];
+        }
+        for (NSView *row in under) {
+            DPSet(row, &DPChoicePatchKey, [NSValue valueWithPointer:option]);
+            add(title, row);
+            [self->_optionChoices addObject:row];
+        }
     });
     _rows = patch->rows ? patch->rows() : @[];
     for (NSView *view in _rows) {

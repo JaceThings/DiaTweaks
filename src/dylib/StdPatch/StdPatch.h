@@ -22,7 +22,7 @@ struct DPPatch {
     // A menu on the patch's Settings page, titled by the menu. Items' representedObjects are saved under `choice`.
     __unsafe_unretained NSString *choice, *defaultChoice;
     NSMenu *(*choices)(void);
-    NSArray<NSView *> *(*rows)(void);  // More rows for the Options on its Settings page, such as sliders.
+    NSArray<NSView *> *(*rows)(void);  // More rows for the Options on its Settings page, such as sliders. An option's sit under its switch.
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.
     void (*apply)(DPPatch *patch);  // Applies a toggle at once. Without it, `progress` eases toward `on` while every patch's `relayout` runs each frame.
@@ -89,6 +89,11 @@ void *DPIvar(id object, const char *name);            // Address of an instance 
 void DPSetHint(NSView *view, NSString *text);
 NSString *DPHintOf(NSView *view);
 void DPShowHint(NSView *view);
+
+// Shortcut.m: a keyboard shortcut saved under `key` as @{keyCode, modifiers, key}, where key is what to show for the
+// key. Until one is recorded it's `fallback`; cleared, it's none. The field records one like Dia's Shortcuts settings.
+NSView *DPShortcutField(NSString *key, NSDictionary *fallback);
+BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback);  // NO while any field is recording.
 
 #pragma mark Values
 
