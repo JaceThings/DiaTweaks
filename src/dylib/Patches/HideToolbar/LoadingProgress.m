@@ -98,6 +98,7 @@ DP_PATCH(DPShowLoadingProgress) {
     .symbol = @"rectangle.topthird.inset.filled",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
+    .section = @"While It's Hidden",
     .classes = DPClasses(DPDiaWebContents, DPDiaReloadIcon),
     .choice = @"loadingProgressColor",
     .defaultChoice = @"dia",

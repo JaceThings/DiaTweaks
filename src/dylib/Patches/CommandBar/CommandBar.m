@@ -769,7 +769,6 @@ DP_PATCH(DPCommandBarBlur) {
     .detail = @"Blur the page behind the command bar.",
     .symbol = @"aqi.medium",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
     .apply = DPApplyCommandBar,
 };
@@ -782,7 +781,6 @@ DP_PATCH(DPCommandBarDarken) {
     .detail = @"Darken the page behind the command bar.",
     .symbol = @"moon.fill",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
     .apply = DPApplyCommandBar,
 };
@@ -794,6 +792,5 @@ DP_PATCH(DPCommandBarKeepText) {
     .detail = @"Bring back what you typed when you open the bar again after Escape, selected so you can carry on or type over it.",
     .symbol = @"text.cursor",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
 };

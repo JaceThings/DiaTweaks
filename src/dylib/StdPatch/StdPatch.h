@@ -14,7 +14,7 @@ struct DPPatch {
     __unsafe_unretained NSString *title, *detail;
     __unsafe_unretained NSString *hint;  // An optional tip shown under the detail on its Settings page.
     __unsafe_unretained NSString *symbol, *tint;  // The row icon's SF Symbol, then space-separated fallbacks for older macOS, and NSColor class property.
-    __unsafe_unretained NSString *section;  // Its group in Settings.
+    __unsafe_unretained NSString *section;  // Its group in Settings. For an option, its heading on its patch's page, or Options.
     const char *const *classes;  // Dia classes it needs (DPClasses). If one is missing, it stays off and Settings says so.
     const char *const *builtIn;  // Dia classes that mean Dia does this itself (DPClasses). If one exists, it stays off and Settings says so.
     __unsafe_unretained NSString *requires;    // Key of a patch that must be on. Settings lists this one as an option on that patch's page.
