@@ -82,9 +82,12 @@ static id DPMesh(const CGPoint to[9]) {
 // each row of vertices rides its own spring, scaled from SpringBoard's row responses by how far down the page the link
 // is. Opening, the row nearest the link is slowest and the far row fastest, so the card's sides bend as it pulls out
 // of the link; closing flips them, so the row nearest the link lands first. With the genie effect off, every row rides
-// the same spring, so the card keeps its shape and just grows out of the link.
-static CAKeyframeAnimation *DPPeekTravel(CALayer *layer, NSRect card, NSRect link, CGFloat linkY, BOOL opening,
-                                         CFTimeInterval response, CGFloat dampingRatio, CFTimeInterval *duration) {
+// the same spring, so the card keeps its shape and just grows out of the link. The mesh covers the card's shadow too,
+// so the shadow shrinks and grows with it, and `corners` keeps the card's corners from shrinking to square on the way:
+// they go from 4 pt at the link to the card's own radius.
+static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CFTimeInterval response, CGFloat dampingRatio,
+                                         CFTimeInterval *duration, CAKeyframeAnimation **corners) {
+    CGFloat linkY = NSMidY(peek.link) / MAX(1, NSHeight(peek.bounds));
     CGFloat ay = 2 * MIN(1, MAX(0, linkY)) - 1, g = !DPPeekGenie() ? 0 : ay >= 0 ? ay : 0.75 * ay;
     if (!opening) g = -g;
     CFTimeInterval rows[3];
@@ -94,29 +97,47 @@ static CAKeyframeAnimation *DPPeekTravel(CALayer *layer, NSRect card, NSRect lin
         rows[r] = response * (1 - 0.5 * g + g * n);
         *duration = MAX(*duration, DPPeekSpring(@"meshTransform", rows[r], dampingRatio).settlingDuration);
     }
-    // The link in the card's unit square, y down from the top.
+    // The link in the card's unit square, y down from the top, and the card in the unit square of the layer that holds
+    // it and its shadow.
+    NSRect card = peek.cardFrame, outer = peek.card.frame, link = peek.link;
     NSRect source = NSMakeRect((NSMinX(link) - NSMinX(card)) / NSWidth(card), (NSMinY(link) - NSMinY(card)) / NSHeight(card),
                                NSWidth(link) / NSWidth(card), NSHeight(link) / NSHeight(card));
-    BOOL flipped = !layer.geometryFlipped;
-    NSMutableArray *values = [NSMutableArray new], *times = [NSMutableArray new];
+    NSRect inner = NSMakeRect((NSMinX(card) - NSMinX(outer)) / NSWidth(outer), (NSMinY(card) - NSMinY(outer)) / NSHeight(outer),
+                              NSWidth(card) / NSWidth(outer), NSHeight(card) / NSHeight(outer));
+    CGFloat radius = peek.clip.layer.cornerRadius, largest = MIN(NSWidth(card), NSHeight(card)) / 2;
+    BOOL flipped = !peek.card.layer.geometryFlipped;
+    NSMutableArray *values = [NSMutableArray new], *radii = [NSMutableArray new], *times = [NSMutableArray new];
     for (int i = 0; i <= 60; i++) {
         CFTimeInterval t = *duration * i / 60;
         CGPoint to[9];
+        CGFloat aways[3];
         for (int r = 0; r < 3; r++) {
-            CGFloat left = DPPeekLeft(t, rows[r], dampingRatio), away = opening ? left : 1 - left;
+            CGFloat left = DPPeekLeft(t, rows[r], dampingRatio), away = aways[r] = opening ? left : 1 - left;
             for (int c = 0; c < 3; c++) {
-                CGFloat x = c / 2.0, y = r / 2.0;
+                // Each vertex in the card's own unit square, moved toward the link, then back into the outer square.
+                CGFloat x = (c / 2.0 - NSMinX(inner)) / NSWidth(inner), y = (r / 2.0 - NSMinY(inner)) / NSHeight(inner);
                 CGFloat px = x + (NSMinX(source) + x * NSWidth(source) - x) * away, py = y + (NSMinY(source) + y * NSHeight(source) - y) * away;
+                px = NSMinX(inner) + px * NSWidth(inner);
+                py = NSMinY(inner) + py * NSHeight(inner);
                 to[(flipped ? r : 2 - r) * 3 + c] = CGPointMake(px, flipped ? py : 1 - py);
             }
         }
         [values addObject:DPMesh(to)];
+        // The radius the mesh shrinks to the target on screen, from the middle row's scale; the shorter side decides.
+        CGFloat a = aways[1], scale = MIN(1 + (NSWidth(source) - 1) * a, 1 + (NSHeight(source) - 1) * a);
+        [radii addObject:@(MIN(largest, (radius + (4 - radius) * a) / MAX(0.01, scale)))];
         [times addObject:@(i / 60.0)];
     }
     CAKeyframeAnimation *travel = [CAKeyframeAnimation animationWithKeyPath:@"meshTransform"];
     travel.values = values;
-    travel.keyTimes = times;
-    travel.duration = *duration;
+    *corners = [CAKeyframeAnimation animationWithKeyPath:@"cornerRadius"];
+    (*corners).values = radii;
+    for (CAKeyframeAnimation *animation in @[travel, *corners]) {
+        animation.keyTimes = times;
+        animation.duration = *duration;
+        animation.fillMode = kCAFillModeBoth;  // Backwards too, or a frame of the full card can show before it starts.
+        animation.removedOnCompletion = opening;  // Closing holds the end, so nothing flashes before the card goes.
+    }
     return travel;
 }
 
@@ -176,23 +197,24 @@ static char DPGrowthKey;
 - (void)move:(BOOL)opening {
     CFTimeInterval response = DPPeekResponse(), duration;
     CGFloat dampingRatio = 1 - DPPeekBounce();
-    CAKeyframeAnimation *move = DPPeekTravel(self.card.layer, self.cardFrame, self.link, NSMidY(self.link) / MAX(1, NSHeight(self.bounds)), opening,
-                                             response, dampingRatio, &duration);
+    CAKeyframeAnimation *corners, *move = DPPeekTravel(self, opening, response, dampingRatio, &duration, &corners);
     CAAnimationGroup *card = [CAAnimationGroup animation];
     card.animations = @[move, DPPeekFade(duration, response, dampingRatio, opening)];
     card.duration = duration;
-    card.fillMode = kCAFillModeBoth;  // Backwards too, or a frame of the full card can show before it starts.
-    card.removedOnCompletion = opening;  // Closing holds the end, so nothing flashes before the card goes.
+    card.fillMode = move.fillMode;
+    card.removedOnCompletion = move.removedOnCompletion;
     [CATransaction setDisableActions:YES];
     self.card.alphaValue = 1;
     [self.card.layer addAnimation:card forKey:@"peek"];
+    [self.clip.layer addAnimation:corners forKey:@"peek"];
+    [self.shade.layer addAnimation:corners forKey:@"peek"];
 }
 
 // Out of the link; the controls follow once it's in place.
 - (void)animateIn {
     self.controls.alphaValue = 0;
     self.card.alphaValue = 0;  // Still drawing, just unseen, so the page paints its first frame meanwhile.
-    [self.blur.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
+    self.blur.alphaValue = 0;  // The page behind dims as the card opens, not before.
     // The card waits a moment for the page's first paint, so a quick page is in it as it opens and not a blank. A slow one
     // (most sites take about half a second) isn't worth a lag on every click, so it fills in after the card is open.
     CFTimeInterval start = CACurrentMediaTime();
@@ -210,6 +232,8 @@ static char DPGrowthKey;
             }];
         }];
         [peek move:YES];
+        peek.blur.alphaValue = 1;
+        [peek.blur.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
         [CATransaction commit];
     }];
 }
@@ -218,15 +242,17 @@ static char DPGrowthKey;
 - (void)animateOut:(void (^)(void))completion {
     [CATransaction begin];
     [CATransaction setCompletionBlock:completion];
-    [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
-    if (self.card.alphaValue > 0) [self move:NO];  // A card closed before it opened has nowhere to go back from.
+    if (self.card.alphaValue > 0) {  // A card closed before it opened has nowhere to go back from.
+        [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
+        [self move:NO];
+    }
     [CATransaction commit];
 }
 
 // Out to fill the whole page area on the same spring, with the page behind clearing, before it becomes a tab there.
 // The card is resized for real each frame, not scaled, so the page lays itself out at each size as it grows.
 - (void)animateExpand:(void (^)(void))completion {
-    self.card.alphaValue = 1;
+    self.card.alphaValue = self.blur.alphaValue = 1;
     [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
     [DPPeekGrowth grow:self response:DPPeekResponse() dampingRatio:1 - DPPeekBounce() done:completion];
 }

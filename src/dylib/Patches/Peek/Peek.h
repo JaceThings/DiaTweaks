@@ -12,7 +12,7 @@ extern DPPatch DPPeek;
 
 // A Peek: a card over a window's page area with the page in it, the page behind blurred. Card.m.
 @interface DPPeekCard : NSView
-@property (nonatomic, strong) NSView *blur, *card, *clip, *host, *controls;
+@property (nonatomic, strong) NSView *blur, *card, *shade, *clip, *host, *controls;
 @property (nonatomic, strong) id<DPPeekPage> page;
 @property (nonatomic, weak) id sourceDelegate, source;  // The page it was opened from, and Dia's delegate for that page.
 @property (nonatomic, weak) NSView *pane;               // The page area it covers.

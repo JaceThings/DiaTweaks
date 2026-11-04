@@ -8,6 +8,8 @@
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
+static const CGFloat DPPeekShadowRoom = 48;
+
 // Arc's card is nearly full height and inset at the sides, with the controls in the right margin.
 // Expanding grows it toward the whole page area.
 - (NSRect)cardFrame {
@@ -20,11 +22,12 @@
 - (void)layout {
     [super layout];
     self.blur.frame = self.bounds;
-    self.card.frame = self.cardFrame;
-    self.clip.frame = self.card.bounds;
+    // The card's view reaches past it far enough to hold its shadow, so the shadow moves with the card as it opens.
+    self.card.frame = NSInsetRect(self.cardFrame, -DPPeekShadowRoom, -DPPeekShadowRoom);
+    self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
     self.host.frame = self.clip.bounds;
     NSSize size = self.controls.frame.size;
-    self.controls.frame = (NSRect){{NSMaxX(self.card.frame) + 12, NSMinY(self.card.frame)}, size};
+    self.controls.frame = (NSRect){{NSMaxX(self.cardFrame) + 12, NSMinY(self.cardFrame)}, size};
     // The hints are rebuilt hidden; inside the sidebar's slide they'd otherwise fade in from showing.
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
@@ -137,16 +140,23 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSRect link) {
     blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
     peek.blur = blur;
     peek.card = DPLayerView();
-    peek.card.layer.shadowOpacity = 0.35;
-    peek.card.layer.shadowRadius = 24;
-    peek.card.layer.shadowOffset = CGSizeMake(0, -6);
+    // The shadow is cast by a plain card under the page, since the page's own clip would cut it off.
+    peek.shade = DPLayerView();
+    NSShadow *shadow = [NSShadow new];
+    shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
+    shadow.shadowBlurRadius = 24;
+    shadow.shadowOffset = NSMakeSize(0, -6);
+    peek.shade.shadow = shadow;
     peek.clip = DPLayerView();
-    peek.clip.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
-    peek.clip.layer.cornerRadius = 10;
-    peek.clip.layer.cornerCurve = kCACornerCurveContinuous;
     peek.clip.layer.masksToBounds = YES;
+    for (NSView *view in @[peek.shade, peek.clip]) {
+        view.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
+        view.layer.cornerRadius = 10;
+        view.layer.cornerCurve = kCACornerCurveContinuous;
+    }
     peek.controls = DPPeekControls(peek, @selector(control:));
     [peek.clip addSubview:host];
+    [peek.card addSubview:peek.shade];
     [peek.card addSubview:peek.clip];
     for (NSView *view in @[peek.blur, peek.card, peek.controls]) [peek addSubview:view];
     [holder addSubview:peek positioned:NSWindowAbove relativeTo:nil];
