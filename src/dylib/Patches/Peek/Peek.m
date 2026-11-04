@@ -23,8 +23,14 @@ static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebC
 }
 
 static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id action) {
-    if (!DPPeekWanted([[action valueForKey:@"navigationDisposition"] integerValue]))
-        return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
+    NSInteger disposition = [[action valueForKey:@"navigationDisposition"] integerValue];
+    if (!DPPeekWanted(disposition)) {
+        NSInteger policy = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
+        // A pinned tab keeps to its site: Dia sends a link that leaves it to a new tab, which this opens in Peek instead.
+        if (!DPPeek.on || !DPPeekPinnedLinks.on || disposition != DPCurrentTab || policy != DPForegroundTab || !DPPeekCanOpen(webContents)) return policy;
+        DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
+        return DPIgnoreAction;
+    }
     if (DPPeekShows(webContents)) return DPCurrentTab;
     if (!DPPeekCanOpen(webContents)) return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
     DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);

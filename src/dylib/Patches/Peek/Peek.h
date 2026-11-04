@@ -1,6 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPPeek;
+extern DPPatch DPPeek, DPPeekPinnedLinks;
 
 typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit };  // Also the controls' button tags.
 
