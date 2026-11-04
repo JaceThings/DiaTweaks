@@ -58,7 +58,7 @@ NSURL *DPWikiURL(DPPatch *patch) {
 - (void)sync {
     self.state = self.patch->on;
     self.enabled = !DPWhyDisabled(self.patch);
-    self.hiddenIcon.toolTip = DPWhyHidden(self.patch);
-    self.hiddenIcon.hidden = !self.hiddenIcon.toolTip;
+    DPSetHint(self.hiddenIcon, DPWhyHidden(self.patch));
+    self.hiddenIcon.hidden = !DPHintOf(self.hiddenIcon);
 }
 @end

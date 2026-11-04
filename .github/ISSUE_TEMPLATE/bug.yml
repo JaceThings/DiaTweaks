@@ -29,6 +29,7 @@ body:
         - Always Show Address Field
         - Hide Chat Button
         - Hide Sidebar Button
+        - Tidy Tabs
         - Profile Emoji
         - Translucent Sidebar
         - Compact Sidebar Header
@@ -42,6 +43,7 @@ body:
         - Open New Tabs in Command Bar
         - Blur Page Behind
         - Darken Page Behind
+        - Remember What You Typed
         - Hide Upgrade Banner
         - Window Material
         - Keep Windows Active

@@ -59,3 +59,6 @@
 #define DPDiaWebContents        "ArcWebContents"
 #define DPDiaWebContentsConfiguration "ArcWebContentsConfiguration"
 #define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // Dia's delegate for each page. A Swift class: look it up after launch.
+#define DPDiaTabList            "_TtC7TabList11TabListView"
+#define DPDiaTabListSeparator   "_TtC7TabList20TabListSeparatorView"
+#define DPDiaTabListCollection  "_TtCC7TabList11TabListView14CollectionView"

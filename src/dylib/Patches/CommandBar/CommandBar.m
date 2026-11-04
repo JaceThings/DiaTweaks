@@ -1,7 +1,7 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken;
-static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey;
+extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarKeepText;
+static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPLeftTextKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
@@ -275,6 +275,7 @@ static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     NSView *page = overlay.page;
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
+    else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
     id tab = DPDismissCommandBar(overlay);
     if (overBlank) DPMakeBlank(page);
     else if (tab) DPCloseTab(tab);
@@ -416,9 +417,13 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     if (overBlank) {
         [DPBlanks(window) removeObject:openedID];
         DPSet(page, &DPBlankKey, nil);
-        NSTextView *text = DPBarText(overlay);
-        [text insertText:@"" replacementRange:NSMakeRange(0, text.string.length)];
     }
+    // What was typed before Escape comes back selected, like Arc, so it can be carried on or typed over.
+    NSTextView *text = DPBarText(overlay);
+    NSString *left = DPCommandBarKeepText.on ? DPGet(window, &DPLeftTextKey) : nil;
+    DPSet(window, &DPLeftTextKey, nil);
+    if (overBlank || left.length) [text insertText:left ?: @"" replacementRange:NSMakeRange(0, text.string.length)];
+    if (left.length) [text selectAll:nil];
     overlay.overBlank = overBlank;
     overlay.openedTab = openedTab;
     overlay.startURL = [openedTab valueForKey:@"URL"];
@@ -771,4 +776,15 @@ DP_PATCH(DPCommandBarDarken) {
     .section = @"Command Bar",
     .requires = @"commandBar",
     .apply = DPApplyCommandBar,
+};
+
+DP_PATCH(DPCommandBarKeepText) {
+    .key = @"commandBarKeepText",
+    .order = 90,
+    .title = @"Remember What You Typed",
+    .detail = @"Bring back what you typed when you open the bar again after Escape, selected so you can carry on or type over it.",
+    .symbol = @"text.cursor",
+    .tint = @"systemOrangeColor",
+    .section = @"Command Bar",
+    .requires = @"commandBar",
 };
