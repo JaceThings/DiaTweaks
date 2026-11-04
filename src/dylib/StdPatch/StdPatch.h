@@ -15,6 +15,7 @@ struct DPPatch {
     __unsafe_unretained NSString *symbol, *tint;  // The row icon's SF Symbol, then space-separated fallbacks for older macOS, and NSColor class property.
     __unsafe_unretained NSString *section;  // Its group in Settings.
     const char *const *classes;  // Dia classes it needs (DPClasses). If one is missing, it stays off and Settings says so.
+    const char *const *builtIn;  // Dia classes that mean Dia does this itself (DPClasses). If one exists, it stays off and Settings says so.
     __unsafe_unretained NSString *requires;    // Key of a patch that must be on. Settings lists this one as an option on that patch's page.
     __unsafe_unretained NSString *disabledBy;  // Key of a patch that, while on, hides what this one changes. Settings marks it.
     // A menu on the patch's Settings page, titled by the menu. Items' representedObjects are saved under `choice`.
@@ -28,7 +29,7 @@ struct DPPatch {
     // nil if Dia's views match `on`, otherwise a few words on what's wrong. `make test` runs it; hide patches get one.
     // Find views with DPFindViews rather than through your own hooks, so a hook that never ran shows up as a failure.
     NSString *(*verify)(DPPatch *patch);
-    BOOL on, unavailable;
+    BOOL on, unavailable, inDia;  // inDia: one of `builtIn` exists, which also makes it unavailable.
     CGFloat progress;
 };
 
