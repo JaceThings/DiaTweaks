@@ -276,9 +276,12 @@ static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
     else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
+    BOOL nowhereToGo = !overlay.returnTab;
     id tab = DPDismissCommandBar(overlay);
-    if (overBlank) DPMakeBlank(page);
-    else if (tab) DPCloseTab(tab);
+    if (!tab) return;
+    // Closing a window's only tab would close the window, and Dia with it.
+    if (overBlank || nowhereToGo) DPMakeBlank(page);
+    else DPCloseTab(tab);
 }
 
 static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
