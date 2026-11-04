@@ -724,13 +724,13 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
     return row;
 }
 
+// Each sits under the heading of the option it tunes.
 static NSArray<NSView *> *DPCommandBarRows(void) {
-    return @[
-        DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"),
-        DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"),
-        DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
-        DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey),
-    ];
+    NSView *darkness = DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"), *radius = DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
+           *sidebar = DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey);
+    darkness.identifier = @"Darken";
+    radius.identifier = sidebar.identifier = @"Blur";
+    return @[ DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"), radius, sidebar, darkness ];
 }
 
 static NSMenu *DPCommandBarPositions(void) {
@@ -770,6 +770,7 @@ DP_PATCH(DPCommandBarBlur) {
     .symbol = @"aqi.medium",
     .tint = @"systemOrangeColor",
     .requires = @"commandBar",
+    .section = @"Blur",
     .apply = DPApplyCommandBar,
 };
 
@@ -782,6 +783,7 @@ DP_PATCH(DPCommandBarDarken) {
     .symbol = @"moon.fill",
     .tint = @"systemOrangeColor",
     .requires = @"commandBar",
+    .section = @"Darken",
     .apply = DPApplyCommandBar,
 };
 
@@ -793,4 +795,5 @@ DP_PATCH(DPCommandBarKeepText) {
     .symbol = @"text.cursor",
     .tint = @"systemOrangeColor",
     .requires = @"commandBar",
+    .section = @"Typing",
 };

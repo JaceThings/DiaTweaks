@@ -38,33 +38,36 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
     NSMutableArray<NSView *> *views = [NSMutableArray arrayWithObjects:preview, DPGroup(@[DPRow(heading, [self switchFor:patch])]), nil];
 
     // Options sit under their own section's heading, like the tweaks on the main page, and ones this Dia can't use go last.
+    // A patch's own rows name theirs with `identifier`.
     NSString *const unavailable = @"Not Available in This Version";
     NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithObject:@"Options"];
     NSMutableDictionary<NSString *, NSMutableArray<NSView *> *> *groups = [NSMutableDictionary dictionaryWithObject:[NSMutableArray new] forKey:@"Options"];
-    DPForEachOption(patch, ^(DPPatch *option) {
-        NSString *title = option->unavailable ? unavailable : option->section ?: @"Options";
+    void (^add)(NSString *, NSView *) = ^(NSString *title, NSView *row) {
         if (!groups[title]) {
             [titles addObject:title];
             groups[title] = [NSMutableArray new];
         }
+        [groups[title] addObject:row];
+    };
+    if (patch->choices) add(@"Options", [self choiceRowFor:patch]);
+    DPForEachOption(patch, ^(DPPatch *option) {
+        NSString *title = option->unavailable ? unavailable : option->section ?: @"Options";
         NSMutableArray<NSView *> *lines = [NSMutableArray arrayWithObjects:DPLabel(option->title, 13, NSFontWeightRegular, NSColor.labelColor),
                                            DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), nil];
         if (option->unavailable) [lines addObject:DPLabel(DPWhyDisabled(option), 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
-        NSView *text = DPColumn(lines, 2);
-        [groups[title] addObject:DPRow(text, [self switchFor:option])];
+        add(title, DPRow(DPColumn(lines, 2), [self switchFor:option]));
         // An option's own choice sits under its switch.
         if (!option->choices) return;
         NSView *row = [self choiceRowFor:option];
         DPSet(row, &DPChoicePatchKey, [NSValue valueWithPointer:option]);
-        [groups[title] addObject:row];
+        add(title, row);
         [self->_optionChoices addObject:row];
     });
-    if (patch->choices) [groups[@"Options"] insertObject:[self choiceRowFor:patch] atIndex:0];
     _rows = patch->rows ? patch->rows() : @[];
     for (NSView *view in _rows) {
         NSView *row = DPRow(view, [NSView new]);
         [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
-        [groups[@"Options"] addObject:row];
+        add(view.identifier ?: @"Options", row);
     }
     if ([titles containsObject:unavailable]) {
         [titles removeObject:unavailable];
