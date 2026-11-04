@@ -10,6 +10,12 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 @property (nonatomic, strong) CALayer *iconLayer;
 @end
 
+// A view's layer scales from its corner.
+CATransform3D DPPeekScaled(NSView *view, CGFloat scale) {
+    CGFloat cx = NSWidth(view.bounds) / 2, cy = NSHeight(view.bounds) / 2;
+    return CATransform3DTranslate(CATransform3DScale(CATransform3DMakeTranslation(cx, cy, 0), scale, scale, 1), -cx, -cy, 0);
+}
+
 @implementation DPPeekButton
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
@@ -36,12 +42,10 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 }
 
 - (void)grow:(BOOL)hovered {
-    CGFloat scale = 1.12, cx = NSWidth(self.bounds) / 2, cy = NSHeight(self.bounds) / 2;
-    CATransform3D grown = CATransform3DTranslate(CATransform3DScale(CATransform3DMakeTranslation(cx, cy, 0), scale, scale, 1), -cx, -cy, 0);
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.12;
         context.allowsImplicitAnimation = YES;
-        self.layer.transform = hovered ? grown : CATransform3DIdentity;
+        self.layer.transform = hovered ? DPPeekScaled(self, 1.12) : CATransform3DIdentity;
     }];
 }
 

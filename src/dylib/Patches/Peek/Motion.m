@@ -115,6 +115,27 @@ static CASpringAnimation *DPPeekDim(BOOL dimming) {
     return dim;
 }
 
+static void DPPeekRevealControls(NSView *controls) {
+    controls.alphaValue = 1;
+    for (NSButton *button in controls.subviews) {
+        if (![button isKindOfClass:NSButton.class]) continue;
+        CASpringAnimation *pop = DPPeekSpring(@"transform", 0.32, 0.7);
+        pop.fromValue = [NSValue valueWithCATransform3D:DPPeekScaled(button, 0.4)];
+        pop.toValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
+        CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        fade.fromValue = @0;
+        fade.toValue = @1;
+        fade.duration = 0.14;
+        CAAnimationGroup *enter = [CAAnimationGroup animation];
+        enter.animations = @[pop, fade];
+        enter.duration = pop.duration;
+        enter.beginTime = CACurrentMediaTime() + button.tag * 0.05;
+        enter.fillMode = kCAFillModeBackwards;
+        enter.preferredFrameRateRange = DPPeekFrameRate;
+        [button.layer addAnimation:enter forKey:@"peekEnter"];
+    }
+}
+
 @interface DPPeekGrowth : NSObject
 @property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, strong) CADisplayLink *link;
@@ -168,10 +189,7 @@ static char DPGrowthKey;
         [timer invalidate];
         [CATransaction begin];
         [CATransaction setCompletionBlock:^{
-            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-                context.duration = 0.12;
-                peek.controls.animator.alphaValue = 1;
-            }];
+            if (!peek.closing) DPPeekRevealControls(peek.controls);
         }];
         DPPeekTravel(peek, YES);
         peek.card.alphaValue = peek.blur.alphaValue = 1;

@@ -40,6 +40,7 @@ NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page);
 
 NSView *DPPeekControls(id target, SEL action);
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
+CATransform3D DPPeekScaled(NSView *view, CGFloat scale);
 
 void DPPeekShowTabBadge(DPPeekCard *peek, id source);
 void DPPeekHideTabBadge(DPPeekCard *peek);
