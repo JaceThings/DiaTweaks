@@ -1,89 +1,70 @@
 #import "Patches/Peek/Peek.h"
 
-// Reads a Swift property the Obj-C runtime hides. AXCoreUtilities ships it in every AppKit app; ProfileEmoji uses it too.
 @interface NSObject (DPPeekSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;
+- (id)safeSwiftValueForKey:(NSString *)key;  // AXCoreUtilities: reads Swift properties the Obj-C runtime hides.
 @end
 
-static NSString *DPTabStateDesc(NSView *tab) {
-    return [[[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"] description];
+static id DPTabState(NSView *tab) {
+    return [[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"];
 }
 
-static NSArray<NSView *> *DPAllTabs(void) {
+// selectionStyle is "none" when unselected (nil on an unselected pinned tab), and above/below on the selection's neighbours.
+static BOOL DPTabSelected(NSView *tab) {
+    NSString *style = [[[DPTabState(tab) safeSwiftValueForKey:@"selectionStyle"] description] lowercaseString];
+    return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
+}
+
+static NSArray<NSView *> *DPTabsIn(NSWindow *window) {
     NSMutableArray<NSView *> *tabs = [NSMutableArray array];
-    [tabs addObjectsFromArray:DPFindViews(DPDiaTabView)];
-    [tabs addObjectsFromArray:DPFindViews(DPDiaPinnedTab)];
+    for (NSView *tab in [DPFindViews(DPDiaTabView) arrayByAddingObjectsFromArray:DPFindViews(DPDiaPinnedTab)])
+        if (tab.window == window) [tabs addObject:tab];
     return tabs;
 }
 
-// A page's own id, which appears in its tab's content list.
 static NSString *DPPeekPageID(id page) {
     for (NSString *key in @[@"identifier", @"id", @"contentID", @"contentId", @"uuid"]) {
         NSString *value = [[(NSObject *)page safeSwiftValueForKey:key] description];
-        if (value.length >= 32 && [value containsString:@"-"]) return value;  // a UUID
+        if (value.length >= 32 && [value containsString:@"-"]) return value;
     }
     return nil;
 }
 
-// The tab a peek came from: the one whose content list holds the source page, else the selected tab (its page stays
-// selected while the peek floats over it). selectionStyle reads "none" when unselected and an adjacency style on the
-// tabs either side of the selection, so a non-adjacent, non-"none" style is the selected tab.
 static NSView *DPPeekOriginTab(NSWindow *window, id source) {
     NSString *sourceID = DPPeekPageID(source);
-    NSView *fallback = nil;
-    for (NSView *tab in DPAllTabs()) {
-        if (tab.window != window) continue;
-        id state = [[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"];
-        NSString *desc = [state description];
-        if (sourceID && desc && [desc containsString:sourceID]) return tab;
-        NSString *style = [[[state safeSwiftValueForKey:@"selectionStyle"] description] lowercaseString];
-        if (!fallback && style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"]) fallback = tab;
+    NSView *selected = nil;
+    for (NSView *tab in DPTabsIn(window)) {
+        if (sourceID && [[DPTabState(tab) description] containsString:sourceID]) return tab;
+        if (!selected && DPTabSelected(tab)) selected = tab;
     }
-    return fallback;
+    return selected;
 }
 
-// A content id from a tab's own state, used to recognise that tab again as the sidebar relays out and to tell when it
-// has been closed. Pinned tabs don't list one, so they are tracked by their view instead.
+// The first id in the tab's contentIDs; pinned tabs list none.
 static NSString *DPPeekTabContentKey(NSView *tab) {
-    NSString *desc = DPTabStateDesc(tab);
-    NSRange mark = [desc rangeOfString:@"contentIDs: ["];
-    if (mark.location == NSNotFound) return nil;
-    NSString *rest = [desc substringFromIndex:NSMaxRange(mark)];
-    if (rest.length < 36) return nil;
-    NSString *key = [rest substringToIndex:36];  // a UUID
+    NSString *state = [DPTabState(tab) description];
+    NSRange mark = [state rangeOfString:@"contentIDs: ["];
+    if (mark.location == NSNotFound || state.length < NSMaxRange(mark) + 36) return nil;
+    NSString *key = [state substringWithRange:NSMakeRange(NSMaxRange(mark), 36)];
     return [key containsString:@"-"] ? key : nil;
 }
 
 static NSView *DPPeekTabWithContent(NSWindow *window, NSString *key) {
-    for (NSView *tab in DPAllTabs()) {
-        if (tab.window != window) continue;
-        NSString *desc = DPTabStateDesc(tab);
-        if (desc && [desc containsString:key]) return tab;
-    }
+    for (NSView *tab in DPTabsIn(window))
+        if ([[DPTabState(tab) description] containsString:key]) return tab;
     return nil;
 }
 
-// Tabs along the top of the window sit in the tab strip; tabs down the side do not.
 static BOOL DPTabIsTop(NSView *tab) {
     for (NSView *view = tab; view; view = view.superview)
         if ([NSStringFromClass(view.class) containsString:@"TabStrip"]) return YES;
     return NO;
 }
 
-// A tab is the selected one when its selectionStyle is neither "none" (nil on a pinned tab) nor an adjacency style.
-static BOOL DPTabSelected(NSView *tab) {
-    id state = [[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"];
-    NSString *style = [[[state safeSwiftValueForKey:@"selectionStyle"] description] lowercaseString];
-    return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
-}
-
-// A small 👀 marking the tab a peek came from. On a sidebar tab it hides while that tab is hovered, so Dia's close
-// button (which shares the spot) stays usable; a pinned tab keeps it the whole time. It never takes clicks, and a timer
-// keeps it on the tab as the sidebar relays out and closes the peek once the tab is gone.
+// 👀 on the tab a peek came from. It follows the tab as the sidebar relays out and closes the peek when the tab is
+// closed or deselected. On a sidebar tab it hides on hover, so Dia's close button in the same spot stays usable.
 @interface DPPeekTabBadge : NSView
 @property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, copy) NSString *contentKey;
-@property (nonatomic) BOOL hidesOnHover;
 @property (nonatomic) BOOL pinned;
 @property (nonatomic, strong) NSTrackingArea *tabTracking;
 @property (nonatomic, strong) NSTimer *watch;
@@ -91,71 +72,75 @@ static BOOL DPTabSelected(NSView *tab) {
 @end
 
 @implementation DPPeekTabBadge
-- (NSView *)hitTest:(NSPoint)point { return nil; }  // Never steals a click from the tab or its close button.
+- (NSView *)hitTest:(NSPoint)point { return nil; }
 
 - (void)viewDidMoveToSuperview {
     [super viewDidMoveToSuperview];
-    if (self.tabTracking) { [self.tabTracking.owner removeTrackingArea:self.tabTracking]; self.tabTracking = nil; }
-    if (self.superview && self.hidesOnHover) {
-        self.tabTracking = [[NSTrackingArea alloc] initWithRect:self.superview.bounds
-            options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect owner:self userInfo:nil];
-        [self.superview addTrackingArea:self.tabTracking];
-    }
+    [self.tabTracking.owner removeTrackingArea:self.tabTracking];
+    self.tabTracking = nil;
+    if (!self.superview || self.pinned) return;
+    self.tabTracking = [[NSTrackingArea alloc] initWithRect:self.superview.bounds
+        options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect owner:self userInfo:nil];
+    [self.superview addTrackingArea:self.tabTracking];
 }
 
-- (void)mouseEntered:(NSEvent *)event { if (self.hidesOnHover) self.hidden = YES; }
+- (void)mouseEntered:(NSEvent *)event { if (!self.pinned) self.hidden = YES; }
 - (void)mouseExited:(NSEvent *)event { self.hidden = NO; }
 
 - (void)watch:(NSTimer *)timer {
-    if (!self.peek || self.peek.closing) { [self stop]; return; }
-    // A pinned tab lists no content id, so it is watched through the view the badge sits on. Its selectionStyle reads
-    // nil once another tab is selected, so only trust that while its state is readable at all.
+    DPPeekCard *peek = self.peek;
+    if (!peek || peek.closing) return [self stop];
+    NSView *tab = self.superview;
     if (!self.contentKey) {
-        NSView *tab = self.superview;
-        if (self.pinned && tab && DPTabStateDesc(tab) && !DPTabSelected(tab)) { [self stop]; [self.peek close:0]; }
+        // A pinned tab's state can be briefly unreadable; only a readable, unselected one means it was left.
+        if (self.pinned && tab && DPTabState(tab) && !DPTabSelected(tab)) [self closePeek];
         return;
     }
-    NSView *tab = DPPeekTabWithContent(self.peek.window, self.contentKey);
-    if (!tab) { if (++self.misses >= 2) { [self stop]; [self.peek close:0]; } return; }  // the tab was closed
+    tab = DPPeekTabWithContent(peek.window, self.contentKey);
+    if (!tab) {
+        if (++self.misses >= 2) [self closePeek];
+        return;
+    }
     self.misses = 0;
     if (self.superview != tab) [tab addSubview:self];
-    if (!DPTabSelected(tab)) { [self stop]; [self.peek close:0]; }  // switched to another tab
+    if (!DPTabSelected(tab)) [self closePeek];
 }
 
-- (void)stop { [self.watch invalidate]; self.watch = nil; }
+- (void)closePeek {
+    [self stop];
+    [self.peek close:DPPeekClose];
+}
+
+- (void)stop {
+    [self.watch invalidate];
+    self.watch = nil;
+}
 @end
 
-void DPPeekShowTabBadge(DPPeekCard *peek, id source, id<DPPeekPage> page) {
+void DPPeekShowTabBadge(DPPeekCard *peek, id source) {
     NSView *tab = DPPeekOriginTab(peek.window, source);
     if (!tab) return;
-    BOOL pinned = DPIsKind(tab, DPDiaPinnedTab);
+    BOOL pinned = DPIsKind(tab, DPDiaPinnedTab), top = DPTabIsTop(tab);
     NSTextField *eyes = [NSTextField labelWithString:@"👀"];
     eyes.font = [NSFont systemFontOfSize:pinned ? 11 : 12];
     eyes.alignment = NSTextAlignmentCenter;
     [eyes sizeToFit];
     CGFloat w = NSWidth(eyes.frame), h = NSHeight(eyes.frame);
-    CGFloat x, y;
+    NSRect frame;
     NSAutoresizingMaskOptions resize;
-    if (pinned) {  // at the top of the icon: centred across a top-strip tab, in the top-right of a sidebar tab
-        BOOL top = DPTabIsTop(tab);
-        x = top ? NSMidX(tab.bounds) - w / 2 : NSMaxX(tab.bounds) - w - 2;
-        y = tab.isFlipped ? 2 : NSMaxY(tab.bounds) - h - 2;
+    if (pinned) {
+        frame = NSMakeRect(top ? NSMidX(tab.bounds) - w / 2 : NSMaxX(tab.bounds) - w - 2, tab.isFlipped ? 2 : NSMaxY(tab.bounds) - h - 2, w, h);
         resize = (top ? NSViewMinXMargin | NSViewMaxXMargin : NSViewMinXMargin) | (tab.isFlipped ? NSViewMaxYMargin : NSViewMinYMargin);
-    } else {       // trailing end, centred on the row with the title and favicon
-        x = NSMaxX(tab.bounds) - w - 6;
-        y = NSMidY(tab.bounds) - h / 2;
+    } else {
+        frame = NSMakeRect(NSMaxX(tab.bounds) - w - 6, NSMidY(tab.bounds) - h / 2, w, h);
         resize = NSViewMinXMargin | NSViewMinYMargin | NSViewMaxYMargin;
     }
-    DPPeekTabBadge *badge = [[DPPeekTabBadge alloc] initWithFrame:NSMakeRect(x, y, w, h)];
+    DPPeekTabBadge *badge = [[DPPeekTabBadge alloc] initWithFrame:frame];
     badge.autoresizingMask = resize;
     badge.peek = peek;
     badge.pinned = pinned;
     badge.contentKey = DPPeekTabContentKey(tab);
-    badge.hidesOnHover = !pinned;
-    // The emoji glyph sits low in a text field, so lift it to line up with the title. A top-strip row needs more lift
-    // than a taller sidebar row. The badge is unflipped: +y is up.
-    CGFloat lift = pinned ? 0 : (DPTabIsTop(tab) ? 2 : 0);
-    eyes.frame = NSOffsetRect(badge.bounds, 0, lift);
+    eyes.frame = NSOffsetRect(badge.bounds, 0, !pinned && top ? 2 : 0);  // The glyph sits low in a top-strip row.
     eyes.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [badge addSubview:eyes];
     [tab addSubview:badge];

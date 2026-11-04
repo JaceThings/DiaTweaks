@@ -1,18 +1,13 @@
 #import "Patches/Peek/Peek.h"
 
-// The card sits over the window's page area only, so the sidebar stays sharp and usable, as in Arc. It lives in Dia's
-// rounded page, like the command bar's shade, so it clips to the page's corners and slides with it when the sidebar
-// shows or hides; from the window's root view it jumped to the end of the slide at once.
+static const CGFloat DPPeekShadowRoom = 48;
+
+static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(area) * 0.09, MAX(10, NSHeight(area) * 0.012)); }
+
 @implementation DPPeekCard
 
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
-
-static const CGFloat DPPeekShadowRoom = 48;
-
-// Arc's card is nearly full height and inset at the sides, with the controls in the right margin.
-// Expanding grows it toward the whole page area.
-static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(area) * 0.09, MAX(10, NSHeight(area) * 0.012)); }
 
 - (NSRect)cardFrame {
     NSRect card = DPPeekCardRect(self.bounds), page = self.bounds;
@@ -23,14 +18,13 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 
 - (void)layout {
     [super layout];
+    NSRect card = self.cardFrame;
     self.blur.frame = self.bounds;
-    // The card's view reaches past it far enough to hold its shadow, so the shadow moves with the card as it opens.
-    self.card.frame = NSInsetRect(self.cardFrame, -DPPeekShadowRoom, -DPPeekShadowRoom);
+    self.card.frame = NSInsetRect(card, -DPPeekShadowRoom, -DPPeekShadowRoom);
     self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
     self.host.frame = self.clip.bounds;
-    NSSize size = self.controls.frame.size;
-    self.controls.frame = (NSRect){{NSMaxX(self.cardFrame) + 12, NSMinY(self.cardFrame)}, size};
-    // The hints are rebuilt hidden; inside the sidebar's slide they'd otherwise fade in from showing.
+    self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card)}, self.controls.frame.size};
+    // Without this, hints rebuilt during the sidebar's slide fade in from showing.
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         context.allowsImplicitAnimation = NO;
@@ -38,8 +32,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     }];
 }
 
-// Follows the page area as the sidebar opens and closes. Dia resizes the page inside an animation group as the sidebar
-// slides, so the card resizes along with it on the same timing rather than jumping to the end.
+// Dia resizes the pane inside an animation group as the sidebar slides; matching its timing keeps the card in step.
 - (void)followPane {
     NSView *pane = self.pane, *root = self.superview;
     if (!pane.window || !root) return;
@@ -56,7 +49,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     }];
 }
 
-- (void)mouseDown:(NSEvent *)event { [self close:0]; }
+- (void)mouseDown:(NSEvent *)event { [self close:DPPeekClose]; }
 - (void)rightMouseDown:(NSEvent *)event {}
 - (void)scrollWheel:(NSEvent *)event {}
 - (void)control:(NSButton *)sender { [self close:sender.tag]; }
@@ -72,12 +65,10 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     return YES;
 }
 
-// Closing shrinks it back into the link. Opening it as a tab first grows it to fill the page area it'll take, so the
-// page doesn't jump. Opening it in a split goes at once, since the split lays the page out somewhere else.
-- (void)close:(NSInteger)exit {
+- (void)close:(DPPeekExit)exit {
     if (![self stopWatching]) return;
-    if (exit == 0) [self animateOut:^{ [self finish:0]; }];
-    else if (exit == 1) [self animateExpand:^{ [self finish:1]; }];
+    if (exit == DPPeekClose) [self animateOut:^{ [self finish:exit]; }];
+    else if (exit == DPPeekTab) [self animateExpand:^{ [self finish:exit]; }];
     else [self finish:exit];
 }
 
@@ -95,7 +86,14 @@ DPPeekCard *DPPeekCardIn(NSWindow *window) {
     });
 }
 
-// The rounded page holding `pane`, or the window's root view if Dia's layout changed.
+static NSView *DPPeekPane(NSWindow *window) {
+    NSView *pane = nil;
+    for (NSView *candidate in DPFindViews(DPDiaContentPane))
+        if (candidate.window == window && NSWidth(candidate.bounds) * NSHeight(candidate.bounds) > NSWidth(pane.bounds) * NSHeight(pane.bounds)) pane = candidate;
+    return pane;
+}
+
+// Dia's rounded page, so the card clips to its corners and slides with it.
 static NSView *DPPeekHolder(NSWindow *window, NSView *pane) {
     for (NSView *view = pane; view && view != window.contentView; view = view.superview)
         if (view.layer.cornerRadius > 0 && view.layer.masksToBounds) return view;
@@ -108,8 +106,7 @@ static NSView *DPLayerView(void) {
     return view;
 }
 
-// Escape or ⌘W closes it, as in Arc, and ⌘O opens it as a tab. Escape reaches a field being edited first, so it can
-// cancel the edit there. Key codes: O 31, W 13, Escape 53.
+// ⌘O opens as a tab; ⌘W, or Escape outside a text field, closes.
 static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
@@ -117,22 +114,14 @@ static id DPWatchKeys(DPPeekCard *card) {
         if (!peek || event.window != peek.window) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
         BOOL command = mods == NSEventModifierFlagCommand, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
-        if (command && event.keyCode == 31) [peek close:1];
-        else if ((command && event.keyCode == 13) || (!mods && event.keyCode == 53 && !editing)) [peek close:0];
+        if (command && event.keyCode == 31) [peek close:DPPeekTab];
+        else if ((command && event.keyCode == 13) || (!mods && event.keyCode == 53 && !editing)) [peek close:DPPeekClose];
         else return event;
         return nil;
     }];
 }
 
-// The window's page area: its largest content pane.
-static NSView *DPPeekPane(NSWindow *window) {
-    NSView *pane = nil;
-    for (NSView *candidate in DPFindViews(DPDiaContentPane))
-        if (candidate.window == window && NSWidth(candidate.bounds) * NSHeight(candidate.bounds) > NSWidth(pane.bounds) * NSHeight(pane.bounds)) pane = candidate;
-    return pane;
-}
-
-// A page loading ahead of a peek draws behind the page area, at the card's size, so it's painted once the card opens.
+// Behind the page area at the card's size, so it paints unseen and fits the card without a relayout.
 NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
     NSView *host = [page createPaneHostView], *pane = DPPeekPane(window);
     if (!host || !pane) return nil;
@@ -144,8 +133,8 @@ NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
     return host;
 }
 
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warm, NSRect link) {
-    NSView *host = warm ?: [page createPaneHostView], *pane = DPPeekPane(window);
+DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink) {
+    NSView *host = warmHost ?: [page createPaneHostView], *pane = DPPeekPane(window);
     if (!window || !host || DPPeekCardIn(window)) return nil;
     NSView *holder = DPPeekHolder(window, pane);
     DPPeekCard *peek = [[DPPeekCard alloc] initWithFrame:pane ? [holder convertRect:pane.bounds fromView:pane] : holder.bounds];
@@ -153,19 +142,15 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warm, 
     peek.pane = pane;
     peek.page = page;
     peek.host = host;
-    // A translucent scrim rather than an NSVisualEffectView: Dia's page is GPU-composited, so a within-window blur
-    // can't sample it and falls back to an opaque dark fill. The page keeps rendering behind the card, so a light
-    // scrim leaves the original page visible and recedes it, as in Arc.
-    NSView *blur = DPLayerView();
-    blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
-    peek.blur = blur;
+    // A scrim, not NSVisualEffectView: the page is GPU-composited, so an in-window blur can't sample it.
+    peek.blur = DPLayerView();
+    peek.blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
     peek.card = DPLayerView();
-    // The shadow is cast by a plain card under the page, since the page's own clip would cut it off.
-    peek.shade = DPLayerView();
     NSShadow *shadow = [NSShadow new];
     shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
     shadow.shadowBlurRadius = 24;
     shadow.shadowOffset = NSMakeSize(0, -6);
+    peek.shade = DPLayerView();  // Casts the shadow, which the clip would cut off.
     peek.shade.shadow = shadow;
     peek.clip = DPLayerView();
     peek.clip.layer.masksToBounds = YES;
@@ -181,7 +166,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warm, 
     for (NSView *view in @[peek.blur, peek.card, peek.controls]) [peek addSubview:view];
     [holder addSubview:peek positioned:NSWindowAbove relativeTo:nil];
     [peek layoutSubtreeIfNeeded];
-    if (!warm) [page attachToPaneHostView:host];
+    if (!warmHost) [page attachToPaneHostView:host];
     [window makeFirstResponder:host];
     if (pane) {
         pane.postsFrameChangedNotifications = YES;
@@ -190,8 +175,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warm, 
                                                                         usingBlock:^(NSNotification *note) { [weak followPane]; }];
     }
     peek.monitor = DPWatchKeys(peek);
-    // It grows out of the link itself, at its size and shape, so the open reads as coming from the link.
-    peek.link = [peek convertRect:[window convertRectFromScreen:link] fromView:nil];
+    peek.link = [peek convertRect:[window convertRectFromScreen:screenLink] fromView:nil];
     [peek animateIn];
     return peek;
 }

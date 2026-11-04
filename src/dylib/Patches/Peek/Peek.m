@@ -1,47 +1,40 @@
 #import "Patches/Peek/Peek.h"
 
-// Arc's Peek: Shift-click a link and it opens in a card over the page you're on, then becomes a tab or a split view
-// pane only if you expand or split it. Dispositions are ArcCore's own ArcWebContentsNavigationDisposition, numbered
-// differently from Chromium's: 4 there is picture-in-picture.
+// ArcWebContentsNavigationDisposition, numbered differently from Chromium's. A Shift-click arrives as a popup.
 enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTab = 3, DPNewWindow = 5, DPPopup = 6 };
 
-// ArcCore reports a Shift-click as a popup; new tabs and windows count too.
+static NSURL *DPPeekHovered;
+static __weak id DPPeekHoveredPage;
+
 static BOOL DPPeekWanted(NSInteger disposition) {
     BOOL elsewhere = disposition == DPForegroundTab || disposition == DPBackgroundTab || disposition == DPPopup || disposition == DPNewWindow;
     return DPPeek.on && elsewhere && (NSEvent.modifierFlags & NSEventModifierFlagShift);
 }
 
-// target="_blank" links and window.open arrive here with a page already made. Peek turns it down and makes its own.
+static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
+    NSWindow *window = NSApp.keyWindow;
+    NSPoint origin = NSEvent.mouseLocation;
+    dispatch_async(dispatch_get_main_queue(), ^{ DPPeekOpen(window, url, origin, delegate, source); });
+}
+
 static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebContent, NSURL *url, NSInteger disposition) {
     if (!DPPeekWanted(disposition) || !(DPPeekShows(webContents) || DPPeekCanOpen(webContents)))
         return (void)DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, disposition);
     DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, (NSInteger)DPIgnoreAction);
-    // A link opened from inside a Peek loads in that Peek, as in Arc.
     if (DPPeekShows(webContents)) return DPPeekLoad(webContents, url);
-    NSWindow *window = NSApp.keyWindow;
-    NSPoint origin = NSEvent.mouseLocation;
-    dispatch_async(dispatch_get_main_queue(), ^{ DPPeekOpen(window, url, origin, self, webContents); });
+    DPPeekOpenLater(self, webContents, url);
 }
 
-// Plain links that Chromium wants anywhere but the current tab are asked about here first; Dia answers with the
-// disposition to open them with.
 static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id action) {
     if (!DPPeekWanted([[action valueForKey:@"navigationDisposition"] integerValue]))
         return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
     if (DPPeekShows(webContents)) return DPCurrentTab;
     if (!DPPeekCanOpen(webContents)) return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
-    NSWindow *window = NSApp.keyWindow;
-    NSPoint origin = NSEvent.mouseLocation;
-    NSURL *url = [action valueForKey:@"url"];
-    dispatch_async(dispatch_get_main_queue(), ^{ DPPeekOpen(window, url, origin, self, webContents); });
+    DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
     return DPIgnoreAction;
 }
 
-// The link under the pointer, as Dia hears it for its status bubble, and the page it's on.
-static NSURL *DPPeekHovered;
-static __weak id DPPeekHoveredPage;
-
-// Shift alone held over a link starts loading it ahead of a Shift-click; anything else drops what was loading.
+// Holding Shift alone over a link starts loading it, so a Shift-click opens onto a page that has already painted.
 static void DPPeekLookAhead(void) {
     NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
     id page = DPPeekHoveredPage;
@@ -53,7 +46,7 @@ static void DPPeekLookAhead(void) {
 static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *text) {
     DPCallOriginal(DPWebContent_status, self, webContents, text);
     NSURL *url = text.length ? [NSURL URLWithString:text] : nil;
-    if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, a loading peek among them, clear theirs too.
+    if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, the warm one included, clear their own status.
     DPPeekHovered = [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString] ? url : nil;
     DPPeekHoveredPage = webContents;
     DPPeekLookAhead();
@@ -62,7 +55,6 @@ static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *tex
 static void DPInstallPeek(void) {
     DPPeekInstallPages();
     DPOnLaunch(^{
-        // Dia's Swift classes resolve only once its runtime is up.
         DPHook(DPDiaWebContent, @selector(webContents:didCreateNewWebContent:targetURL:disposition:), (IMP)DPWebContent_didCreate);
         DPHook(DPDiaWebContent, @selector(webContents:decidePolicyForNavigationAction:), (IMP)DPWebContent_decidePolicy);
         DPHook(DPDiaWebContent, @selector(webContents:didChangeStatusText:), (IMP)DPWebContent_status);
@@ -73,7 +65,6 @@ static void DPInstallPeek(void) {
     }];
 }
 
-// Nothing shows until a Shift-click, so it checks the link hooks are the ones answering.
 static NSString *DPVerifyPeek(DPPatch *patch) {
     Class delegate = objc_getClass(DPDiaWebContent);
     if (class_getMethodImplementation(delegate, @selector(webContents:decidePolicyForNavigationAction:)) != (IMP)DPWebContent_decidePolicy)

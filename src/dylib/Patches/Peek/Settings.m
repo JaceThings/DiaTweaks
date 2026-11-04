@@ -1,7 +1,5 @@
 #import "Patches/Peek/Peek.h"
 
-// Peek's sliders on its Settings page, the way the Command bar tunes itself: how dark the page behind gets, and the
-// spring the card moves on, and whether it opens as a genie. Each is stored as the value it means, shown as a whole number.
 static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekSpeed", *const DPPeekBounceKey = @"peekBounce",
                      *const DPPeekGenieKey = @"peekGenie";
 
@@ -19,14 +17,9 @@ static double DPPeekTuned(NSString *key) {
 }
 
 double DPPeekDarkness(void) { return DPPeekTuned(DPPeekDarknessKey); }
-double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // 100% is iOS's 0.24 s.
+double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // iOS's response at 100%.
 double DPPeekBounce(void) { return DPPeekTuned(DPPeekBounceKey); }
 BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
-
-static void DPPeekApplyDarkness(void) {
-    for (NSWindow *window in NSApp.windows)
-        DPPeekCardIn(window).blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
-}
 
 @interface DPPeekTuneRow : NSStackView <NSTextFieldDelegate>
 @property (copy) NSString *key;
@@ -42,10 +35,11 @@ static void DPPeekApplyDarkness(void) {
     self.slider.doubleValue = shown;
     self.field.doubleValue = shown;
     [DPSettings() setDouble:shown / self.scale forKey:self.key];
-    DPPeekApplyDarkness();
+    for (NSWindow *window in NSApp.windows)
+        DPPeekCardIn(window).blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
 }
 
-// ↑ and ↓ step the number by 1, or by 10 with Shift.
+// ↑ and ↓ step by 1, or 10 with Shift.
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
     NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
     if (!step) return NO;
@@ -55,6 +49,15 @@ static void DPPeekApplyDarkness(void) {
     return YES;
 }
 @end
+
+static DPPeekTuneRow *DPPeekRow(NSString *title, NSString *key, double scale, NSView *control) {
+    NSTextField *label = [NSTextField labelWithString:title];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    DPPeekTuneRow *row = [DPPeekTuneRow stackViewWithViews:@[ label, control ]];
+    row.key = key;
+    row.scale = scale;
+    return row;
+}
 
 static NSView *DPPeekSlider(NSString *title, NSString *key, double min, double max, double scale, NSString *unit) {
     double shown = round(DPPeekTuned(key) * scale);
@@ -69,15 +72,10 @@ static NSView *DPPeekSlider(NSString *title, NSString *key, double min, double m
     field.action = @selector(tune:);
     [field.widthAnchor constraintEqualToConstant:44].active = YES;
     NSStackView *controls = [NSStackView stackViewWithViews:@[ slider, field, [NSTextField labelWithString:unit] ]];
-    NSTextField *label = [NSTextField labelWithString:title];
-    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-
-    DPPeekTuneRow *row = [DPPeekTuneRow stackViewWithViews:@[ label, controls ]];
+    DPPeekTuneRow *row = DPPeekRow(title, key, scale, controls);
     row.orientation = NSUserInterfaceLayoutOrientationVertical;
     row.alignment = NSLayoutAttributeLeading;
     [controls.widthAnchor constraintEqualToAnchor:row.widthAnchor].active = YES;
-    row.key = key;
-    row.scale = scale;
     row.slider = slider;
     row.field = field;
     slider.target = field.target = field.delegate = row;
@@ -88,12 +86,8 @@ static NSView *DPPeekSwitch(NSString *title, NSString *key) {
     NSSwitch *toggle = [NSSwitch new];
     toggle.state = DPPeekTuned(key) ? NSControlStateValueOn : NSControlStateValueOff;
     toggle.action = @selector(tune:);
-    NSTextField *label = [NSTextField labelWithString:title];
-    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-    DPPeekTuneRow *row = [DPPeekTuneRow stackViewWithViews:@[ label, toggle ]];
+    DPPeekTuneRow *row = DPPeekRow(title, key, 1, toggle);
     row.distribution = NSStackViewDistributionFill;
-    row.key = key;
-    row.scale = 1;
     toggle.target = row;
     return row;
 }
