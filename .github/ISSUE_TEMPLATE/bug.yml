@@ -28,6 +28,7 @@ body:
         - Hide Site Color in Tab Bar
         - Always Show Address Field
         - Hide Chat Button
+        - Hide Personalize Button
         - Hide Sidebar Button
         - Tidy Tabs
         - Profile Emoji
@@ -45,6 +46,8 @@ body:
         - Darken Page Behind
         - Remember What You Typed
         - Hide Upgrade Banner
+        - Hide New Tab Logo
+        - Hide Skills Suggestions
         - Window Material
         - Keep Windows Active
         - macOS 26 Window Corners
