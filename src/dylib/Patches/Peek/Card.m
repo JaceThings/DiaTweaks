@@ -22,6 +22,9 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     self.blur.frame = self.bounds;
     self.card.frame = NSInsetRect(card, -DPPeekShadowRoom, -DPPeekShadowRoom);
     self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
+    CGPathRef outline = CGPathCreateWithRoundedRect(self.shade.bounds, 10, 10, NULL);  // Spares the GPU tracing the shadow's shape.
+    self.shade.layer.shadowPath = outline;
+    CGPathRelease(outline);
     self.host.frame = self.clip.bounds;
     self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card) + 4}, self.controls.frame.size};
     // Without this, hints rebuilt during the sidebar's slide fade in from showing.
@@ -73,9 +76,12 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 }
 
 - (void)handOver {
-    if (![self stopWatching]) return;
-    [self.page detachFromPaneHostView:self.host];
+    [self stopWatching];
     [self removeFromSuperview];
+    // A card filling the page area is swapped for Dia's page in one frame; anywhere else it has to be off screen before
+    // the page leaves it, or it shows blank for a frame.
+    if (self.grown < 1) [CATransaction flush];
+    [self.page detachFromPaneHostView:self.host];
 }
 
 @end

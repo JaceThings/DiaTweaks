@@ -33,10 +33,13 @@ static void DPBrowser_setWindow(id self, SEL _cmd, NSWindow *window) {
     if (window) [DPPeekBrowsers setObject:self forKey:window];
 }
 
+// Dia showing a peek's page elsewhere, including after it's handed over, takes it out of the card in the same frame.
 static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     for (NSWindow *window in NSApp.windows) {
-        DPPeekCard *peek = DPPeekCardIn(window);
-        if (peek.page == self && host != peek.host) [peek handOver];
+        DPPeekCard *peek = (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
+            return [view isKindOfClass:DPPeekCard.class] && ((DPPeekCard *)view).page == self;
+        });
+        if (peek && host != peek.host) [peek handOver];
     }
     DPCallOriginal(DPPage_attach, self, host);
 }
@@ -186,13 +189,15 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
 @implementation DPPeekCard (Handoff)
 
 - (void)finish:(DPPeekExit)exit {
-    NSWindow *window = self.window;
     NSObject *page = (NSObject *)self.page;
-    [self.page detachFromPaneHostView:self.host];
-    [self removeFromSuperview];
-    [window makeKeyWindow];
-    if (exit == DPPeekClose || !DPPeekGive(page, self.sourceDelegate, self.source, [page valueForKey:@"url"], exit))
-        [page performSelector:@selector(close)];
+    [self.window makeKeyWindow];
+    if (exit != DPPeekClose && DPPeekGive(page, self.sourceDelegate, self.source, [page valueForKey:@"url"], exit)) {
+        // The card stays up until Dia attaches the page, which takes it down in the same frame.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ if (self.superview) [self handOver]; });
+        return;
+    }
+    [self handOver];
+    [page performSelector:@selector(close)];
 }
 
 @end

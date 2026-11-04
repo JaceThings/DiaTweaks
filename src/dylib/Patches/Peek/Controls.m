@@ -64,17 +64,22 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 }
 @end
 
-// Where a symbol's ink centres when drawn at its own size at `scale`, from its bottom left. Symbol images aren't padded
-// evenly, and their ink shifts with the scale they're drawn at.
-static CGPoint DPPeekInkCentre(NSImage *image, CGFloat scale) {
-    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:image.size.width * scale pixelsHigh:image.size.height * scale
+static NSBitmapImageRep *DPPeekDraw(NSSize size, CGFloat scale, void (^draw)(void)) {
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:size.width * scale pixelsHigh:size.height * scale
                                                                     bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
                                                                    colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
-    bitmap.size = image.size;
+    bitmap.size = size;
     [NSGraphicsContext saveGraphicsState];
     NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
-    [image drawInRect:(NSRect){NSZeroPoint, image.size}];
+    draw();
     [NSGraphicsContext restoreGraphicsState];
+    return bitmap;
+}
+
+// Where a symbol's ink centres at `scale`, from its bottom left. Symbol images aren't padded evenly, and their ink
+// shifts with the scale they're drawn at.
+static CGPoint DPPeekInkCentre(NSImage *symbol, CGFloat scale) {
+    NSBitmapImageRep *bitmap = DPPeekDraw(symbol.size, scale, ^{ [symbol drawInRect:(NSRect){NSZeroPoint, symbol.size}]; });
     NSInteger minX = bitmap.pixelsWide, maxX = 0, minY = bitmap.pixelsHigh, maxY = 0;
     for (NSInteger y = 0; y < bitmap.pixelsHigh; y++)
         for (NSInteger x = 0; x < bitmap.pixelsWide; x++) {
@@ -83,8 +88,25 @@ static CGPoint DPPeekInkCentre(NSImage *image, CGFloat scale) {
             if (pixel[3] < 77) continue;
             minX = MIN(minX, x), maxX = MAX(maxX, x), minY = MIN(minY, y), maxY = MAX(maxY, y);
         }
-    if (minX > maxX) return CGPointMake(image.size.width / 2, image.size.height / 2);
-    return CGPointMake((minX + maxX + 1) / (2 * scale), image.size.height - (minY + maxY + 1) / (2 * scale));
+    if (minX > maxX) return CGPointMake(symbol.size.width / 2, symbol.size.height / 2);
+    return CGPointMake((minX + maxX + 1) / (2 * scale), symbol.size.height - (minY + maxY + 1) / (2 * scale));
+}
+
+// A white symbol centred on its ink in a `side` square, drawn once per scale.
+static id DPPeekIcon(NSString *name, CGFloat side, CGFloat scale) {
+    static NSMutableDictionary *icons;
+    if (!icons) icons = [NSMutableDictionary new];
+    NSString *key = [NSString stringWithFormat:@"%@@%g", name, scale];
+    if (icons[key]) return icons[key];
+    NSImage *symbol = [[NSImage imageWithSystemSymbolName:name accessibilityDescription:nil]
+                       imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightSemibold]];
+    CGPoint ink = DPPeekInkCentre(symbol, scale);
+    NSBitmapImageRep *bitmap = DPPeekDraw(NSMakeSize(side, side), scale, ^{
+        [symbol drawInRect:(NSRect){{side / 2 - ink.x, side / 2 - ink.y}, symbol.size}];
+        [NSColor.whiteColor set];
+        NSRectFillUsingOperation(NSMakeRect(0, 0, side, side), NSCompositingOperationSourceAtop);
+    });
+    return icons[key] = (__bridge id)bitmap.CGImage;
 }
 
 static NSView *DPPeekKeycap(NSString *glyph) {
@@ -177,17 +199,6 @@ NSView *DPPeekControls(id target, SEL action) {
     controls.clipsToBounds = NO;
     for (NSUInteger i = 0; i < specs.count; i++) {
         NSDictionary *spec = specs[i];
-        NSImage *symbol = [[NSImage imageWithSystemSymbolName:spec[@"symbol"] accessibilityDescription:spec[@"a11y"]]
-                           imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightSemibold]];
-        CGPoint ink = DPPeekInkCentre(symbol, scale);
-        NSPoint origin = NSMakePoint(side / 2 - ink.x, side / 2 - ink.y);
-        NSImage *icon = [NSImage imageWithSize:NSMakeSize(side, side) flipped:NO drawingHandler:^BOOL(NSRect rect) {
-            [symbol drawInRect:(NSRect){origin, symbol.size}];
-            [NSColor.whiteColor set];
-            NSRectFillUsingOperation(rect, NSCompositingOperationSourceAtop);
-            return YES;
-        }];
-
         DPPeekButton *button = [DPPeekButton buttonWithTitle:@"" target:target action:action];
         button.tag = i;
         button.bordered = NO;
@@ -202,7 +213,7 @@ NSView *DPPeekControls(id target, SEL action) {
         [button.layer addSublayer:button.circle];
 
         button.iconLayer = [CALayer layer];
-        button.iconLayer.contents = icon;
+        button.iconLayer.contents = DPPeekIcon(spec[@"symbol"], side, scale);
         button.iconLayer.contentsScale = scale;
         [button.layer addSublayer:button.iconLayer];
 

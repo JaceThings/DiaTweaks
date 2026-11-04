@@ -3,6 +3,8 @@
 
 // Springs and row timing follow iOS's app open, from github.com/pausedstudio/app-open-teardown (EQUATIONS.md).
 
+static const CAFrameRateRange DPPeekFrameRate = {80, 120, 120};  // Without it, ProMotion starts these at 60 Hz.
+
 static CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio) {
     CGFloat w = 2 * M_PI / response;
     CASpringAnimation *spring = [CASpringAnimation animationWithKeyPath:keyPath];
@@ -41,7 +43,7 @@ static id DPMesh(const CGPoint to[9]) {
 
 // Moves the card between its place and the link as a 3×3 mesh whose rows each ride their own spring (the genie), and
 // sets `corners` to keep the on-screen corner radius from 4 pt at the link to the card's own.
-static CAAnimationGroup *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyframeAnimation **corners) {
+static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyframeAnimation **corners) {
     CFTimeInterval response = DPPeekResponse(), duration = 0, rows[3];
     CGFloat dampingRatio = 1 - DPPeekBounce();
     CGFloat ay = 2 * MIN(1, MAX(0, NSMidY(peek.link) / MAX(1, NSHeight(peek.bounds)))) - 1;
@@ -60,7 +62,7 @@ static CAAnimationGroup *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyframe
                               NSWidth(card) / NSWidth(outer), NSHeight(card) / NSHeight(outer));
     CGFloat radius = peek.clip.layer.cornerRadius, largest = MIN(NSWidth(card), NSHeight(card)) / 2;
     BOOL flipped = !peek.card.layer.geometryFlipped;
-    NSMutableArray *meshes = [NSMutableArray new], *radii = [NSMutableArray new], *opacities = [NSMutableArray new], *times = [NSMutableArray new];
+    NSMutableArray *meshes = [NSMutableArray new], *radii = [NSMutableArray new], *times = [NSMutableArray new];
     int frames = MAX(60, (int)ceil(duration * 120));
     for (int i = 0; i <= frames; i++) {
         CFTimeInterval t = duration * i / frames;
@@ -79,23 +81,20 @@ static CAAnimationGroup *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyframe
         [meshes addObject:DPMesh(to)];
         CGFloat scale = MIN(1 + (NSWidth(source) - 1) * away[1], 1 + (NSHeight(source) - 1) * away[1]);
         [radii addObject:@(MIN(largest, (radius + (4 - radius) * away[1]) / MAX(0.01, scale)))];
-        [opacities addObject:@(MIN(1, MAX(0, (1 - MIN(away[0], MIN(away[1], away[2]))) / 0.02)))];
         [times addObject:@((double)i / frames)];
     }
-    CAKeyframeAnimation *mesh = [CAKeyframeAnimation animationWithKeyPath:@"meshTransform"], *fade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+    CAKeyframeAnimation *mesh = [CAKeyframeAnimation animationWithKeyPath:@"meshTransform"];
     *corners = [CAKeyframeAnimation animationWithKeyPath:@"cornerRadius"];
     mesh.values = meshes;
-    fade.values = opacities;
     (*corners).values = radii;
-    CAAnimationGroup *group = [CAAnimationGroup animation];
-    group.animations = @[mesh, fade];
-    for (CAKeyframeAnimation *keyframes in @[mesh, fade, *corners]) keyframes.keyTimes = times;
-    for (CAAnimation *animation in @[mesh, fade, *corners, group]) {
+    for (CAKeyframeAnimation *animation in @[mesh, *corners]) {
+        animation.keyTimes = times;
         animation.duration = duration;
         animation.fillMode = kCAFillModeBoth;
+        animation.preferredFrameRateRange = DPPeekFrameRate;
         animation.removedOnCompletion = opening;  // Closing holds its end until the card is removed, or it flashes back.
     }
-    return group;
+    return mesh;
 }
 
 static CASpringAnimation *DPPeekDim(BOOL dimming) {
@@ -103,6 +102,7 @@ static CASpringAnimation *DPPeekDim(BOOL dimming) {
     dim.fromValue = dimming ? @0 : @1;
     dim.toValue = dimming ? @1 : @0;
     dim.fillMode = kCAFillModeBoth;
+    dim.preferredFrameRateRange = DPPeekFrameRate;
     dim.removedOnCompletion = dimming;
     return dim;
 }
@@ -129,6 +129,7 @@ static char DPGrowthKey;
     growth.start = CACurrentMediaTime();
     DPSet(peek, &DPGrowthKey, growth);  // The display link doesn't retain it.
     growth.link = [peek displayLinkWithTarget:growth selector:@selector(step)];
+    growth.link.preferredFrameRateRange = DPPeekFrameRate;
     [growth.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
 }
 
@@ -150,8 +151,7 @@ static char DPGrowthKey;
 @implementation DPPeekCard (Motion)
 
 - (void)move:(BOOL)opening {
-    CAKeyframeAnimation *corners;
-    CAAnimationGroup *travel = DPPeekTravel(self, opening, &corners);
+    CAKeyframeAnimation *corners, *travel = DPPeekTravel(self, opening, &corners);
     [CATransaction setDisableActions:YES];
     self.card.alphaValue = 1;
     [self.card.layer addAnimation:travel forKey:@"peek"];
