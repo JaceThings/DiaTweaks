@@ -193,13 +193,14 @@ static char DPGrowthKey;
     self.controls.alphaValue = 0;
     self.card.alphaValue = 0;  // Still drawing, just unseen, so the page paints its first frame meanwhile.
     [self.blur.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
-    // The card waits for the page's first paint, up to a second, so the page is in it as it opens and not a blank.
+    // The card waits a moment for the page's first paint, so a quick page is in it as it opens and not a blank. A slow one
+    // (most sites take about half a second) isn't worth a lag on every click, so it fills in after the card is open.
     CFTimeInterval start = CACurrentMediaTime();
     __weak DPPeekCard *weak = self;
     [NSTimer scheduledTimerWithTimeInterval:1 / 120.0 repeats:YES block:^(NSTimer *timer) {
         DPPeekCard *peek = weak;
         if (!peek || peek.closing) return [timer invalidate];
-        if (![[(NSObject *)peek.page valueForKey:@"isReadyToDisplay"] boolValue] && CACurrentMediaTime() - start < 1) return;
+        if (![[(NSObject *)peek.page valueForKey:@"isReadyToDisplay"] boolValue] && CACurrentMediaTime() - start < 0.15) return;
         [timer invalidate];
         [CATransaction begin];
         [CATransaction setCompletionBlock:^{
