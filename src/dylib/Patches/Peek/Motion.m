@@ -2,8 +2,9 @@
 
 // By default the card opens and closes on the curves an iPhone app opens with, read from iOS 27's SpringBoard in
 // github.com/pausedstudio/app-open-teardown (EQUATIONS.md): one critically damped spring with a 0.24 s response moves
-// the card, the page fades in on SpringBoard's crossfade curve, and the page behind dims on its 0.314 s spring. The
-// card is laid out once at full size and only its layer is scaled, so the page never re-lays out mid-animation.
+// the card, its top and bottom edges spread around it like SpringBoard's rows, the page fades in on SpringBoard's
+// crossfade curve, and the page behind dims on its 0.314 s spring. Opening and closing, the card is laid out once at full
+// size and only its layer is scaled; expanding resizes it for real.
 
 // A spring of unit mass from rest, as SpringBoard describes them: a response in seconds and a damping ratio.
 static CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio) {
@@ -63,6 +64,36 @@ static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
     return CATransform3DConcat(scale, CATransform3DMakeTranslation(NSMinX(rect) - NSMinX(card), NSMinY(rect) - NSMinY(card), 0));
 }
 
+// The card's path between the link and its place. As on iOS, its top and bottom edges each ride their own spring:
+// opening, the edge nearest the link is slowest and the far edge fastest, scaled from SpringBoard's row responses by
+// how far down the page the link is. Its sides ride the main spring. So the card sweeps out of the link on a curve
+// instead of growing along a straight line; closing flips the edges, so the one nearest the link lands first.
+static CAKeyframeAnimation *DPPeekTravel(NSRect card, NSRect link, CGFloat linkY, BOOL opening, CFTimeInterval response,
+                                         CGFloat dampingRatio, CFTimeInterval *duration) {
+    CGFloat ay = 2 * MIN(1, MAX(0, linkY)) - 1, g = ay >= 0 ? ay : 0.75 * ay;
+    if (!opening) g = -g;
+    // Rows 0 (top) and 2 (bottom): n is 0 and 1 for either sign, so the spread is all there is.
+    CFTimeInterval top = response * (1 - 0.5 * g), bottom = response * (1 + 0.5 * g);
+    *duration = 0;
+    for (NSNumber *r in @[ @(response), @(top), @(bottom) ])
+        *duration = MAX(*duration, DPPeekSpring(@"transform", r.doubleValue, dampingRatio).settlingDuration);
+    NSRect from = opening ? link : card, to = opening ? card : link;
+    NSMutableArray *values = [NSMutableArray new], *times = [NSMutableArray new];
+    for (int i = 0; i <= 60; i++) {
+        CFTimeInterval t = *duration * i / 60;
+        CGFloat side = DPPeekLeft(t, response, dampingRatio), up = DPPeekLeft(t, top, dampingRatio), down = DPPeekLeft(t, bottom, dampingRatio);
+        CGFloat minX = NSMinX(to) + (NSMinX(from) - NSMinX(to)) * side, maxX = NSMaxX(to) + (NSMaxX(from) - NSMaxX(to)) * side;
+        CGFloat minY = NSMinY(to) + (NSMinY(from) - NSMinY(to)) * up, maxY = NSMaxY(to) + (NSMaxY(from) - NSMaxY(to)) * down;
+        [values addObject:[NSValue valueWithCATransform3D:DPPeekSqueeze(card, NSMakeRect(minX, minY, maxX - minX, maxY - minY))]];
+        [times addObject:@(i / 60.0)];
+    }
+    CAKeyframeAnimation *travel = [CAKeyframeAnimation animationWithKeyPath:@"transform"];
+    travel.values = values;
+    travel.keyTimes = times;
+    travel.duration = *duration;
+    return travel;
+}
+
 // Steps a card's growth every frame along the spring until it's settled.
 @interface DPPeekGrowth : NSObject
 @property (nonatomic, weak) DPPeekCard *peek;
@@ -107,14 +138,11 @@ static char DPGrowthKey;
 
 // Runs the card between the link and its place, and the page behind between clear and dimmed.
 - (void)move:(BOOL)opening completion:(void (^)(void))completion {
-    NSValue *squeezed = [NSValue valueWithCATransform3D:DPPeekSqueeze(self.cardFrame, self.link)];
-    NSValue *inPlace = [NSValue valueWithCATransform3D:CATransform3DIdentity];
     // The Settings sliders pick the spring; the dimming keeps iOS's pace relative to it, and never bounces.
-    CFTimeInterval response = DPPeekResponse();
+    CFTimeInterval response = DPPeekResponse(), duration;
     CGFloat dampingRatio = 1 - DPPeekBounce();
-    CASpringAnimation *move = DPPeekSpring(@"transform", response, dampingRatio);
-    move.fromValue = opening ? squeezed : inPlace;
-    move.toValue = opening ? inPlace : squeezed;
+    CAKeyframeAnimation *move = DPPeekTravel(self.cardFrame, self.link, NSMidY(self.link) / MAX(1, NSHeight(self.bounds)), opening,
+                                             response, dampingRatio, &duration);
     CASpringAnimation *dim = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
     dim.fromValue = opening ? @0 : @1;
     dim.toValue = opening ? @1 : @0;
@@ -122,10 +150,10 @@ static char DPGrowthKey;
     [CATransaction begin];
     [CATransaction setCompletionBlock:completion];
     CAAnimationGroup *card = [CAAnimationGroup animation];
-    card.animations = @[move, DPPeekFade(move.duration, response, dampingRatio, opening)];
-    card.duration = move.duration;
+    card.animations = @[move, DPPeekFade(duration, response, dampingRatio, opening)];
+    card.duration = duration;
     for (CAAnimation *animation in @[card, dim]) {
-        animation.fillMode = kCAFillModeForwards;
+        animation.fillMode = kCAFillModeBoth;  // Backwards too, or a frame of the full card can show before it starts.
         animation.removedOnCompletion = opening;  // Closing holds the end, so nothing flashes before the card goes.
     }
     [self.card.layer addAnimation:card forKey:@"peek"];
