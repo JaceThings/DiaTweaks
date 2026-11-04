@@ -71,7 +71,8 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
         [page performSelector:@selector(discard)];
     });
     item.image = [NSImage imageWithSystemSymbolName:@"moon.zzz" accessibilityDescription:nil];
-    if (@available(macOS 27, *)) item.preferredImageVisibility = NSMenuItemImageVisibilityVisible;  // Hidden by default, unlike Dia's own items.
+    // Hidden by default, unlike Dia's own items. By name: CI's SDK predates macOS 27. 1 is NSMenuItemImageVisibilityVisible.
+    if (@available(macOS 27, *)) [item setValue:@1 forKey:@"preferredImageVisibility"];
     item.enabled = ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) != DPPageVisible;  // Chromium keeps the page on screen.
     NSUInteger close = [menu.itemArray indexOfObjectPassingTest:^BOOL(NSMenuItem *it, NSUInteger i, BOOL *stop) { return [it.title isEqual:@"Close"]; }];
     [menu insertItem:item atIndex:close == NSNotFound ? (NSUInteger)menu.numberOfItems : close];
