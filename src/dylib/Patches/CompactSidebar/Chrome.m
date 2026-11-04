@@ -27,19 +27,29 @@ CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance) {
     return chrome;
 }
 
-// The page under the toolbar: the pane's widest view that reaches its bottom.
-static NSView *DPPageIn(NSView *pane, NSView *bar) {
-    NSView *page = nil;
-    for (NSView *sub in pane.subviews) {
-        if (sub == bar || sub.hidden || DPIsKind(sub, DPDiaBookmarksBar)) continue;
-        BOOL reachesBottom = fabs((pane.isFlipped ? NSMaxY(sub.frame) : NSHeight(pane.bounds) - NSMinY(sub.frame)) - NSHeight(pane.bounds)) < 0.5;
-        if (reachesBottom && NSHeight(sub.frame) < NSHeight(pane.bounds) && (!page || NSWidth(sub.frame) > NSWidth(page.frame))) page = sub;
+static CGFloat DPPageTop(NSWindow *window) {
+    for (NSView *pane in DPFindViews(DPDiaContentPane)) {
+        NSView *page = pane.window == window ? DPSubview(pane, DPDiaPage) : nil;
+        if (page && !page.hidden) return NSMaxY([page convertRect:page.bounds toView:nil]);
     }
-    return page;
+    return NAN;
 }
 
+// Where the toolbar's bottom edge is once it shows, from the window's bottom: the card's top less its height.
+CGFloat DPToolbarBottom(NSWindow *window) {
+    for (NSView *bar in DPFindViews(DPDiaToolbar)) {
+        NSView *card = bar;
+        while (card && !DPIsKind(card, DPDiaContentContainer)) card = card.superview;
+        if (bar.window == window && card) return NSMaxY([card convertRect:card.bounds toView:nil]) - NSHeight(bar.bounds);
+    }
+    return DPPageTop(window);
+}
+
+BOOL DPToolbarHidden(NSWindow *window) { return DPToolbarAlpha(window) < 0.01; }
+
+
 void DPApplyChrome(NSView *pane) {
-    NSView *bar = DPSubview(pane, DPDiaToolbar), *page = DPPageIn(pane, bar);
+    NSView *bar = DPSubview(pane, DPDiaToolbar), *page = DPSubview(pane, DPDiaPage);
     BOOL on = DPStripPresent(pane.window) && bar;
     NSView *chrome = DPGet(pane, &DPChromeKey);
     if (on && !chrome) {

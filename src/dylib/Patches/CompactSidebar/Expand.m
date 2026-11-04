@@ -2,13 +2,19 @@
 
 static const NSTimeInterval DPOpenDelay = 0.12, DPCloseDelay = 0.25, DPOpenDuration = 0.2;
 static const CGFloat DPCardRadius = 13;  // Dia's floating sidebar's corners.
-static char DPStripKey;
+static char DPStripKey, DPBorderKey, DPClipsKey;
+
+// The view Dia puts the sidebar in inside its floating container.
+static NSView *DPFloatInner(NSView *host) {
+    NSView *root = DPSidebarRootIn(host.window);
+    return root.superview != host && root.superview.superview == host ? root.superview : nil;
+}
 
 // The strip shows the chrome's color down the window's left, under the window buttons, without Dia's floating card
 // around it. Open, the sidebar floats over the page in a card, as when Dia shows it from the window's edge.
 @interface DPStrip : NSObject
 @property (nonatomic, weak) NSView *host;
-@property (nonatomic, strong) NSView *column;
+@property (nonatomic, strong) NSView *column, *fill;
 @property (nonatomic) BOOL expanded;
 @property (nonatomic, strong) NSTimer *timer;
 @end
@@ -75,7 +81,7 @@ static char DPStripKey;
 
 static DPStrip *DPStripOf(NSView *host) { return host ? DPGet(host, &DPStripKey) : nil; }
 
-BOOL DPStripExpanded(NSView *host) { return DPStripOf(host).expanded; }
+BOOL DPStripExpanded(NSView *host) { return DPStripOf(host).expanded || DPDiaRevealing(host); }
 
 void DPAttachStrip(NSView *host) {
     DPStrip *strip = DPStripOf(host);
@@ -95,7 +101,7 @@ void DPLayoutStrip(NSView *host) {
     NSView *root = DPSidebarRootIn(host.window), *card = DPSubview(host.superview, DPDiaContentContainer);
     BOOL shown = DPStripPresent(host.window) && root && card;
     if (!shown) strip.expanded = NO;
-    BOOL flat = shown && !strip.expanded, floating = DPIsKind(host, DPDiaFloatingSidebar);
+    BOOL open = DPStripExpanded(host), flat = shown && !open, floating = DPIsKind(host, DPDiaFloatingSidebar);
     [strip holdDiaBack];
 
     // Dia's floating card, once the sidebar is in one: its shadow, and the background behind the sidebar.
@@ -107,14 +113,44 @@ void DPLayoutStrip(NSView *host) {
         if (view.alphaValue != alpha) view.alphaValue = alpha;
     }
 
+    // And the card's outline and rounded clip, which the container and the view inside it apply themselves. Flat, the
+    // window buttons reach past the strip.
+    if (floating) {
+        NSNumber *border = DPGet(host, &DPBorderKey);
+        if (!border) DPSet(host, &DPBorderKey, border = @(host.layer.borderWidth));
+        CGFloat width = flat ? 0 : border.doubleValue;
+        if (host.layer.borderWidth != width) DPNow(^{ host.layer.borderWidth = width; });
+        NSView *inner = DPFloatInner(host);
+        for (NSView *view in inner ? @[ host, inner ] : @[ host ]) {
+            NSNumber *clips = DPGet(view, &DPClipsKey);
+            if (!clips) DPSet(view, &DPClipsKey, clips = @(view.layer.masksToBounds));
+            BOOL masks = !flat && clips.boolValue;
+            if (view.layer.masksToBounds != masks) view.layer.masksToBounds = masks;
+        }
+    }
+
+    // The window's margin round the page, in the strip's color too, so the two are one surface.
+    NSView *space = host.superview;
+    if (!strip.fill) {
+        strip.fill = [NSView new];
+        strip.fill.wantsLayer = YES;
+    }
+    if (card && (strip.fill.superview != space || [space.subviews indexOfObject:strip.fill] + 1 != [space.subviews indexOfObject:card]))
+        [space addSubview:strip.fill positioned:NSWindowBelow relativeTo:card];
+    strip.fill.hidden = !shown;
+    if (shown) {
+        strip.fill.frame = space.bounds;
+        strip.fill.layer.backgroundColor = DPChromeColor(space.window, space.effectiveAppearance);
+    }
+
     if (!root) return;
     if (root.subviews.firstObject != strip.column) [root addSubview:strip.column positioned:NSWindowBelow relativeTo:nil];  // Dia adds the tabs after it.
     // Open, a sidebar Dia hasn't put in its floating card yet gets a card like it.
-    strip.column.hidden = !shown || (strip.expanded && floating);
+    strip.column.hidden = !shown || (open && floating);
     if (strip.column.hidden) return;
     CALayer *layer = strip.column.layer;
     layer.backgroundColor = DPChromeColor(root.window, root.effectiveAppearance);
-    if (strip.expanded) {
+    if (open) {
         strip.column.frame = root.bounds;
         layer.cornerRadius = DPCardRadius;
         layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
@@ -122,11 +158,13 @@ void DPLayoutStrip(NSView *host) {
         layer.shadowRadius = 10;
         return;
     }
-    // From the window's edge, so the window's own background doesn't show beside it.
-    NSRect cardRect = [root convertRect:card.bounds fromView:card];
-    CGFloat *radius = DPIvar(card, "cornerRadius"), right = [root convertPoint:NSMakePoint(DPStripRight(root.window), 0) fromView:nil].x;
-    strip.column.frame = NSMakeRect(0, NSMinY(cardRect), MAX(0, right), NSHeight(cardRect));
-    layer.cornerRadius = radius ? *radius : 0;
-    layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+    // The window's whole height from its edge, so the window's own background doesn't show beside it, and its corners
+    // round the strip's.
+    NSView *frameView = root.window.contentView.superview;
+    NSRect window = [root convertRect:frameView.bounds fromView:frameView];
+    CGFloat right = [root convertPoint:NSMakePoint(DPStripRight(root.window), 0) fromView:nil].x;
+    CGFloat width = DPStripWidth + DPRevealRoom(root.window) * DPLightsReveal(root.window);  // Wider as the window buttons show.
+    strip.column.frame = NSMakeRect(0, NSMinY(window), MAX(right, width), NSHeight(window));
+    layer.cornerRadius = 0;
     layer.shadowOpacity = 0;
 }

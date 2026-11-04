@@ -2,6 +2,12 @@
 
 static char DPLightsKey, DPPrioritiesKey;
 
+// The window buttons sit over the toolbar, so they hide and show with it as hide toolbar fades it.
+CGFloat DPToolbarAlpha(NSWindow *window) {
+    for (NSView *bar in DPFindViews(DPDiaToolbar)) if (bar.window == window && !bar.hiddenOrHasHiddenAncestor) return bar.alphaValue;
+    return 1;
+}
+
 static NSView *DPLightsIn(NSView *root) {
     NSView *header = root ? DPSubview(root, DPDiaSidebarHeader) : nil;
     return header ? DPFindView(header, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }) : nil;
@@ -11,6 +17,12 @@ CGFloat DPLightsRight(NSWindow *window) {
     NSView *lights = DPLightsIn(DPSidebarRootIn(window));
     if (!lights || lights.hiddenOrHasHiddenAncestor) return 0;
     return NSMaxX([lights convertRect:lights.bounds toView:nil]);
+}
+
+CGFloat DPLightsLeft(NSWindow *window) {
+    NSView *lights = DPLightsIn(DPSidebarRootIn(window));
+    if (!lights || lights.hiddenOrHasHiddenAncestor) return 0;
+    return NSMinX([lights convertRect:lights.bounds toView:nil]);
 }
 
 static NSView *DPHostOf(NSView *header) { return DPHostIn(header.window) ?: header.superview; }
@@ -51,6 +63,7 @@ static void DPPlaceLights(NSView *header, BOOL strip) {
         [row setClippingResistancePriority:dia[0].floatValue forOrientation:NSLayoutConstraintOrientationHorizontal];
         [lights setContentCompressionResistancePriority:dia[1].floatValue forOrientation:NSLayoutConstraintOrientationHorizontal];
     }
+    lights.alphaValue = strip ? DPToolbarAlpha(header.window) : 1;  // Its setter adds the reveal.
     if (!strip || lights.hiddenOrHasHiddenAncestor) {  // Hide Window Controls hides them.
         if (row.bounds.origin.y != 0) [row setBoundsOrigin:NSZeroPoint];
         return;
@@ -85,8 +98,12 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
 static NSView *DPStripHitTest(NSView *self, NSPoint point, NSView *(^original)(void)) {
     if (!DPStripOn(self) || DPStripExpanded(self)) return original();
     NSView *root = DPSidebarRootIn(self.window), *header = root ? DPSubview(root, DPDiaSidebarHeader) : nil, *lights = DPLightsIn(root);
-    if (lights && !lights.hiddenOrHasHiddenAncestor && NSPointInRect([lights convertPoint:point fromView:self.superview], lights.bounds))
+    if (lights && !lights.hiddenOrHasHiddenAncestor && lights.alphaValue > 0.01 && NSPointInRect([lights convertPoint:point fromView:self.superview], lights.bounds))
         return [lights hitTest:[lights.superview convertPoint:point fromView:self.superview]];
+    // With the toolbar hidden, the tabs rise into the header's space, where they take clicks.
+    NSView *list = DPListIn(self.window);
+    NSPoint inRoot = [root convertPoint:point fromView:self.superview];
+    if (list && NSPointInRect(inRoot, list.frame)) return [list hitTest:inRoot];
     NSPoint local = [header convertPoint:point fromView:self.superview];
     if (header && local.y >= 0 && local.y < NSHeight(header.bounds)) return nil;
     NSView *hit = original();
@@ -101,6 +118,14 @@ static NSView *DPRoot_hitTest(NSView *self, SEL _cmd, NSPoint point) {
     return DPStripHitTest(self, point, ^NSView *{ return DPCallOriginal(DPRoot_hitTest, self, point); });
 }
 
+static void DPBar_setAlphaValue(NSView *self, SEL _cmd, CGFloat alpha) {
+    DPCallOriginal(DPBar_setAlphaValue, self, alpha);
+    NSView *lights = DPLightsIn(DPSidebarRootIn(self.window));
+    if (lights && DPStripPresent(self.window)) lights.alphaValue = alpha;  // Its setter adds the reveal.
+    DPPlaceListIn(self.window);
+    DPSettleReveal(self.window);
+}
+
 // Hide Window Controls takes the buttons out of the header's row, which puts them back as it lays out, after the header
 // has; the toolbar's buttons follow them either way.
 static void DPLights_viewDidMoveToWindow(NSView *self, SEL _cmd) {
@@ -110,6 +135,7 @@ static void DPLights_viewDidMoveToWindow(NSView *self, SEL _cmd) {
 
 void DPInstallCompactHeader(void) {
     DPHook(DPDiaTrafficLights, @selector(viewDidMoveToWindow), (IMP)DPLights_viewDidMoveToWindow);
+    DPHook(DPDiaToolbar, @selector(setAlphaValue:), (IMP)DPBar_setAlphaValue);
     DPHook(DPDiaSidebarHeader, @selector(layout), (IMP)DPHeader_layout);
     DPHook(DPDiaFloatingSidebar, @selector(hitTest:), (IMP)DPFloat_hitTest);
     DPHook(DPDiaSidebarRoot, @selector(hitTest:), (IMP)DPRoot_hitTest);

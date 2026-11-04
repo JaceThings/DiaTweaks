@@ -1,6 +1,5 @@
 #import "HideToolbar.h"
 #import "Patches/EdgeToEdge/EdgeToEdge.h"
-#import "Patches/CompactSidebar/CompactSidebar.h"
 
 NSHashTable<NSView *> *DPPanes;
 static char DPFrameKey, DPFillsKey;
@@ -23,10 +22,8 @@ NSView *DPBookmarksUnder(NSView *pane, NSView *bar) {
     return nil;
 }
 
-// Only a docked sidebar moves the content container; one floating at the window's edge leaves it. The compact sidebar's
-// strip counts as docked, though Auto-Hide Tabs leaves the container at the window's width.
+// Only a docked sidebar moves the content container; one floating at the window's edge leaves it.
 static BOOL DPSidebarDocked(NSView *pane) {
-    if (DPStripShown(pane.window)) return YES;
     for (NSView *view = pane.superview; view; view = view.superview)
         if (DPIsKind(view, DPDiaContentContainer)) return DPBesideSidebar(view);
     return NO;

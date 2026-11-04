@@ -25,6 +25,7 @@
 #define DPDiaPinnedTabCard      "_TtC12TabPreviewUIP33_0170D9E3E5C7E28EB9CF80A3A0FFD69325TabHoverMenuPopoverWindow"
 #define DPDiaPinnedTabOutline   "_TtC5TabUIP33_CFF5B89D7BC9743BBA6108D119E2E37020SelectionOutlineView"
 #define DPDiaContentPane        "_TtC11ContentPane15ContentPaneView"
+#define DPDiaPage               "_TtC18GesturalNavigation38GesturalNavigationEventInterceptorView"  // The page in a pane.
 #define DPDiaContentContainer   "_TtC6Window20ContentContainerView"
 #define DPDiaSplitPane          "_TtC5ARCUI24SplitViewContentPaneView"  // One per page of a split, and one in a window without.
 #define DPDiaFloatingSidebar    "_TtC6Window28FloatingSidebarContainerView"
@@ -83,5 +84,7 @@
 #define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // A Swift class: look it up after launch.
 #define DPDiaTabList            "_TtC7TabList11TabListView"
 #define DPDiaTabListSeparator   "_TtC7TabList20TabListSeparatorView"
+#define DPDiaTabListLayout      "_TtC7TabList27TabListCollectionViewLayout"
+#define DPDiaTabGroupCell       "_TtC5TabUI16TabGroupCellView"
 #define DPDiaTabListCollection  "_TtCC7TabList11TabListView14CollectionView"
 #define DPDiaTabListLayout      "_TtC7TabList27TabListCollectionViewLayout"

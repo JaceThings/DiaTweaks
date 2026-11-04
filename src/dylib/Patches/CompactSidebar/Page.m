@@ -15,11 +15,42 @@ static NSRect DPPaneFrame(NSView *pane, NSRect frame) {
     return frame;
 }
 
+static BOOL DPPlacingPane;  // Set while the strip places a pane, which isn't Dia asking for a frame.
+
+static NSRect DPDiaPaneFrame(NSView *pane) {
+    NSValue *dia = DPGet(pane, &DPPaneFrameKey);
+    return dia ? dia.rectValue : pane.frame;
+}
+
+static void DPPlacePane(NSView *pane) {
+    NSRect frame = DPPaneFrame(pane, DPDiaPaneFrame(pane));
+    if (NSEqualRects(pane.frame, frame)) return;
+    DPPlacingPane = YES;
+    pane.frame = frame;
+    DPPlacingPane = NO;
+}
+
+// Dia moves the page with setFrame:, setFrameOrigin: and setFrameSize:, as when a site shows a photo; each records
+// what Dia asked for, and the pane is placed from that.
+static void DPPaneAsked(NSView *pane, NSRect frame) {
+    [DPPanes addObject:pane];
+    DPSet(pane, &DPPaneFrameKey, @(frame));
+    DPPlacePane(pane);
+}
+
 static void DPPane_setFrame(NSView *self, SEL _cmd, NSRect frame) {
-    NSRect dia = [DPDiaValue(self, &DPPaneFrameKey, @(frame)) rectValue], ours = DPPaneFrame(self, dia);
-    [DPPanes addObject:self];
-    DPOverride(self, &DPPaneFrameKey, @(dia), @(ours));
-    DPCallOriginal(DPPane_setFrame, self, ours);
+    if (DPPlacingPane) return DPCallOriginal(DPPane_setFrame, self, frame);
+    DPPaneAsked(self, frame);
+}
+
+static void DPPane_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
+    if (DPPlacingPane) return DPCallOriginal(DPPane_setFrameOrigin, self, origin);
+    DPPaneAsked(self, (NSRect){origin, DPDiaPaneFrame(self).size});
+}
+
+static void DPPane_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
+    if (DPPlacingPane) return DPCallOriginal(DPPane_setFrameSize, self, size);
+    DPPaneAsked(self, (NSRect){DPDiaPaneFrame(self).origin, size});
 }
 
 // The toolbar's buttons left of the address field move right of the window buttons, and the field gives up the room.
@@ -68,23 +99,21 @@ static void DPBar_layout(NSView *self, SEL _cmd) {
 
 void DPRelayoutCompactPanes(NSWindow *window) {
     for (NSView *pane in DPPanes)
-        if (pane.window == window) pane.frame = [DPDiaValue(pane, &DPPaneFrameKey, @(pane.frame)) rectValue];
+        if (pane.window == window) DPPlacePane(pane);
 }
 
 // Dia slides the card into place, and edge-to-edge moves it again; each page starts where the strip ends once it stops.
 static void DPCard_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     DPCallOriginal(DPCard_setFrame, self, frame);
     if (!DPStripShown(self.window)) return;
-    for (NSView *pane in DPPanes) {
-        if (![pane isDescendantOf:self]) continue;
-        NSRect dia = [DPDiaValue(pane, &DPPaneFrameKey, @(pane.frame)) rectValue];
-        if (!NSEqualRects(DPPaneFrame(pane, dia), pane.frame)) pane.frame = dia;  // Through its setFrame:, which places it.
-    }
+    for (NSView *pane in DPPanes) if ([pane isDescendantOf:self]) DPPlacePane(pane);
 }
 
 void DPInstallCompactPage(void) {
     DPPanes = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaContentContainer, @selector(setFrame:), (IMP)DPCard_setFrame);
     DPHook(DPDiaContentPane, @selector(setFrame:), (IMP)DPPane_setFrame);
+    DPHook(DPDiaContentPane, @selector(setFrameOrigin:), (IMP)DPPane_setFrameOrigin);
+    DPHook(DPDiaContentPane, @selector(setFrameSize:), (IMP)DPPane_setFrameSize);
     DPHook(DPDiaToolbar, @selector(layout), (IMP)DPBar_layout);
 }
