@@ -27,7 +27,7 @@ DP_PATCH(DPTidyTabs) {
     .title = @"Tidy Tabs",
     .detail = @"Adds a broom to the line above your tabs. Click it to group your tabs by what they’re for, using Apple Intelligence on your Mac; Dia names the groups. Shows with more than 5 tabs.",
     .symbol = @"sparkles",
-    .tint = @"systemPurpleColor",
+    .tint = @"systemTealColor",
     .classes = DPClasses(DPDiaTabList, DPDiaSidebarHeader),
     .install = DPInstallTidyLayout,
     .apply = DPApplyTidyTabs,
