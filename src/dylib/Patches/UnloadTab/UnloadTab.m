@@ -109,8 +109,8 @@ static void DPInstallUnloadTab(void) {
 
 DP_PATCH(DPUnloadTab) {
     .key = @"unloadTab",
-    .order = 87,
-    .section = @"Tabs & Downloads",
+    .order = 86,
+    .section = @"Tabs",
     .title = @"Unload Tabs",
     .detail = @"Right-click a tab and choose Unload Tab to free its memory. It stays in the sidebar, dimmed, and loads again when you open it.",
     .symbol = @"moon.zzz.fill",

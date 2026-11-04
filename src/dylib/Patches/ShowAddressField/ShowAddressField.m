@@ -83,7 +83,7 @@ DP_PATCH(DPShowAddressField) {
     .detail = @"Show the address field’s background and its bookmark, split view and site buttons without pointing at it.",
     .symbol = @"link.circle.fill",
     .tint = @"systemPurpleColor",
-    .section = @"Toolbar Items",
+    .section = @"Toolbar",
     .classes = DPClasses(DPDiaAddressField, DPDiaHoverTracker),
     .disabledBy = @"hideToolbar",
     .install = DPInstallShowAddressField,

@@ -5,12 +5,12 @@ static BOOL DPIsPersonalizeButton(NSView *view) { return DPIsKind(view, DPDiaPer
 
 DP_PATCH(DPHidePersonalizeButton) {
     .key = @"hidePersonalizeButton",
-    .order = 61,
+    .order = 95,
     .title = @"Hide Personalize Button",
     .detail = @"Hide the Personalization button at the top right of new tab pages.",
     .symbol = @"person.crop.circle.fill",
     .tint = @"systemPurpleColor",
-    .section = @"Toolbar Items",
+    .section = @"New Tab Page",
     .classes = DPClasses(DPDiaToolbar, DPDiaPersonalizeButton),
     .disabledBy = @"hideToolbar",
     .hides = DPIsPersonalizeButton,
