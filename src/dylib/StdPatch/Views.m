@@ -59,8 +59,15 @@ BOOL DPMayAdjust(NSView *view) {
     }
     NSUInteger n = [[counts objectForKey:view] unsignedIntegerValue] + 1;
     [counts setObject:@(n) forKey:view];
-    if (n == DPAdjustLimit + 1)
+    if (n == DPAdjustLimit + 1) {
         os_log(OS_LOG_DEFAULT, "DiaPatches: letting Dia lay out %{public}s for the rest of this turn, which kept undoing a patch", object_getClassName(view));
+        // Many changes at once, such as several tweaks switched together, also lay a view out this often. Nothing else
+        // may lay it out again, so once the run loop has waited the window is laid out once more and the patch reapplied.
+        __weak NSView *weak = view;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            for (NSView *up = weak; up; up = up.superview) up.needsLayout = YES;
+        });
+    }
     return n <= DPAdjustLimit;
 }
 
