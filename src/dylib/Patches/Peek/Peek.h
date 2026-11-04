@@ -47,7 +47,7 @@ void DPPeekHideTabBadge(DPPeekCard *peek);
 
 // Settings.m
 double DPPeekDarkness(void);                  // How dark the page behind a peek is, 0–1, from the settings slider.
-double DPPeekResponse(void);                  // The card's spring response in seconds; 0.24 like iOS.
+double DPPeekResponse(void);                  // The card's spring response in seconds, from the Speed slider; 0.24 like iOS.
 double DPPeekBounce(void);                    // How bouncy that spring is, 0–1: 1 minus its damping ratio. 0 like iOS.
 NSArray<NSView *> *DPPeekSettingsRows(void);  // The Peek settings page's extra rows.
 

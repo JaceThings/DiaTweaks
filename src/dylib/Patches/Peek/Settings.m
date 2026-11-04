@@ -2,7 +2,7 @@
 
 // Peek's sliders on its Settings page, the way the Command bar tunes itself: how dark the page behind gets, and the
 // spring the card moves on. Each is stored as the value it means, shown as a whole number.
-static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekResponse", *const DPPeekBounceKey = @"peekBounce";
+static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekSpeed", *const DPPeekBounceKey = @"peekBounce";
 
 static NSUserDefaults *DPSettings(void) {
     static NSUserDefaults *settings;
@@ -14,11 +14,11 @@ static NSUserDefaults *DPSettings(void) {
 static double DPPeekTuned(NSString *key) {
     id value = [DPSettings() objectForKey:key];
     if (value) return [value doubleValue];
-    return [@{ DPPeekDarknessKey : @0.35, DPPeekSpeedKey : @0.24, DPPeekBounceKey : @0 }[key] doubleValue];
+    return [@{ DPPeekDarknessKey : @0.35, DPPeekSpeedKey : @1, DPPeekBounceKey : @0 }[key] doubleValue];
 }
 
 double DPPeekDarkness(void) { return DPPeekTuned(DPPeekDarknessKey); }
-double DPPeekResponse(void) { return DPPeekTuned(DPPeekSpeedKey); }
+double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // 100% is iOS's 0.24 s.
 double DPPeekBounce(void) { return DPPeekTuned(DPPeekBounceKey); }
 
 static void DPPeekApplyDarkness(void) {
@@ -84,7 +84,7 @@ static NSView *DPPeekSlider(NSString *title, NSString *key, double min, double m
 NSArray<NSView *> *DPPeekSettingsRows(void) {
     return @[
         DPPeekSlider(@"Darken the page behind", DPPeekDarknessKey, 0, 100, 100, @"%"),
-        DPPeekSlider(@"Spring Response", DPPeekSpeedKey, 100, 600, 1000, @"ms"),
+        DPPeekSlider(@"Speed", DPPeekSpeedKey, 25, 300, 100, @"%"),
         DPPeekSlider(@"Bounce", DPPeekBounceKey, 0, 60, 100, @"%"),
     ];
 }
