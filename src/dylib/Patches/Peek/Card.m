@@ -119,7 +119,7 @@ static id DPWatchKeys(DPPeekCard *card) {
     }];
 }
 
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin) {
+DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSRect link) {
     NSView *host = [page createPaneHostView], *pane = nil;
     if (!window || !host || DPPeekCardIn(window)) return nil;
     for (NSView *candidate in DPFindViews(DPDiaContentPane))
@@ -160,11 +160,8 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin
                                                                         usingBlock:^(NSNotification *note) { [weak followPane]; }];
     }
     peek.monitor = DPWatchKeys(peek);
-    // It grows out of a small link-sized box right where you clicked, so the open reads as coming from the link.
-    NSRect card = peek.cardFrame;
-    NSSize size = NSMakeSize(MAX(120, NSWidth(card) * 0.10), MAX(44, NSHeight(card) * 0.055));
-    NSRect seed = NSMakeRect(origin.x - size.width / 2, origin.y - size.height / 2, size.width, size.height);
-    peek.link = [peek convertRect:[window convertRectFromScreen:seed] fromView:nil];
+    // It grows out of the link itself, at its size and shape, so the open reads as coming from the link.
+    peek.link = [peek convertRect:[window convertRectFromScreen:link] fromView:nil];
     [peek animateIn];
     return peek;
 }

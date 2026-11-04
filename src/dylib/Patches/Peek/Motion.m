@@ -39,8 +39,9 @@ static CGFloat DPPeekEaseDefault(CGFloat x) {
     return 3 * (1 - s) * (1 - s) * s * 0.1 + 3 * (1 - s) * s * s + s * s * s;
 }
 
-// The card's opacity over the main spring. SpringBoard has the app fully in by the time its icon has faded to 90%;
-// closing plays it backwards, so the card stays solid until it's nearly back in the link.
+// The card's opacity over the main spring. SpringBoard has the app fully in by the time its icon has faded to 90%, but
+// there the icon covers the start; a peek has no icon, so opening it shows straight away at the link's size and shape.
+// Closing plays SpringBoard's crossfade backwards, so the card stays solid until it's nearly back in the link.
 static CAKeyframeAnimation *DPPeekFade(CFTimeInterval duration, CFTimeInterval response, CGFloat dampingRatio, BOOL opening) {
     NSMutableArray *values = [NSMutableArray new], *times = [NSMutableArray new];
     for (int i = 0; i <= 30; i++) {
@@ -48,7 +49,7 @@ static CAKeyframeAnimation *DPPeekFade(CFTimeInterval duration, CFTimeInterval r
         CGFloat progress = 1 - DPPeekLeft(t, response, dampingRatio);
         if (!opening) progress = 1 - progress;
         CGFloat icon = 1 - DPPeekEaseDefault((progress - 0.15) / 0.45);
-        [values addObject:@(MIN(1, MAX(0, 1 - (icon - 0.9) / 0.1)))];
+        [values addObject:@(opening ? MIN(1, progress / 0.02) : MIN(1, MAX(0, 1 - (icon - 0.9) / 0.1)))];
         [times addObject:@(i / 30.0)];
     }
     CAKeyframeAnimation *fade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
@@ -95,7 +96,7 @@ static CAKeyframeAnimation *DPPeekTravel(CALayer *layer, NSRect card, NSRect lin
     // The link in the card's unit square, y down from the top.
     NSRect source = NSMakeRect((NSMinX(link) - NSMinX(card)) / NSWidth(card), (NSMinY(link) - NSMinY(card)) / NSHeight(card),
                                NSWidth(link) / NSWidth(card), NSHeight(link) / NSHeight(card));
-    BOOL flipped = layer.geometryFlipped;
+    BOOL flipped = !layer.geometryFlipped;
     NSMutableArray *values = [NSMutableArray new], *times = [NSMutableArray new];
     for (int i = 0; i <= 60; i++) {
         CFTimeInterval t = *duration * i / 60;

@@ -37,7 +37,7 @@ extern DPPatch DPPeek;
 @end
 
 DPPeekCard *DPPeekCardIn(NSWindow *window);
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin);  // Card.m
+DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSRect link);  // Card.m. `link` is on screen.
 NSView *DPPeekControls(id target, SEL action);                                      // Controls.m
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);                    // Controls.m
 

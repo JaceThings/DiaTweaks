@@ -69,15 +69,54 @@ static BOOL DPPeekGive(id page, id delegate, id source, NSURL *url, NSInteger di
     return YES;
 }
 
+// The box of the link under `origin` on screen, asked of the page it's on, so the card can grow out of exactly that. A
+// link that wraps gives the line that was clicked. Anything the page can't answer, such as a link in a frame, gets a
+// line-high box around the click.
+static void DPPeekFindLink(NSWindow *window, id source, NSPoint origin, void (^found)(NSRect link)) {
+    NSRect fallback = NSMakeRect(origin.x - 40, origin.y - 10, 80, 20);
+    NSView *web = DPFindView(window.contentView, ^BOOL(NSView *view) {
+        return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor
+            && NSPointInRect([view convertPoint:[window convertPointFromScreen:origin] fromView:nil], view.bounds);
+    });
+    if (!web || ![source respondsToSelector:@selector(executeJavascript:completion:)]) return found(fallback);
+    NSPoint point = [web convertPoint:[window convertPointFromScreen:origin] fromView:nil];
+    CGFloat top = web.isFlipped ? point.y : NSHeight(web.bounds) - point.y;
+    NSString *script = [NSString stringWithFormat:@"(function(x, y, w) {"
+        "var k = innerWidth / w, e = document.elementFromPoint(x * k, y * k); if (!e) return '';"
+        "var a = e.closest('a') || e, r = a.getBoundingClientRect();"
+        "for (var b of a.getClientRects()) if (x * k >= b.left && x * k <= b.right && y * k >= b.top && y * k <= b.bottom) r = b;"
+        "return [r.left / k - x, r.top / k - y, r.width / k, r.height / k].join(',');"
+        "})(%f, %f, %f)", point.x, top, NSWidth(web.bounds)];
+    __block BOOL done = NO;
+    void (^finish)(NSRect) = ^(NSRect link) {
+        if (done) return;
+        done = YES;
+        found(link);
+    };
+    // A page that's busy can't hold the peek up for long.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ finish(fallback); });
+    void (^answer)(NSString *, BOOL) = ^(NSString *result, BOOL ok) {
+        // The answer comes back as JSON, so a string arrives in quotes.
+        NSString *box = [result stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\""]];
+        NSArray<NSString *> *parts = [box componentsSeparatedByString:@","];
+        if (!ok || parts.count != 4 || parts[2].doubleValue < 1 || parts[3].doubleValue < 1) return dispatch_async(dispatch_get_main_queue(), ^{ finish(fallback); });
+        // The box comes back relative to the click, in points, so it lands where the click did on screen.
+        CGFloat dx = parts[0].doubleValue, dy = parts[1].doubleValue, w = parts[2].doubleValue, h = parts[3].doubleValue;
+        NSRect link = NSMakeRect(origin.x + dx, origin.y - dy - h, w, h);
+        dispatch_async(dispatch_get_main_queue(), ^{ finish(link); });
+    };
+    ((void (*)(id, SEL, NSString *, id))objc_msgSend)(source, @selector(executeJavascript:completion:), script, answer);
+}
+
 // The page is set up for drawing, attached to a card, then loaded. If no card can show it, it opens as a tab.
-void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source) {
+static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegate, id source) {
     id factory = DPPeekContextForSource(source, window);
     Class configuration = objc_getClass(DPDiaWebContentsConfiguration);
     if (!window || !url || !factory || !configuration || DPPeekCardIn(window)) return;
     id page = ((id (*)(id, SEL, id))objc_msgSend)(factory, @selector(createWebContents:), [configuration new]);
     if (!page) return;
     if ([page respondsToSelector:@selector(bootstrapRendering)]) [page performSelector:@selector(bootstrapRendering)];
-    DPPeekCard *peek = DPPeekShowCard(window, page, origin);
+    DPPeekCard *peek = DPPeekShowCard(window, page, link);
     if ([page respondsToSelector:@selector(bootstrapRenderingComplete)]) [page performSelector:@selector(bootstrapRenderingComplete)];
     DPPeekLoad(page, url);
     if (!peek) {
@@ -87,6 +126,10 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
     peek.sourceDelegate = delegate;
     peek.source = source;
     DPPeekShowTabBadge(peek, source, page);
+}
+
+void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source) {
+    DPPeekFindLink(window, source, origin, ^(NSRect link) { DPPeekOpenFrom(window, url, link, delegate, source); });
 }
 
 @implementation DPPeekCard (Handoff)
