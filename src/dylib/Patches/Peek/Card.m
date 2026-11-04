@@ -25,7 +25,12 @@
     self.host.frame = self.clip.bounds;
     NSSize size = self.controls.frame.size;
     self.controls.frame = (NSRect){{NSMaxX(self.card.frame) + 12, NSMinY(self.card.frame)}, size};
-    DPPeekLayoutHints(self.controls, NSWidth(self.bounds) - NSMaxX(self.controls.frame) - 8);
+    // The hints are rebuilt hidden; inside the sidebar's slide they'd otherwise fade in from showing.
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0;
+        context.allowsImplicitAnimation = NO;
+        DPPeekLayoutHints(self.controls, NSWidth(self.bounds) - NSMaxX(self.controls.frame) - 8);
+    }];
 }
 
 // Follows the page area as the sidebar opens and closes. Dia resizes the page inside an animation group as the sidebar
