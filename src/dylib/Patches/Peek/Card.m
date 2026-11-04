@@ -1,4 +1,5 @@
 #import "Patches/Peek/Peek.h"
+#import <Carbon/Carbon.h>
 
 static const CGFloat DPPeekShadowRoom = 48;
 
@@ -109,7 +110,7 @@ static NSView *DPLayerView(void) {
     return view;
 }
 
-// Key codes: O 31, W 13, Escape 53.
+// A focused peek page swallows ⌘S, which Dia's tabs pass on to the menu.
 static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
@@ -117,9 +118,9 @@ static id DPWatchKeys(DPPeekCard *card) {
         if (!peek || event.window != peek.window) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
         BOOL command = mods == NSEventModifierFlagCommand, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
-        if (command && event.keyCode == 31) [peek close:DPPeekTab];
-        else if ((command && event.keyCode == 13) || (!mods && event.keyCode == 53 && !editing)) [peek close:DPPeekClose];
-        else return event;
+        if (command && event.keyCode == kVK_ANSI_O) [peek close:DPPeekTab];
+        else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
+        else if (!(command && event.keyCode == kVK_ANSI_S && [NSApp.mainMenu performKeyEquivalent:event])) return event;
         return nil;
     }];
 }
