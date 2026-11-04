@@ -19,6 +19,7 @@ extern DPPatch DPPeek;
 @property (nonatomic, strong) id paneObserver, monitor;
 @property (nonatomic, strong) NSView *tabBadge;        // Marks the tab the peek came from while it's open. Tab.m.
 @property (nonatomic) NSRect link;  // What it grows out of and shrinks back into, in its own coordinates.
+@property (nonatomic) CGFloat grown;  // How far it has grown from its card toward filling the page area, as it expands.
 @property (nonatomic) BOOL closing;
 - (NSRect)cardFrame;
 - (void)close:(NSInteger)exit;  // 0 closes, 1 opens it as a tab, 2 in split view: the tags of its buttons.

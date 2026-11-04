@@ -9,7 +9,13 @@
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
 // Arc's card is nearly full height and inset at the sides, with the controls in the right margin.
-- (NSRect)cardFrame { return NSInsetRect(self.bounds, NSWidth(self.bounds) * 0.09, MAX(10, NSHeight(self.bounds) * 0.012)); }
+// Expanding grows it toward the whole page area.
+- (NSRect)cardFrame {
+    NSRect card = NSInsetRect(self.bounds, NSWidth(self.bounds) * 0.09, MAX(10, NSHeight(self.bounds) * 0.012)), page = self.bounds;
+    CGFloat g = self.grown;
+    return NSMakeRect(NSMinX(card) + (NSMinX(page) - NSMinX(card)) * g, NSMinY(card) + (NSMinY(page) - NSMinY(card)) * g,
+                      NSWidth(card) + (NSWidth(page) - NSWidth(card)) * g, NSHeight(card) + (NSHeight(page) - NSHeight(card)) * g);
+}
 
 - (void)layout {
     [super layout];

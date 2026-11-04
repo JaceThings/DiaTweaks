@@ -63,6 +63,46 @@ static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
     return CATransform3DConcat(scale, CATransform3DMakeTranslation(NSMinX(rect) - NSMinX(card), NSMinY(rect) - NSMinY(card), 0));
 }
 
+// Steps a card's growth every frame along the spring until it's settled.
+@interface DPPeekGrowth : NSObject
+@property (nonatomic, weak) DPPeekCard *peek;
+@property (nonatomic, strong) CADisplayLink *link;
+@property (nonatomic) CFTimeInterval start, response, duration;
+@property (nonatomic) CGFloat dampingRatio;
+@property (nonatomic, copy) void (^done)(void);
+@end
+
+@implementation DPPeekGrowth
+static char DPGrowthKey;
+
++ (void)grow:(DPPeekCard *)peek response:(CFTimeInterval)response dampingRatio:(CGFloat)dampingRatio done:(void (^)(void))done {
+    DPPeekGrowth *growth = [DPPeekGrowth new];
+    growth.peek = peek;
+    growth.response = response;
+    growth.dampingRatio = dampingRatio;
+    growth.duration = DPPeekSpring(@"bounds", response, dampingRatio).settlingDuration;
+    growth.done = done;
+    growth.start = CACurrentMediaTime();
+    DPSet(peek, &DPGrowthKey, growth);  // The card keeps it alive; the display link doesn't.
+    growth.link = [peek displayLinkWithTarget:growth selector:@selector(step)];
+    [growth.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+}
+
+- (void)step {
+    DPPeekCard *peek = self.peek;
+    CFTimeInterval t = CACurrentMediaTime() - self.start;
+    BOOL settled = !peek || t >= self.duration;
+    peek.grown = settled ? 1 : 1 - DPPeekLeft(t, self.response, self.dampingRatio);
+    peek.needsLayout = YES;
+    [peek layoutSubtreeIfNeeded];
+    if (!settled) return;
+    [self.link invalidate];
+    if (self.done) self.done();
+    self.done = nil;
+    if (peek) DPSet(peek, &DPGrowthKey, nil);
+}
+@end
+
 @implementation DPPeekCard (Motion)
 
 // Runs the card between the link and its place, and the page behind between clear and dimmed.
@@ -110,25 +150,16 @@ static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
 }
 
 // Out to fill the whole page area on the same spring, with the page behind clearing, before it becomes a tab there.
-// The end holds, so the card stays full size until the tab takes its place.
+// The card is resized for real each frame, not scaled, so the page lays itself out at each size as it grows.
 - (void)animateExpand:(void (^)(void))completion {
     CFTimeInterval response = DPPeekResponse();
-    CASpringAnimation *fill = DPPeekSpring(@"transform", response, 1 - DPPeekBounce());
-    fill.fromValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
-    fill.toValue = [NSValue valueWithCATransform3D:DPPeekSqueeze(self.cardFrame, self.bounds)];
     CASpringAnimation *clear = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
     clear.fromValue = @1;
     clear.toValue = @0;
-
-    [CATransaction begin];
-    [CATransaction setCompletionBlock:completion];
-    for (CAAnimation *animation in @[fill, clear]) {
-        animation.fillMode = kCAFillModeForwards;
-        animation.removedOnCompletion = NO;
-    }
-    [self.card.layer addAnimation:fill forKey:@"peek"];
+    clear.fillMode = kCAFillModeForwards;
+    clear.removedOnCompletion = NO;
     [self.blur.layer addAnimation:clear forKey:@"peek"];
-    [CATransaction commit];
+    [DPPeekGrowth grow:self response:response dampingRatio:1 - DPPeekBounce() done:completion];
 }
 
 @end
