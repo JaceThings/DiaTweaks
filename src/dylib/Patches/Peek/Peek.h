@@ -19,6 +19,7 @@ typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit }; 
 @property (nonatomic) NSRect link;    // In the card's own coordinates.
 @property (nonatomic) CGFloat grown;  // 0 at rest, 1 filling the page area.
 @property (nonatomic) BOOL closing;
+@property (nonatomic) NSInteger paneMoves;
 - (NSRect)cardFrame;
 - (void)close:(DPPeekExit)exit;
 - (void)handOver;

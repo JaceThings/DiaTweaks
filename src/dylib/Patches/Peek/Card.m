@@ -23,15 +23,15 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     self.blur.frame = self.bounds;
     self.card.frame = NSInsetRect(card, -DPPeekShadowRoom, -DPPeekShadowRoom);
     self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
-    CGPathRef outline = CGPathCreateWithRoundedRect(self.shade.bounds, 10, 10, NULL);
-    self.shade.layer.shadowPath = outline;
-    CGPathRelease(outline);
-    self.host.frame = self.clip.bounds;
     self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card) + 4}, self.controls.frame.size};
-    // Outside the sidebar slide's animation, or the rebuilt hints fade in.
+    // Outside the sidebar slide's animation. The page redraws at its new size at once, so while the pane moves it covers
+    // both the old and new card and is cropped, rather than leaving a blank strip. And the rebuilt hints would fade in.
+    NSSize page = self.clip.bounds.size;
+    if (self.paneMoves) page = NSMakeSize(MAX(page.width, NSWidth(self.host.frame)), MAX(page.height, NSHeight(self.host.frame)));
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         context.allowsImplicitAnimation = NO;
+        self.host.frame = (NSRect){{0, self.clip.isFlipped ? 0 : NSHeight(self.clip.bounds) - page.height}, page};
         DPPeekLayoutHints(self.controls, NSWidth(self.bounds) - NSMaxX(self.controls.frame) - 8);
     }];
 }
@@ -43,12 +43,15 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     if (NSEqualRects(frame, self.frame)) return;
     NSAnimationContext *dia = NSAnimationContext.currentContext;
     if (!dia.timingFunction) return (void)(self.frame = frame);
+    self.paneMoves++;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = dia.duration;
         context.timingFunction = dia.timingFunction;
         context.allowsImplicitAnimation = YES;
         self.animator.frame = frame;
         [self layoutSubtreeIfNeeded];
+    } completionHandler:^{
+        if (!--self.paneMoves) self.needsLayout = YES;
     }];
 }
 
