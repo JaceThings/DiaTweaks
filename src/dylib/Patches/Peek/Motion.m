@@ -1,8 +1,9 @@
 #import "Patches/Peek/Peek.h"
+#import <objc/message.h>
 
 // By default the card opens and closes on the curves an iPhone app opens with, read from iOS 27's SpringBoard in
 // github.com/pausedstudio/app-open-teardown (EQUATIONS.md): one critically damped spring with a 0.24 s response moves
-// the card, its top and bottom edges spread around it like SpringBoard's rows, the page fades in on SpringBoard's
+// the card, its rows of vertices spread around it like SpringBoard's, the page fades in on SpringBoard's
 // crossfade curve, and the page behind dims on its 0.314 s spring. Opening and closing, the card is laid out once at full
 // size and only its layer is scaled; expanding resizes it for real.
 
@@ -57,37 +58,60 @@ static CAKeyframeAnimation *DPPeekFade(CFTimeInterval duration, CFTimeInterval r
     return fade;
 }
 
-// Draws the card, laid out at `card`, squeezed into `rect`. A layer-backed view's layer scales about its origin, which
-// is the card's top left in this flipped view.
-static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
-    CATransform3D scale = CATransform3DMakeScale(NSWidth(rect) / MAX(1, NSWidth(card)), NSHeight(rect) / MAX(1, NSHeight(card)), 1);
-    return CATransform3DConcat(scale, CATransform3DMakeTranslation(NSMinX(rect) - NSMinX(card), NSMinY(rect) - NSMinY(card), 0));
+// Core Animation's mesh transform: private, but in every macOS QuartzCore since 10.9. A 3×3 grid of vertices, each
+// moved from its spot in the layer's unit square to `to`.
+typedef struct { CGFloat x, y, z; } DPPoint3D;
+typedef struct { CGPoint from; DPPoint3D to; } DPMeshVertex;
+typedef struct { unsigned int indices[4]; float w[4]; } DPMeshFace;
+
+static id DPMesh(const CGPoint to[9]) {
+    DPMeshVertex vertices[9];
+    for (int i = 0; i < 9; i++) vertices[i] = (DPMeshVertex){{(i % 3) / 2.0, (i / 3) / 2.0}, {to[i].x, to[i].y, 0}};
+    DPMeshFace faces[4];
+    for (int f = 0; f < 4; f++) {
+        unsigned int i = (f / 2) * 3 + f % 2;
+        faces[f] = (DPMeshFace){{i, i + 1, i + 4, i + 3}, {0, 0, 0, 0}};
+    }
+    id (*make)(Class, SEL, NSUInteger, DPMeshVertex *, NSUInteger, DPMeshFace *, NSString *) = (void *)objc_msgSend;
+    return make(NSClassFromString(@"CAMeshTransform"), NSSelectorFromString(@"meshTransformWithVertexCount:vertices:faceCount:faces:depthNormalization:"),
+                9, vertices, 4, faces, @"none");
 }
 
-// The card's path between the link and its place. As on iOS, its top and bottom edges each ride their own spring:
-// opening, the edge nearest the link is slowest and the far edge fastest, scaled from SpringBoard's row responses by
-// how far down the page the link is. Its sides ride the main spring. So the card sweeps out of the link on a curve
-// instead of growing along a straight line; closing flips the edges, so the one nearest the link lands first.
-static CAKeyframeAnimation *DPPeekTravel(NSRect card, NSRect link, CGFloat linkY, BOOL opening, CFTimeInterval response,
-                                         CGFloat dampingRatio, CFTimeInterval *duration) {
+// The card's path between the link and its place, as iOS opens an app out of its icon: the card is a 3×3 mesh, and
+// each row of vertices rides its own spring, scaled from SpringBoard's row responses by how far down the page the link
+// is. Opening, the row nearest the link is slowest and the far row fastest, so the card's sides bend as it pulls out
+// of the link; closing flips them, so the row nearest the link lands first.
+static CAKeyframeAnimation *DPPeekTravel(CALayer *layer, NSRect card, NSRect link, CGFloat linkY, BOOL opening,
+                                         CFTimeInterval response, CGFloat dampingRatio, CFTimeInterval *duration) {
     CGFloat ay = 2 * MIN(1, MAX(0, linkY)) - 1, g = ay >= 0 ? ay : 0.75 * ay;
     if (!opening) g = -g;
-    // Rows 0 (top) and 2 (bottom): n is 0 and 1 for either sign, so the spread is all there is.
-    CFTimeInterval top = response * (1 - 0.5 * g), bottom = response * (1 + 0.5 * g);
+    CFTimeInterval rows[3];
     *duration = 0;
-    for (NSNumber *r in @[ @(response), @(top), @(bottom) ])
-        *duration = MAX(*duration, DPPeekSpring(@"transform", r.doubleValue, dampingRatio).settlingDuration);
-    NSRect from = opening ? link : card, to = opening ? card : link;
+    for (int r = 0; r < 3; r++) {
+        CGFloat v = r / 2.0, n = g < 0 ? 1 - sqrt(1 - v) : sqrt(v);
+        rows[r] = response * (1 - 0.5 * g + g * n);
+        *duration = MAX(*duration, DPPeekSpring(@"meshTransform", rows[r], dampingRatio).settlingDuration);
+    }
+    // The link in the card's unit square, y down from the top.
+    NSRect source = NSMakeRect((NSMinX(link) - NSMinX(card)) / NSWidth(card), (NSMinY(link) - NSMinY(card)) / NSHeight(card),
+                               NSWidth(link) / NSWidth(card), NSHeight(link) / NSHeight(card));
+    BOOL flipped = layer.geometryFlipped;
     NSMutableArray *values = [NSMutableArray new], *times = [NSMutableArray new];
     for (int i = 0; i <= 60; i++) {
         CFTimeInterval t = *duration * i / 60;
-        CGFloat side = DPPeekLeft(t, response, dampingRatio), up = DPPeekLeft(t, top, dampingRatio), down = DPPeekLeft(t, bottom, dampingRatio);
-        CGFloat minX = NSMinX(to) + (NSMinX(from) - NSMinX(to)) * side, maxX = NSMaxX(to) + (NSMaxX(from) - NSMaxX(to)) * side;
-        CGFloat minY = NSMinY(to) + (NSMinY(from) - NSMinY(to)) * up, maxY = NSMaxY(to) + (NSMaxY(from) - NSMaxY(to)) * down;
-        [values addObject:[NSValue valueWithCATransform3D:DPPeekSqueeze(card, NSMakeRect(minX, minY, maxX - minX, maxY - minY))]];
+        CGPoint to[9];
+        for (int r = 0; r < 3; r++) {
+            CGFloat left = DPPeekLeft(t, rows[r], dampingRatio), away = opening ? left : 1 - left;
+            for (int c = 0; c < 3; c++) {
+                CGFloat x = c / 2.0, y = r / 2.0;
+                CGFloat px = x + (NSMinX(source) + x * NSWidth(source) - x) * away, py = y + (NSMinY(source) + y * NSHeight(source) - y) * away;
+                to[(flipped ? r : 2 - r) * 3 + c] = CGPointMake(px, flipped ? py : 1 - py);
+            }
+        }
+        [values addObject:DPMesh(to)];
         [times addObject:@(i / 60.0)];
     }
-    CAKeyframeAnimation *travel = [CAKeyframeAnimation animationWithKeyPath:@"transform"];
+    CAKeyframeAnimation *travel = [CAKeyframeAnimation animationWithKeyPath:@"meshTransform"];
     travel.values = values;
     travel.keyTimes = times;
     travel.duration = *duration;
@@ -141,7 +165,7 @@ static char DPGrowthKey;
     // The Settings sliders pick the spring; the dimming keeps iOS's pace relative to it, and never bounces.
     CFTimeInterval response = DPPeekResponse(), duration;
     CGFloat dampingRatio = 1 - DPPeekBounce();
-    CAKeyframeAnimation *move = DPPeekTravel(self.cardFrame, self.link, NSMidY(self.link) / MAX(1, NSHeight(self.bounds)), opening,
+    CAKeyframeAnimation *move = DPPeekTravel(self.card.layer, self.cardFrame, self.link, NSMidY(self.link) / MAX(1, NSHeight(self.bounds)), opening,
                                              response, dampingRatio, &duration);
     CASpringAnimation *dim = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
     dim.fromValue = opening ? @0 : @1;
