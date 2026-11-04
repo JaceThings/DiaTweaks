@@ -40,8 +40,19 @@ static id DPMesh(const CGPoint to[9]) {
                 9, vertices, 4, faces, @"none");
 }
 
-// Each row of the 3×3 mesh rides its own spring: the genie. `corners` keeps the on-screen radius from 4 pt up.
-static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyframeAnimation **corners) {
+static CAKeyframeAnimation *DPPeekKeyframes(NSString *keyPath, NSArray *values, NSArray *times, CFTimeInterval duration, BOOL opening) {
+    CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:keyPath];
+    animation.values = values;
+    animation.keyTimes = times;
+    animation.duration = duration;
+    animation.fillMode = kCAFillModeBoth;
+    animation.preferredFrameRateRange = DPPeekFrameRate;
+    animation.removedOnCompletion = opening;  // Closing holds its end, or the card flashes back.
+    return animation;
+}
+
+// Each row of the 3×3 mesh rides its own spring: the genie.
+static void DPPeekTravel(DPPeekCard *peek, BOOL opening) {
     CFTimeInterval response = DPPeekResponse(), duration = 0, rows[3];
     CGFloat dampingRatio = 1 - DPPeekBounce();
     CGFloat ay = 2 * MIN(1, MAX(0, NSMidY(peek.link) / MAX(1, NSHeight(peek.bounds)))) - 1;
@@ -60,7 +71,8 @@ static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyfr
                               NSWidth(card) / NSWidth(outer), NSHeight(card) / NSHeight(outer));
     CGFloat radius = peek.clip.layer.cornerRadius, largest = MIN(NSWidth(card), NSHeight(card)) / 2;
     BOOL flipped = !peek.card.layer.geometryFlipped;
-    NSMutableArray *meshes = [NSMutableArray new], *radii = [NSMutableArray new], *times = [NSMutableArray new];
+    NSMutableArray *meshes = [NSMutableArray new], *radii = [NSMutableArray new], *shadows = [NSMutableArray new], *fades = [NSMutableArray new];
+    NSMutableArray *times = [NSMutableArray new];
     int frames = MAX(60, (int)ceil(duration * 120));
     for (int i = 0; i <= frames; i++) {
         CFTimeInterval t = duration * i / frames;
@@ -79,20 +91,18 @@ static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyfr
         [meshes addObject:DPMesh(to)];
         CGFloat scale = MIN(1 + (NSWidth(source) - 1) * away[1], 1 + (NSHeight(source) - 1) * away[1]);
         [radii addObject:@(MIN(largest, (radius + (4 - radius) * away[1]) / MAX(0.01, scale)))];
+        [shadows addObject:@(MAX(0, MIN(1, scale)))];
+        CGFloat left = MAX(0, MIN(1, (1 - MIN(away[0], MIN(away[1], away[2]))) / 0.4));
+        [fades addObject:@(left * left * (3 - 2 * left))];
         [times addObject:@((double)i / frames)];
     }
-    CAKeyframeAnimation *mesh = [CAKeyframeAnimation animationWithKeyPath:@"meshTransform"];
-    *corners = [CAKeyframeAnimation animationWithKeyPath:@"cornerRadius"];
-    mesh.values = meshes;
-    (*corners).values = radii;
-    for (CAKeyframeAnimation *animation in @[mesh, *corners]) {
-        animation.keyTimes = times;
-        animation.duration = duration;
-        animation.fillMode = kCAFillModeBoth;
-        animation.preferredFrameRateRange = DPPeekFrameRate;
-        animation.removedOnCompletion = opening;  // Closing holds its end, or the card flashes back.
-    }
-    return mesh;
+    [CATransaction setDisableActions:YES];
+    [peek.card.layer addAnimation:DPPeekKeyframes(@"meshTransform", meshes, times, duration, opening) forKey:@"peek"];
+    if (!opening) [peek.card.layer addAnimation:DPPeekKeyframes(@"opacity", fades, times, duration, opening) forKey:@"peekFade"];
+    CAKeyframeAnimation *corners = DPPeekKeyframes(@"cornerRadius", radii, times, duration, opening);
+    [peek.clip.layer addAnimation:corners forKey:@"peek"];
+    [peek.shade.layer addAnimation:corners forKey:@"peek"];
+    [peek.shade.layer addAnimation:DPPeekKeyframes(@"shadowOpacity", shadows, times, duration, opening) forKey:@"peekShadow"];
 }
 
 static CASpringAnimation *DPPeekDim(BOOL dimming) {
@@ -147,15 +157,6 @@ static char DPGrowthKey;
 
 @implementation DPPeekCard (Motion)
 
-- (void)move:(BOOL)opening {
-    CAKeyframeAnimation *corners, *travel = DPPeekTravel(self, opening, &corners);
-    [CATransaction setDisableActions:YES];
-    self.card.alphaValue = 1;
-    [self.card.layer addAnimation:travel forKey:@"peek"];
-    [self.clip.layer addAnimation:corners forKey:@"peek"];
-    [self.shade.layer addAnimation:corners forKey:@"peek"];
-}
-
 - (void)animateIn {
     self.controls.alphaValue = self.card.alphaValue = self.blur.alphaValue = 0;
     CFTimeInterval start = CACurrentMediaTime();
@@ -172,8 +173,8 @@ static char DPGrowthKey;
                 peek.controls.animator.alphaValue = 1;
             }];
         }];
-        [peek move:YES];
-        peek.blur.alphaValue = 1;
+        DPPeekTravel(peek, YES);
+        peek.card.alphaValue = peek.blur.alphaValue = 1;
         [peek.blur.layer addAnimation:DPPeekDim(YES) forKey:@"peek"];
         [CATransaction commit];
     }];
@@ -184,7 +185,7 @@ static char DPGrowthKey;
     [CATransaction setCompletionBlock:completion];
     if (self.card.alphaValue > 0) {  // Closed before it was shown.
         [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
-        [self move:NO];
+        DPPeekTravel(self, NO);
     }
     [CATransaction commit];
 }
