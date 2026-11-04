@@ -77,7 +77,7 @@ static void DPContainer_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     }
     DPSet(self, &DPRequestedFrameKey, @(frame));
     [DPContainers addObject:self];
-    NSRect adjusted = DPEdgeToEdgeFrame(self, frame);
+    NSRect adjusted = DPMayAdjust(self) ? DPEdgeToEdgeFrame(self, frame) : frame;
     DPSetCornerRadius(self, NSEqualRects(adjusted, frame) ? 0 : DPEdgeToEdge.progress * DPWindowPadding);
     DPCallOriginal(DPContainer_setFrame, self, adjusted);
 }

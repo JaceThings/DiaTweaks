@@ -19,7 +19,7 @@ static void DPSidebar_viewDidLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPSidebar_viewDidLayout, self);
     NSView *sidebar = self.view, *footer = DPSubview(sidebar, DPDiaSidebarFooter);
     [DPHideHosts addObject:sidebar];
-    if (!footer || !sidebar.isFlipped) return;
+    if (!footer || !sidebar.isFlipped || !DPMayAdjust(footer)) return;
     DPEnforceHides(footer);
     BOOL empty = NO, hidden = YES;
     for (NSView *item in footer.subviews) {

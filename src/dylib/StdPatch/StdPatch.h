@@ -76,6 +76,10 @@ NSView *DPSubview(NSView *parent, const char *className);       // First direct 
 BOOL DPIsKind(id object, const char *className);
 BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel);
 void DPRelayoutViews(NSHashTable<NSView *> *views);  // Lays each out again now.
+// Call before a patch changes a view's frame during layout. A change after Dia's layout dirties the layout again, and if
+// Dia then puts its own frame back, the two would take turns until AppKit aborts Dia. So after a few changes to one view
+// in a turn of the run loop this says no, and Dia's frame stands until the run loop next waits.
+BOOL DPMayAdjust(NSView *view);
 void *DPIvar(id object, const char *name);            // Address of an instance variable, or NULL.
 
 // In place of a tooltip, a glass bubble that points at the view while the pointer rests on it, like System Settings'.
