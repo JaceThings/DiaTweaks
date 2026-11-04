@@ -61,4 +61,3 @@ NSArray *DPIntegrationListSignature(DPTabIntegrationListContent *content, NSStri
     return @[content.title ?: @"", content.state ?: @"", content.statusText ?: @"", effectiveEmptyMessage ?: @"",
         content.footerMessage ?: @"", content.revision ?: @"", items, @(content.maximumHeight)];
 }
-

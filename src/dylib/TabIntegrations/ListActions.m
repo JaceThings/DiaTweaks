@@ -80,4 +80,3 @@ NSButton *DPIntegrationListMakeActionButton(DPTabIntegrationAction *action, DPTa
     button.enabled = action.enabled && (!cached || action.enabledWhenCached);
     return button;
 }
-
