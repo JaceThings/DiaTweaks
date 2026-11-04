@@ -1,5 +1,6 @@
 #import "PageHooks.h"
-#import <objc/message.h>
+#import "Backend.h"
+#import "Scheduler.h"
 
 @interface DPTabIntegrationPage ()
 @property(nonatomic, copy) NSString *observedURL;
@@ -7,24 +8,29 @@
 
 static NSMapTable<id, DPTabIntegrationPage *> *DPIntegrationPageMap;
 static NSMapTable<id, NSWindow *> *DPIntegrationWindows;
-static NSTimer *DPIntegrationPoll;
+static DPIntegrationSubscription *DPIntegrationPoll;
 
 @implementation DPTabIntegrationPage
 @end
 
 static void DPSelectPageIntegration(DPTabIntegrationPage *page) {
     if (!page.contents) return;
-    id url = ((id (*)(id, SEL))objc_msgSend)(page.contents, @selector(url));
+    id url = DPIntegrationContentsURL(page.contents);
     NSString *urlString = DPTabIntegrationURLString(url);
     DPTabIntegration *next = DPTabIntegrationForURL(url);
     BOOL urlChanged = page.observedURL ? ![page.observedURL isEqual:urlString] : urlString != nil;
     if (page.integration != next) {
         DPDisposeIntegrationPage(page);
         page.integration = next;
+        page.diagnosticCode = next ? @"not-requested" : @"no-provider";
     } else if (urlChanged) {
         page.generation++;
         page.inFlight = NO;
         page.snapshot = nil;
+        page.requestedAt = 0;
+        page.failureCount = 0;
+        page.lastFailure = nil;
+        page.diagnosticCode = @"not-requested";
         DPInvalidateIntegrationPageCache(page);
         if (page.integration && page.integration->snapshotChanged) page.integration->snapshotChanged(page);
     }
@@ -35,6 +41,7 @@ void DPRememberIntegrationPage(id contents, id browser) {
     if (!contents || !browser) return;
     if (!DPIntegrationPageMap) DPIntegrationPageMap = [NSMapTable weakToStrongObjectsMapTable];
     DPTabIntegrationPage *page = [DPIntegrationPageMap objectForKey:contents] ?: [DPTabIntegrationPage new];
+    if (page.browser && page.browser != browser) DPDisposeIntegrationPage(page);
     page.contents = contents;
     page.browser = browser;
     [DPIntegrationPageMap setObject:page forKey:contents];
@@ -62,14 +69,19 @@ static void DPRefreshIntegrationPages(void) {
 
 static void DPIntegrationPollTick(void) {
     if (!DPHasEnabledScriptIntegration()) {
-        [DPIntegrationPoll invalidate];
+        [DPIntegrationPoll cancel];
         DPIntegrationPoll = nil;
         DPRefreshIntegrationPages();
         return;
     }
     DPRefreshIntegrationPages();
-    for (DPTabIntegrationPage *page in DPIntegrationPageMap.objectEnumerator)
-        if (page.integration && page.integration->scriptKey) DPTabIntegrationRead(page);
+    NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+    for (DPTabIntegrationPage *page in DPIntegrationPageMap.objectEnumerator) {
+        if (!page.integration || !page.integration->scriptKey) continue;
+        DPIntegrationExpireRequest(page, now);
+        if (!page.inFlight && (page.requestedAt <= 0 || now - page.requestedAt >= DPIntegrationRefreshDelay(page)))
+            DPTabIntegrationRead(page);
+    }
 }
 
 NSArray<DPTabIntegrationPage *> *DPTabIntegrationPages(DPTabIntegration *integration, NSWindow *window) {
@@ -88,7 +100,7 @@ DPTabIntegrationPage *DPTabIntegrationPageForURL(DPTabIntegration *integration, 
     NSString *target = DPTabIntegrationURLString(url);
     DPTabIntegrationPage *match = nil;
     for (DPTabIntegrationPage *page in DPTabIntegrationPages(integration, window)) {
-        id current = ((id (*)(id, SEL))objc_msgSend)(page.contents, @selector(url));
+        id current = DPIntegrationContentsURL(page.contents);
         if (![DPTabIntegrationURLString(current) isEqual:target]) continue;
         if (match) return nil;
         match = page;
@@ -99,16 +111,15 @@ DPTabIntegrationPage *DPTabIntegrationPageForURL(DPTabIntegration *integration, 
 void DPApplyIntegrationPages(void) {
     DPRefreshIntegrationPages();
     if (!DPHasEnabledScriptIntegration()) {
-        [DPIntegrationPoll invalidate];
+        [DPIntegrationPoll cancel];
         DPIntegrationPoll = nil;
         return;
     }
     if (DPIntegrationPoll) return;
-    DPIntegrationPoll = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *_) {
+    DPIntegrationPoll = DPIntegrationSchedule(^(NSTimeInterval now) {
         DPIntegrationPollTick();
-    }];
-    [NSRunLoop.mainRunLoop addTimer:DPIntegrationPoll forMode:NSRunLoopCommonModes];
-    [DPIntegrationPoll fire];
+    });
+    DPIntegrationPollTick();
 }
 
 void DPInstallIntegrationPages(void) {

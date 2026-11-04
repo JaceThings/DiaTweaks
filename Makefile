@@ -24,7 +24,7 @@ build/diapatch: $(wildcard src/diapatch/*.[hm]) | build
 build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
-build/integration-scripts.json: scripts/build-integration-scripts.py $(INTEGRATION_INPUTS) $(INTEGRATION_DIRS) | build
+build/integration-scripts.json: scripts/build-integration-scripts.py $(INTEGRATIONS)/AdapterRuntime.js $(INTEGRATION_INPUTS) $(INTEGRATION_DIRS) | build
 	python3 scripts/build-integration-scripts.py $@
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) build/integration-scripts.json | build
@@ -48,21 +48,33 @@ test-chatgpt: | build
 	build/chatgpt-preview-native
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/chatgpt-preview-cache.m $(CHATGPT)/Cache.m $(CHATGPT)/Data.m $(INTEGRATIONS)/Data.m $(INTEGRATIONS)/Cache.m -o build/chatgpt-preview-cache
 	build/chatgpt-preview-cache
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore tests/chatgpt-preview-card.m $(CHATGPT)/Card.m $(CHATGPT)/Cache.m $(CHATGPT)/Data.m $(foreach file,Context Scheduler Preview Cache Data Backend Components ListRows ListRowContent ListActions ListModel ListScroll ListPreview,$(INTEGRATIONS)/$(file).m) -o build/chatgpt-preview-card
+	build/chatgpt-preview-card
 
 test-integrations: | build
 	python3 -B -m unittest discover -s tests -p 'test_integration_scripts.py'
+	python3 -B -m unittest discover -s tests -p 'test_new_integration.py'
+	node tests/tab-integration-runtime.test.js
 	clang $(CFLAGS) -Isrc/dylib -fsyntax-only tests/fixtures/tab-integrations/ExamplePreview/ExamplePreview.m
-	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-native.m $(foreach file,Registry Data Pages PageHooks Bridge ScriptBuilders Selection Cache,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-native
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-native.m $(foreach file,Registry Data Pages PageHooks Bridge ScriptBuilders Selection Cache Backend Scheduler Context RefreshPolicy,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-native
 	build/tab-integrations-native
 	node tests/tab-integrations-protocol.test.js
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-cache.m $(INTEGRATIONS)/Cache.m -o build/tab-integrations-cache
 	build/tab-integrations-cache
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-context.m $(foreach file,Context Scheduler Preview Cache Data Backend,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-context
+	build/tab-integrations-context
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore tests/tab-integrations-components.m $(foreach file,Components ListRows ListRowContent ListActions ListModel ListScroll ListPreview,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-components
+	build/tab-integrations-components
 
 # make patch NAME=HideFooButton starts a new patch in src/dylib/Patches/HideFooButton.
 patch:
 	@scripts/new-patch "$(NAME)"
 
+# Defaults are optional; CUSTOM=1 starts a fully custom AppKit preview.
+integration:
+	@scripts/new-integration "$(NAME)" $(if $(ORIGIN),--origin "$(ORIGIN)",) $(if $(CUSTOM),--custom)
+
 clean:
 	rm -rf build
 
-.PHONY: all clean test test-chatgpt test-integrations patch
+.PHONY: all clean test test-chatgpt test-integrations patch integration

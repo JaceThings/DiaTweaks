@@ -8,7 +8,7 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site.
 
-The optional **ChatGPT Tab Preview** shows recent conversations and a separate preview pin when you hover a ChatGPT tab. See its [behavior and testing notes](docs/chatgpt-preview.md). Developers can add other sites using the [tab integration API](docs/tab-integrations.md).
+The optional **ChatGPT Tab Preview** shows recent conversations and a separate preview pin when you hover a ChatGPT tab. See its [behavior and testing notes](docs/chatgpt-preview.md). Developers can scaffold other sites with `make integration NAME=ExamplePreview ORIGIN=https://example.com` and choose the shared list components or a custom AppKit view; see the [tab integration API](docs/tab-integrations.md).
 
 Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
 

@@ -1,3 +1,9 @@
+# Integration checks
+
+Run `make test-integrations test-chatgpt` on Apple Silicon macOS. This checks generated list/custom adapters, the opt-in JavaScript runtime with synthetic mail/order/summary data, script packaging, origin routing, account/cache isolation, late callbacks, shared observation cancellation, and ChatGPT's existing collector. It does not install or relaunch Dia.
+
+`make integration NAME=ExamplePreview ORIGIN=https://example.com` generates a starter adapter and its synthetic page/collector check. Add `CUSTOM=1` for a fully custom AppKit view. Replace the synthetic fixture and collector assertions with a minimized, anonymized example of the supported website markup as the adapter develops; do not use live account data in fixtures. See [the integration guide](../docs/tab-integrations.md).
+
 # Toolbar and restyle performance
 
 Run `tests/performance` on macOS with Command Line Tools installed. It builds the same AppKit fixtures against upstream base `9d5a570` and the current sources. An optional first argument selects another baseline commit.

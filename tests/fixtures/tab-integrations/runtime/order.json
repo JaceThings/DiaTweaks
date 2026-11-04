@@ -1,0 +1,5 @@
+{
+  "initial": {"kind":"order-tracking","order":{"reference":"ORDER-TEST-1","status":"in-transit","eta":"2030-01-02"}},
+  "afterCommand": {"kind":"order-tracking","order":{"reference":"ORDER-TEST-1","status":"delivered","eta":null}},
+  "command": "refreshTracking"
+}

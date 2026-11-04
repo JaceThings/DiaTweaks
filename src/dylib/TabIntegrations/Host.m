@@ -69,6 +69,7 @@ void DPInstallIntegrationHost(void) {
 - (void)stopPreview {
     if (self.previewStopped) return;
     self.previewStopped = YES;
+    [self.preview.context stopObserving];
     [self.preview stop];
     self.preview.sizeChanged = nil;
 }

@@ -1,5 +1,6 @@
 #import "Internal.h"
 #import "DataInternal.h"
+#import "Backend.h"
 
 static NSMutableArray<NSValue *> *DPIntegrations;
 
@@ -17,20 +18,6 @@ DPTabIntegration *DPTabIntegrationForURL(id value) {
     return match;
 }
 
-static BOOL DPBackendAvailable(void) {
-    struct { const char *name; SEL selector; } methods[] = {
-        { "ArcWebContents", @selector(executeJavascript:completion:) },
-        { DPDiaBrowser, @selector(createWebContents:) },
-        { DPDiaBrowser, @selector(setWindow:) },
-        { DPDiaBrowser, @selector(takeOwnershipOfWebContents:) },
-        { DPDiaBrowserDelegate, @selector(browser:didRestoreWebContents:withSessionId:) },
-        { DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:) },
-    };
-    for (NSUInteger i = 0; i < sizeof methods / sizeof *methods; i++)
-        if (!class_getInstanceMethod(objc_getClass(methods[i].name), methods[i].selector)) return NO;
-    return YES;
-}
-
 BOOL DPTabIntegrationInstall(DPTabIntegration *site) {
     if (!site || !site->patch) return NO;
     for (NSValue *entry in DPIntegrations) if (entry.pointerValue == site) return YES;
@@ -38,7 +25,7 @@ BOOL DPTabIntegrationInstall(DPTabIntegration *site) {
     valid &= DPTabIntegrationCanonicalOrigins(site->origins) != nil;
     if (site->scriptKey)
         valid &= site->scriptNamespace.length > 0 && site->scriptVersion > 0 && site->scriptVersion <= UINT32_MAX
-            && DPTabIntegrationScript(site->scriptKey) != nil && DPBackendAvailable();
+            && DPTabIntegrationScript(site->scriptKey) != nil && DPIntegrationBackendAvailable();
     for (NSValue *entry in DPIntegrations) {
         DPTabIntegration *existing = entry.pointerValue;
         if ([existing->patch->key isEqual:site->patch->key]) valid = NO;

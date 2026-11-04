@@ -1,0 +1,16 @@
+(() => {
+  const namespace = "Dia@@NAME@@";
+  if (window[namespace]?.version === 1) return;
+  window[namespace] = DPTabIntegrationRuntime.create({
+    window,
+    version: 1,
+    collect() {
+      // Return only the page metadata this preview needs. Keep the schema site-specific.
+      return { title: document.title.slice(0, 300) };
+    },
+    commands: {
+      // Safe example action: reads the synthetic page title, then the runtime collects again.
+      refreshTitle() { return document.title; },
+    },
+  });
+})();

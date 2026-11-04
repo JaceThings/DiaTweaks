@@ -1,5 +1,20 @@
 #import "TabIntegrations.h"
 
+@interface DPTabIntegrationPage ()
+@property(nonatomic) DPTabIntegration *integration;
+@property(nonatomic, weak) id contents, browser;
+@property(nonatomic, copy) NSDictionary *snapshot;
+@property(nonatomic) BOOL inFlight;
+@property(nonatomic) NSTimeInterval receivedAt, requestedAt;
+@property(nonatomic) NSUInteger generation, failureCount;
+@property(nonatomic, copy) NSString *diagnosticCode, *lastFailure;
+@end
+
+BOOL DPIntegrationPageIsObserved(DPTabIntegrationPage *page);
+NSDictionary *DPIntegrationDiagnostics(DPTabIntegrationPage *page, NSTimeInterval now);
+NSTimeInterval DPIntegrationRefreshDelay(DPTabIntegrationPage *page);
+BOOL DPIntegrationExpireRequest(DPTabIntegrationPage *page, NSTimeInterval now);
+
 @interface NSObject (DPTabIntegrationFields)
 - (id)safeSwiftValueForKey:(NSString *)key;
 @end

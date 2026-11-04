@@ -1,47 +1,82 @@
 # Website tab integrations
 
-Website previews use normal StdPatch patches. Each website owns one folder in `src/dylib/Patches/` and one `DP_PATCH`: its Settings row, saved switch, availability and verification come from that existing mechanism. ChatGPT is the first included adapter, disabled by default. There is no separate plugin loader or configuration format for Settings.
+Website previews are ordinary `DP_PATCH` adapters. Each provider owns one folder in `src/dylib/Patches/`; its Settings switch, saved preference, availability checks, and verification use the existing patch system. Providers are disabled by default. There are no built-in Gmail, Amazon, or Google adapters; those names below are illustrative kinds of integrations only.
 
-`src/dylib/TabIntegrations/TabIntegrations.h` is the shared API. It supplies:
+The native backend in `src/dylib/TabIntegrations/` owns origin routing, tab selection, hover presentation, lifecycle, snapshot transport, memory-only cache invalidation, command routing, and shared diagnostics. An adapter owns its website-specific selectors, snapshot schema, identity rules, navigation decisions, and actions. A provider can use the standard list UI or replace it with fully custom AppKit UI and data handling.
 
-- One registry of enabled website descriptors, with exact HTTPS origin allowlists and an optional path filter. If two enabled adapters match the same URL, neither handles it.
-- Tab tracking for regular tabs and Favorites; a Dia native hover window, centered positioning, dismissal and the observed native opacity fade. It suppresses the original info card only for the matching tab while the integration is showing.
-- Exact-tab selection before navigation. Adapters call `navigateToURL:` instead of changing a tab URL themselves.
-- Per-page script installation, version checks, snapshots and JSON commands. A shared polling loop runs while a script adapter is enabled. Switching origins or disabling an adapter invalidates cached results and pending callbacks; another adapter remains active.
-- Compact native rows with whole-row clicks, hover feedback, title truncation, optional working/unread status and a separate optional pin action. Working takes precedence over unread.
+## Create an adapter
 
-The host uses private Dia classes. Missing host components disable the adapter rather than replacing the UI with a generic popover. A website's selectors and snapshot schema belong to its own folder, not the shared framework. This API is source-level infrastructure within DiaTweaks, not a stable binary SDK for third-party dylibs.
+Run:
 
-## Add a website
+```sh
+scripts/new-integration ExamplePreview --origin https://example.com
+```
 
-The small, compilable example is [`tests/fixtures/tab-integrations/ExamplePreview`](../tests/fixtures/tab-integrations/ExamplePreview). Copy that folder into `src/dylib/Patches/`, change the website, identifiers and content, then run `make`. No Makefile, Settings or shared hook changes are needed. The fixture itself is outside the shipped source tree, so it does not add an Example setting to releases.
+Or use `make integration NAME=ExamplePreview ORIGIN=https://example.com`; add `CUSTOM=1` for a fully custom view.
 
-1. Define a static `DPTabIntegration` and a normal `DP_PATCH`. Wire `.install`, `.apply` and `.verify` to `DPTabIntegrationInstall`, `DPTabIntegrationApply` and `DPTabIntegrationVerify`. Keep the descriptor alive for the process lifetime. Give the patch a unique key and the page API a unique namespace.
-2. List bare HTTPS origins with `DPIntegrationOrigins("https://example.com")`. Scheme, host and effective port must match; credentials and lookalike hosts are rejected. If needed, supply `.matchesURL` to further restrict paths. It cannot expand the origin allowlist.
-3. Subclass `DPTabIntegrationPreview`. Build AppKit content in `loadView`/`viewDidLoad`, update `preferredContentSize` when it changes, and release timers or subscriptions in `stop`. The host calls `stop` on dismissal. Use `self.integration`, `self.tab` and `DPTabIntegrationTabWindow` to select the relevant window's pages. Prefer `DPTabIntegrationPageForTab(site, tab)` for selection. It rejects ambiguous scripting/page URLs; a stale scripting URL is tolerated only when the same window has exactly one adapter tab and one page for that origin. `DPTabIntegrationPageForURL` remains available for strict URL-only selection.
-4. For DOM data, add `integration.json`, for example `{"scripts":["Collector.js"]}`. Scripts run in the listed order and are bundled automatically into the dylib; they are local trusted code, not downloaded from the website. `scriptKey` is the folder name. Native-only previews omit the script fields and manifest.
-5. Install `window.YourUniqueNamespace = { version: 1, snapshot() { return {...}; }, dispose() {...} }`. `snapshot()` must synchronously return JSON metadata. Make installation idempotent. The shared bridge disposes a mismatched previous version before installing the new one. `dispose()` must disconnect every observer, timer and listener the adapter owns.
-6. Read `DPTabIntegrationPages(site, window)` and each page's `snapshot`. `DPTabIntegrationRead(page)` requests an immediate refresh. To invoke an adapter action, use `DPTabIntegrationCommand(page, @"method", @[argument])`; arguments are JSON data and its resulting snapshot refreshes the cache. The bridge rejects stale callbacks and checks the origin again inside the page. Adapters must still validate all returned fields before displaying or navigating them.
+This creates `src/dylib/Patches/ExamplePreview/` with a normal `DP_PATCH`, `integration.json`, a JavaScript collector, a `DPTabIntegrationListPreview` subclass, and a local synthetic page/test runner. It requires a bare HTTPS origin, rejects invalid names and existing folders, and stages the complete output before installing it without replacing a concurrently-created folder. Use `--custom` to start with a plain `DPTabIntegrationPreview` subclass instead. `--root /path/to/checkout` is available for isolated generation and tests.
 
-## Shared cache
+The standard preview imports `TabIntegrations/ListPreview.h` and implements only `-listContent`. Return a `DPTabIntegrationListContent` populated with `DPTabIntegrationItem` rows. Items can have arbitrary subtitles and status text, working/unread/pinned states, a primary action, additional per-item actions, and custom row views through `viewProvider`. The shared renderer handles updates, layout, loading and empty states, whole-row primary actions, and separately targeted action buttons. Set `state` and `statusText` from the provider's validated data so cached, live, signed-out, unavailable, and empty states stay distinct.
 
-`DPTabIntegrationCache` stores the last accepted metadata in memory. It is bound to the native page, provider and browser; it never shares values merely because two tabs have the same URL. `freshFor` defaults to six seconds and `maxAge` to one hour; adapters can override both. Observing a different scope clears the old value even when the new fetch has no usable data. Native navigation, page disposal and disabling the provider invalidate its cache automatically, without clearing other providers.
+For example, a provider can map any validated record shape into an item and bind actions to its own collector command:
 
-Use `.snapshotChanged(page)` to validate a received snapshot and update the cache before any card opens. A nil snapshot means navigation/disposal; temporary read failure leaves the last transport snapshot in place. Only the adapter decides whether the website supplied usable data and what identifies its account scope. Nil scope means no new identity observation, as with a failed fetch; it does not confirm logout. If identity is lost without a replacement scope, call `invalidate` instead of reusing the old value:
+```objc
+DPTabIntegrationItem *item = [[DPTabIntegrationItem alloc] initWithTitle:validatedTitle];
+item.identifier = validatedIdentifier;
+item.subtitle = validatedSubtitle;
+item.statusText = validatedStatus;
+item.primaryAction = [[DPTabIntegrationAction alloc] initWithTitle:@"Open" handler:^(DPTabIntegrationContext *context, DPTabIntegrationItem *selected) {
+    [context performCommand:@"openRecord" arguments:@[selected.identifier ?: @""]];
+}];
+item.actions = @[[[DPTabIntegrationAction alloc] initWithTitle:@"Refresh record" handler:^(DPTabIntegrationContext *context, DPTabIntegrationItem *selected) {
+    [context performCommand:@"refreshRecord" arguments:@[selected.identifier ?: @""]];
+}]];
+```
+
+Those command names and arguments are examples; define the matching handlers in that adapter's collector and validate the item fields before creating the row. A custom `viewProvider` can draw a different row for data that does not fit the standard title/subtitle layout. Put provider-owned data in `item.representedObject` for custom views and actions. Custom rows retain their preferred height; a fully custom preview controls its own width and layout, including scrolling or progress views.
+
+The standard list shows two direct actions plus an overflow menu when more than three actions are supplied. Long lists scroll within a 420-point default viewport rather than silently dropping items; set `content.maximumHeight` to change that size, or zero to leave it unconstrained. Actions are disabled for cached data unless `enabledWhenCached` is explicitly enabled; safe open/navigation actions can opt in, while writes should usually wait for fresh data. Working/unread indicators are suppressed centrally for cached standard rows. A custom row owns its own interaction and stale-state policy. Set `content.revision` when hidden action payloads, handlers or custom view content change without a change to the standard display fields. This invalidates the rendered view without requiring the host to understand the provider's data schema.
+
+For complete UI control, use `--custom`. The generated class subclasses `DPTabIntegrationPreview`; it creates its controls in `-loadView` and updates them in `-update`. Build any AppKit view and use `self.context` for the latest snapshot, cache, receive time, URL string, and diagnostics. Call `[self.context performCommand:arguments:]` for a website action and `[self.context refresh]` to request current data. The shared base calls `-update` on the common observation/timing cycle, including cache and loading deadlines; custom views can avoid rebuilding unchanged content. There is no need for a per-site polling timer. Navigate with `[self navigateToURL:...]`, which selects the exact tab before navigating.
+
+For an unrelated custom schema, validate each value before use and choose any layout you need:
+
+```objc
+NSDictionary *snapshot = self.context.snapshot;
+id count = snapshot[@"openCount"];
+NSString *summary = [count isKindOfClass:NSNumber.class]
+    ? [NSString stringWithFormat:@"%ld open records", [count integerValue]]
+    : @"Open count unavailable";
+self.summaryLabel.stringValue = summary;
+```
+
+Both variants come with a sample collector. Edit its `collect()` to return the smallest useful website-specific JSON object. Add command handlers in the runtime `commands` map when the preview needs actions; commands take JSON arguments, run within the provider's namespace and origin, then refresh the snapshot. The collector is trusted local code bundled with the dylib, never code downloaded from the site.
+
+## Website data and identity
+
+The manifest declares `{"runtime": true, "scripts": ["Collector.js"]}`. The build inserts the shared `DPTabIntegrationRuntime` helper before provider scripts. Use `DPTabIntegrationRuntime.create({version, collect, commands})` to build a collector, and guard its installation by namespace/version as the generated wrapper does. It returns a versioned snapshot/dispose interface and scopes any optional observers, event listeners, or timers to that collector. Its default collection policy is `every-read`; choose another policy only when the site signals all relevant changes and identity state reliably. `dirty` supports scoped mutation/event invalidation, `interval` also supports a periodic invalidation, and `maxAgeMs` bounds reuse between collections. The native bridge pulls synchronous JSON object snapshots; it does not offer a JavaScript-to-native push channel. Keep selectors, account semantics, and schema validation in the provider folder. Providers with an existing collector can omit `runtime` and implement the same snapshot/dispose contract directly, as ChatGPT does for its account and pin lifecycle.
+
+The snapshot schema is deliberately arbitrary. Validate all fields in native code before displaying them, opening a URL, or enabling an action. Refresh account identity as part of collection; represent signed-out, unknown, and confirmed-empty states separately. Scope cached values to the account or workspace identity the site confirms, and invalidate them when identity is lost. Without a reliable identity rule, leave data uncached. Collect only the content needed for the preview and document those fields; the framework does not impose conversation-shaped data. Credentials and unrelated account history are outside the preview's purpose. A mail summary, order/tracking summary, or AI overview can each use a different schema and presentation.
+
+Use `DPIntegrationOrigins("https://example.com")` for exact HTTPS origin matching; a path filter can narrow a provider but cannot broaden its origin allowlist. Keep the static `DPTabIntegration` descriptor alive for process lifetime, use a unique patch key and JavaScript namespace, and wire its normal install/apply/verify callbacks to the shared backend. Use `.classes = DPTabIntegrationClasses` to inherit Dia dependency checks without copying private class names. A provider with no page collector can omit `scriptKey`, `scriptNamespace`, and `scriptVersion` and use native-only data.
+
+## Lifecycle, cache and diagnostics
+
+`self.context` exposes the resolved page's snapshot and the shared cache without exposing mutable transport state or private browser objects. The public page properties are read-only. The base preview registers a shared update subscription; `stop` and host dismissal cancel it. Custom subclasses that override `stop` should call `super` for base cleanup. All transport polls and preview subscriptions use the common scheduler. Optional descriptor fields `refreshInterval`, `backgroundRefreshInterval` and `requestTimeout` default to 0.5, 2 and 10 seconds; intervals are bounded by the scheduler's 0.5-second cadence. Failed reads back off without accelerating a deliberately slower provider. Retry and completion callbacks are guarded against navigation, disable and browser ownership changes.
+
+Validate observations in `snapshotChanged(page)` and populate the cache before a preview opens:
 
 ```objc
 DPTabIntegrationCache *cache = DPTabIntegrationCacheForPage(page);
-[cache observeValue:validatedMetadataOrNil scope:accountScope receivedAt:page.receivedAt];
-NSDictionary *metadata = [cache valueAtTime:NSDate.timeIntervalSinceReferenceDate];
-BOOL live = [cache isFreshAtTime:NSDate.timeIntervalSinceReferenceDate];
+[cache observeValue:validatedMetadata scope:confirmedAccountScope receivedAt:page.receivedAt];
 ```
 
-Pass nil metadata for a temporary failure or missing markup; pass an empty dictionary/array field only when the site confirmed an empty result. Use `live` to distinguish cached content and suppress website-specific status indicators or actions that require a live page. The ExamplePreview fixture uses this same API with a title dictionary, while ChatGPT uses conversation metadata and its observed account scope. The common cache contains no ChatGPT fields or selectors and does not write data to disk.
+Nil metadata means a temporary failure; confirmed empty data should be an explicit empty value in the provider's schema. A changed scope clears old metadata even if the new observation has no data. A missing scope does not prove logout: call `invalidate` when identity is known to be lost. The cache is per-page/provider/browser, memory-only, fresh for six seconds and retained for up to one hour by default; `freshFor` and `maxAge` are configurable. Native navigation, disposal, disable and ownership changes invalidate it. Read with `valueAtTime:` and `isFreshAtTime:` to map live/cached/missing data into your own content state.
 
-The shared transport accepts a dictionary snapshot up to 256 KiB. It does not impose a website-specific schema or define what “unread” means. Use the site's own indicators; stale or missing data must remain unknown. Keep collection limited to the metadata needed for the preview. Do not collect message bodies, credentials or account-wide history to implement a tab list. Document any adapter-owned storage and make account boundaries explicit.
+Context diagnostics contain codes/counts/ages and cache state, with no page content or URLs. Codes include `reading`, `ready`, `not-requested`, `timeout`, `transport-unavailable`, `invalid-descriptor`, `script-unavailable`, `read-failed`, `disposed`, `no-provider`, `no-matching-page` and `disabled`. `ready` means the transport received a JSON object; the adapter must still distinguish unsupported markup, authentication state and empty data in its own schema. No matching page can also mean ambiguous duplicate tabs; another tab's cache is never borrowed.
 
-## Checks
+## Verify and extend
 
-Run `make test-integrations test-chatgpt` and `make`. The first target checks deterministic script discovery, manifest validation, two-provider routing and isolation, toggle cleanup, stale callbacks, origin/namespace guards and command serialization. It also compiles the second-site fixture against the public API. The ChatGPT target checks its state, DOM adapter and native rows. Neither target installs or relaunches Dia.
+The sanitized [`ExamplePreview` fixture](../tests/fixtures/tab-integrations/ExamplePreview) is kept outside the shipped patch tree. Its native preview renders a standard list, and its DOM collector reads only the page title. Use it as a second-provider compilation example; copy it into `src/dylib/Patches/` only when you want to enable the example patch in a local build.
 
-Before submitting, follow `CONTRIBUTING.md`: exercise both sidebar and top tabs, each tweak on and off, regular tabs and Favorites. Test navigation, leaving the origin, repeated hover/dismissal, page reload and disabled cleanup. Add adapter-specific fixtures, including missing markup, and record the visible feature/animation in Dia. `make test` installs the build and relaunches Dia; use a dedicated test installation if you need to preserve your working one. Automated fixtures cannot establish compatibility with a live website or all native hover behavior.
+Run the generated collector fixture with `node src/dylib/Patches/ExamplePreview/test-collector.js` after generating it in the source tree. It uses only the adjacent synthetic `page.html` and Node's built-in `vm` module. Run the scaffold checks with `python3 -B -m unittest discover -s tests -p 'test_new_integration.py'` and integration checks with `make test-integrations`. The scaffold tests validate names/origins, overwrite protection, output shape, run both generated collectors against synthetic data, and compile both generated Objective-C variants on macOS. The integration checks cover script bundling, routing, provider isolation, lifecycle, cache, and commands. Neither installs or relaunches Dia. A live-site test is still needed to check current markup, account transitions, navigation, and real hover behavior.

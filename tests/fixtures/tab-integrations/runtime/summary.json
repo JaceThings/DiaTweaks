@@ -1,0 +1,5 @@
+{
+  "initial": {"kind":"summary","title":"Synthetic account overview","metrics":{"open":3,"closed":7}},
+  "afterCommand": {"kind":"summary","title":"Synthetic account overview","metrics":{"open":2,"closed":8}},
+  "command": "recalculate"
+}

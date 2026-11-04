@@ -1,11 +1,11 @@
 #import "Internal.h"
 #import "DataInternal.h"
-#import <objc/message.h>
+#import "Backend.h"
 
 DPTabIntegrationPage *DPTabIntegrationPageForTab(DPTabIntegration *integration, id tab) {
     if (!tab) return nil;
     NSWindow *window = DPTabIntegrationTabWindow(tab);
-    NSString *url = DPTabIntegrationURLString([tab valueForKey:@"URL"]);
+    NSString *url = DPIntegrationTabURL(tab);
     NSString *origin = DPTabIntegrationOrigin(url);
     if (!window || !origin || !DPTabIntegrationMatchesURL(integration, url)) return nil;
     NSUInteger originTabs = 0, exactTabs = 0;
@@ -24,7 +24,7 @@ DPTabIntegrationPage *DPTabIntegrationPageForTab(DPTabIntegration *integration, 
     if (originTabs != 1) return nil;
     DPTabIntegrationPage *only = nil;
     for (DPTabIntegrationPage *page in DPTabIntegrationPages(integration, window)) {
-        id current = ((id (*)(id, SEL))objc_msgSend)(page.contents, @selector(url));
+        id current = DPIntegrationContentsURL(page.contents);
         if (![origin isEqual:DPTabIntegrationOrigin(current)]) continue;
         if (only) return nil;
         only = page;

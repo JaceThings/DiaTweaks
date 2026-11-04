@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "dylib" / "Patches"
+RUNTIME_SOURCE = Path(__file__).resolve().parents[1] / "src" / "dylib" / "TabIntegrations" / "AdapterRuntime.js"
 
 
 class BuildError(Exception):
@@ -24,12 +25,20 @@ def read_provider(folder: Path) -> str:
         raise BuildError(f"{config_path}: cannot read valid UTF-8 JSON: {error}") from error
     if not isinstance(config, dict):
         raise BuildError(f"{config_path}: expected a JSON object")
+    runtime = config.get("runtime", False)
+    if not isinstance(runtime, bool):
+        raise BuildError(f"{config_path}: 'runtime' must be a boolean when present")
     scripts = config.get("scripts")
     if not isinstance(scripts, list) or not scripts:
         raise BuildError(f"{config_path}: 'scripts' must be a non-empty array of relative .js paths")
 
     root = folder.resolve()
     parts: list[str] = []
+    if runtime:
+        try:
+            parts.append(RUNTIME_SOURCE.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError) as error:
+            raise BuildError(f"{RUNTIME_SOURCE}: cannot read UTF-8 integration runtime: {error}") from error
     for name in scripts:
         if not isinstance(name, str) or not name or "\\" in name:
             raise BuildError(f"{config_path}: script paths must be non-empty relative paths")

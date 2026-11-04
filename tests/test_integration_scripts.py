@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BUILDER = REPO / "scripts" / "build-integration-scripts.py"
+RUNTIME = REPO / "src" / "dylib" / "TabIntegrations" / "AdapterRuntime.js"
 
 
 class IntegrationScriptBuilderTests(unittest.TestCase):
@@ -59,6 +60,22 @@ class IntegrationScriptBuilderTests(unittest.TestCase):
         result = self.run_builder()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.output.read_text(encoding="utf-8")), {})
+
+    def test_optional_runtime_is_prepended_and_false_keeps_custom_bundle_unchanged(self):
+        self.provider("WithRuntime", {"runtime": True, "scripts": ["Collector.js"]}, {"Collector.js": "adapter()"})
+        self.provider("CustomOnly", {"runtime": False, "scripts": ["Collector.js"]}, {"Collector.js": "custom()"})
+        result = self.run_builder()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        mapping = json.loads(self.output.read_text(encoding="utf-8"))
+        runtime_source = RUNTIME.read_text(encoding="utf-8")
+        self.assertTrue(mapping["WithRuntime"].startswith(runtime_source + "\n;\nadapter()"))
+        self.assertEqual(mapping["CustomOnly"], "custom()")
+
+    def test_rejects_non_boolean_runtime_option(self):
+        self.provider("BadRuntime", {"runtime": "yes", "scripts": ["Collector.js"]}, {"Collector.js": "adapter()"})
+        result = self.run_builder()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("'runtime' must be a boolean", result.stderr)
 
     def test_rejects_malformed_configs_and_missing_files(self):
         invalid_configs = [[], {"scripts": "State.js"}, {"scripts": []}, {"other": []}]

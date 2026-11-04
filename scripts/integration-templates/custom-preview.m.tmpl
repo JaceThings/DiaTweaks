@@ -1,0 +1,40 @@
+#import "TabIntegrations/TabIntegrations.h"
+#import "TabIntegrations/Components.h"
+
+@interface DP@@NAME@@Preview : DPTabIntegrationPreview
+@property(nonatomic, strong) NSTextField *titleLabel;
+@property(nonatomic, strong) NSTextField *statusLabel;
+@end
+@implementation DP@@NAME@@Preview
+- (void)loadView {
+    NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 112)];
+    self.titleLabel = [NSTextField labelWithString:@"Waiting for page data…"];
+    self.titleLabel.frame = NSMakeRect(16, 20, 268, 24);
+    self.statusLabel = [NSTextField labelWithString:@"Loading"];
+    self.statusLabel.textColor = NSColor.secondaryLabelColor;
+    self.statusLabel.frame = NSMakeRect(16, 48, 200, 18);
+    NSButton *refreshButton = [NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refreshPage:)];
+    refreshButton.frame = NSMakeRect(208, 44, 76, 24);
+    [root addSubview:self.titleLabel];
+    [root addSubview:self.statusLabel];
+    [root addSubview:refreshButton];
+    self.view = root;
+    self.preferredContentSize = NSMakeSize(300, 112);
+}
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self update];
+}
+- (void)refreshPage:(id)sender { [self.context refresh]; }
+- (void)update {
+    if (!self.isViewLoaded) return;
+    NSDictionary *snapshot = self.context.snapshot;
+    id title = snapshot[@"title"];
+    NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - self.startedAt;
+    self.titleLabel.stringValue = [title isKindOfClass:NSString.class] && [title length] > 0 && [title length] <= 300
+        ? title : DPTabIntegrationDefaultEmptyMessage(snapshot ? @"empty" : @"loading", elapsed);
+    self.statusLabel.stringValue = snapshot ? @"Page data received" : (elapsed < 6 ? @"Loading" : @"Unavailable");
+    // Use only the schema fields this preview needs; don't dump arbitrary site data into the UI.
+    // For actions call [self.context performCommand:@"method" arguments:@[]].
+}
+@end

@@ -1,1 +1,4 @@
-{"scripts":["Collector.js"]}
+{
+  "runtime": true,
+  "scripts": ["Collector.js"]
+}

@@ -29,7 +29,7 @@ DP_PATCH(DPChatGPTPreview) {
     .symbol = @"bubble.left.and.bubble.right",
     .tint = @"systemGreenColor",
     .section = @"Sidebar & Tab Bar",
-    .classes = DPClasses(DPDiaBrowser, DPDiaBrowserDelegate, DPDiaTabView, DPDiaPinnedTab, "ArcWebContents"),
+    .classes = DPTabIntegrationClasses,
     .install = DPInstallChatGPTPreview,
     .apply = DPApplyChatGPTPreview,
     .verify = DPVerifyChatGPTPreview,
