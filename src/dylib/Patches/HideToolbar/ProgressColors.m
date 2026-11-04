@@ -9,6 +9,15 @@ static NSData *DPLastDiaColors;  // For a pane whose field hasn't drawn yet, suc
 
 static NSArray<NSString *> *DPPresetNames(void) { return @[@"Blue", @"Purple", @"Pink", @"Orange", @"Green", @"Graphite", @"Jace"]; }
 
+// A color from hex values for light and dark, as ja.mt's own tokens are.
+static NSColor *DPHex(uint32_t light, uint32_t dark) {
+    return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
+        BOOL isDark = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] == NSAppearanceNameDarkAqua;
+        uint32_t hex = isDark ? dark : light;
+        return [NSColor colorWithSRGBRed:(hex >> 16 & 0xff) / 255.0 green:(hex >> 8 & 0xff) / 255.0 blue:(hex & 0xff) / 255.0 alpha:1];
+    }];
+}
+
 static NSArray<NSColor *> *DPPreset(NSString *name) {
     NSDictionary<NSString *, NSArray<NSColor *> *> *presets = @{
         @"Blue" : @[NSColor.systemBlueColor, NSColor.systemTealColor],
@@ -17,7 +26,8 @@ static NSArray<NSColor *> *DPPreset(NSString *name) {
         @"Orange" : @[NSColor.systemOrangeColor, NSColor.systemRedColor],
         @"Green" : @[NSColor.systemGreenColor, NSColor.systemMintColor],
         @"Graphite" : @[NSColor.systemGrayColor, NSColor.labelColor],
-        @"Jace" : @[NSColor.systemBrownColor, NSColor.systemOrangeColor],  // The brown DiaTweaks' maker keeps reaching for.
+        // For DiaTweaks' maker: ja.mt's --primary and --heading.
+        @"Jace" : @[DPHex(0x73574a, 0x9a918a), DPHex(0x432818, 0xfef1df)],
     };
     return presets[name];
 }
@@ -53,9 +63,12 @@ void DPProgressColors(NSView *pane, NSString *choice, simd_float3 *primary, simd
         return;
     }
     NSArray<NSColor *> *preset = DPPreset(choice.capitalizedString);
-    NSColor *accent = NSColor.controlAccentColor;
-    *primary = DPRGB(preset ? preset[0] : accent);
-    *secondary = DPRGB(preset ? preset[1] : [accent blendedColorWithFraction:0.5 ofColor:NSColor.systemPurpleColor]);
+    // In the pane's own appearance, so light and dark pages each get their colors.
+    [pane.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        NSColor *accent = NSColor.controlAccentColor;
+        *primary = DPRGB(preset ? preset[0] : accent);
+        *secondary = DPRGB(preset ? preset[1] : [accent blendedColorWithFraction:0.5 ofColor:NSColor.systemPurpleColor]);
+    }];
 }
 
 static void DPIndicator_drawInMTKView(id self, SEL _cmd, id view) {
