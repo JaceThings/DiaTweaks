@@ -75,4 +75,7 @@
 #define DPDiaTabList            "_TtC7TabList11TabListView"
 #define DPDiaTabListSeparator   "_TtC7TabList20TabListSeparatorView"
 #define DPDiaTabListCollection  "_TtCC7TabList11TabListView14CollectionView"
+#define DPDiaTabContentView     "_TtC5TabUI14TabContentView"
+#define DPDiaFeatheredLabel     "_TtC5ARCUI24FeatheredTruncatingLabel"
+#define DPDiaTransitioningLabel "_TtC5ARCUI27FeatheredTransitioningLabel"
 #define DPDiaTabListLayout      "_TtC7TabList27TabListCollectionViewLayout"
