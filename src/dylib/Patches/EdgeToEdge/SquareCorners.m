@@ -167,7 +167,7 @@ CAAnimation *DPReshapeDiaAnimation(CALayer *layer, CAAnimation *animation) {
     CABasicAnimation *move = (CABasicAnimation *)animation;
     if (![move isKindOfClass:CABasicAnimation.class] || !([move.keyPath isEqual:@"path"] || [move.keyPath isEqual:@"shadowPath"])) return animation;
     NSView *container = [DPPathOwners objectForKey:layer];
-    if (!container || DPWindowCornerGrowth(container.window) <= 0) return animation;
+    if (!container || !DPWindowCornerGrowth(container.window)) return animation;
     CGFloat base, grow, left, right;
     if (!DPCornerShape(container, &base, &grow, &left, &right)) return animation;
     CABasicAnimation *reshaped = [move copy];
