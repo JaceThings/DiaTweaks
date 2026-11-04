@@ -78,6 +78,12 @@ BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel);
 void DPRelayoutViews(NSHashTable<NSView *> *views);  // Lays each out again now.
 void *DPIvar(id object, const char *name);            // Address of an instance variable, or NULL.
 
+// In place of a tooltip, a glass bubble that points at the view while the pointer rests on it, like System Settings'.
+// nil takes it away. DPShowHint shows it at once, as for a click.
+void DPSetHint(NSView *view, NSString *text);
+NSString *DPHintOf(NSView *view);
+void DPShowHint(NSView *view);
+
 #pragma mark Values
 
 id DPGet(id object, const void *key);

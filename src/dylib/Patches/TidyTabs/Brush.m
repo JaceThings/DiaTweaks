@@ -53,11 +53,6 @@ void DPTidyBrushesBusy(BOOL busy) {
     }
 }
 
-@interface DPTidyBrush ()
-@property (nonatomic, strong) NSPopover *why;
-@property (nonatomic, strong) NSTimer *whyTimer;
-@end
-
 @implementation DPTidyBrush
 
 - (instancetype)init {
@@ -68,7 +63,6 @@ void DPTidyBrushesBusy(BOOL busy) {
     self.image = DPBroomImage(14);
     self.imagePosition = NSImageOnly;
     self.accessibilityLabel = @"Tidy Tabs";
-    self.toolTip = @"Tidy Tabs";
     self.target = self;
     self.action = @selector(tidy:);
     [DPTidyBrushes() addObject:self];
@@ -79,46 +73,21 @@ void DPTidyBrushesBusy(BOOL busy) {
 }
 
 - (void)tidy:(id)sender {
-    if (DPTidyUnavailableReason()) return [self showWhy];
+    if (DPTidyUnavailableReason()) return DPShowHint(self);
     DPTidyTabsNow(self.window);
 }
 
-// The broom looks the same while the model works; the divider's wave shows it, and a click then does nothing.
+// The broom looks the same while the model works; the divider's wave shows it, and a click then does nothing. Without
+// Apple Intelligence a click can't tidy either, so the hint says why.
 - (void)showBusy {
-    self.toolTip = DPBrushesBusy ? @"Tidying…" : DPTidyUnavailableReason() ? nil : @"Tidy Tabs";
+    DPSetHint(self, DPBrushesBusy ? @"Tidying…" : DPTidyUnavailableReason() ?: @"Tidy Tabs");
 }
 
-// Without Apple Intelligence a click can't tidy, so pointing at the broom says why in a glass bubble, like System Settings.
-- (void)showWhy {
-    NSString *reason = DPTidyUnavailableReason();
-    if (!reason || self.why.shown || !self.window) return;
-    NSTextField *label = [NSTextField wrappingLabelWithString:reason];
-    label.preferredMaxLayoutWidth = 220;
-    NSView *content = [NSView new];
-    [content addSubview:label];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [label.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:12],
-        [label.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-12],
-        [label.topAnchor constraintEqualToAnchor:content.topAnchor constant:8],
-        [label.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-8],
-    ]];
-    content.frame = (NSRect){NSZeroPoint, content.fittingSize};  // Sized up front, or the popover opens as a sliver.
-    self.why = [NSPopover new];
-    self.why.contentViewController = [NSViewController new];
-    self.why.contentViewController.view = content;
-    self.why.contentViewController.preferredContentSize = content.frame.size;
-    self.why.behavior = NSPopoverBehaviorApplicationDefined;
-    [self.why showRelativeToRect:self.bounds ofView:self preferredEdge:self.isFlipped ? NSRectEdgeMinY : NSRectEdgeMaxY];
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (self.window) [self showBusy];
+    else DPSetHint(self, nil);  // Closes a bubble that would point at nothing.
 }
-
-- (void)hideWhy {
-    [self.whyTimer invalidate];
-    self.whyTimer = nil;
-    [self.why close];
-}
-
-- (void)viewDidMoveToWindow { [super viewDidMoveToWindow]; [self showBusy]; if (!self.window) [self hideWhy]; }
 
 - (void)restyle {
     [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
@@ -135,12 +104,7 @@ void DPTidyBrushesBusy(BOOL busy) {
     self.image = DPBroomImage(plain ? 11 : 14);
     [self restyle];
 }
-- (void)mouseEntered:(NSEvent *)event {
-    [self showBusy];
-    self.hovered = YES;
-    __weak DPTidyBrush *weakSelf = self;
-    if (DPTidyUnavailableReason()) self.whyTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:NO block:^(NSTimer *timer) { [weakSelf showWhy]; }];
-}
-- (void)mouseExited:(NSEvent *)event { self.hovered = NO; [self hideWhy]; }
+- (void)mouseEntered:(NSEvent *)event { [self showBusy]; self.hovered = YES; }
+- (void)mouseExited:(NSEvent *)event { self.hovered = NO; }
 - (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; [self restyle]; }
 @end
