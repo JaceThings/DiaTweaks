@@ -28,6 +28,7 @@ extern DPPatch DPPeek;
 @interface DPPeekCard (Motion)  // Motion.m
 - (void)animateIn;
 - (void)animateOut:(void (^)(void))completion;
+- (void)animateExpand:(void (^)(void))completion;
 @end
 
 @interface DPPeekCard (Handoff)  // Pages.m

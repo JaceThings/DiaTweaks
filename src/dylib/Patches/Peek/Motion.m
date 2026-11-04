@@ -109,4 +109,26 @@ static CATransform3D DPPeekSqueeze(NSRect card, NSRect rect) {
     [self move:NO completion:completion];
 }
 
+// Out to fill the whole page area on the same spring, with the page behind clearing, before it becomes a tab there.
+// The end holds, so the card stays full size until the tab takes its place.
+- (void)animateExpand:(void (^)(void))completion {
+    CFTimeInterval response = DPPeekResponse();
+    CASpringAnimation *fill = DPPeekSpring(@"transform", response, 1 - DPPeekBounce());
+    fill.fromValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
+    fill.toValue = [NSValue valueWithCATransform3D:DPPeekSqueeze(self.cardFrame, self.bounds)];
+    CASpringAnimation *clear = DPPeekSpring(@"opacity", response * 0.314 / 0.24, 1);
+    clear.fromValue = @1;
+    clear.toValue = @0;
+
+    [CATransaction begin];
+    [CATransaction setCompletionBlock:completion];
+    for (CAAnimation *animation in @[fill, clear]) {
+        animation.fillMode = kCAFillModeForwards;
+        animation.removedOnCompletion = NO;
+    }
+    [self.card.layer addAnimation:fill forKey:@"peek"];
+    [self.blur.layer addAnimation:clear forKey:@"peek"];
+    [CATransaction commit];
+}
+
 @end

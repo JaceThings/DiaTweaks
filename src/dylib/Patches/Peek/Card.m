@@ -45,11 +45,13 @@
     return YES;
 }
 
-// Opening it as a tab or in a split goes at once, since the page is about to show up there; closing shrinks it away.
+// Closing shrinks it back into the link. Opening it as a tab first grows it to fill the page area it'll take, so the
+// page doesn't jump. Opening it in a split goes at once, since the split lays the page out somewhere else.
 - (void)close:(NSInteger)exit {
     if (![self stopWatching]) return;
-    if (exit) [self finish:exit];
-    else [self animateOut:^{ [self finish:0]; }];
+    if (exit == 0) [self animateOut:^{ [self finish:0]; }];
+    else if (exit == 1) [self animateExpand:^{ [self finish:1]; }];
+    else [self finish:exit];
 }
 
 - (void)handOver {
