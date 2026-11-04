@@ -1,7 +1,8 @@
 #import "Patches/Peek/Peek.h"
 
-// The card sits over the window's page area only, so the sidebar stays sharp and usable, as in Arc. It's a child of
-// the window's own root view: replacing the root clears the controller Dia relies on.
+// The card sits over the window's page area only, so the sidebar stays sharp and usable, as in Arc. It lives in Dia's
+// rounded page, like the command bar's shade, so it clips to the page's corners and slides with it when the sidebar
+// shows or hides; from the window's root view it jumped to the end of the slide at once.
 @implementation DPPeekCard
 
 - (BOOL)isFlipped { return YES; }
@@ -21,12 +22,22 @@
     DPPeekLayoutHints(self.controls, NSWidth(self.bounds) - NSMaxX(self.controls.frame) - 8);
 }
 
-// Follows the page area as the sidebar opens and closes.
+// Follows the page area as the sidebar opens and closes. Dia resizes the page inside an animation group as the sidebar
+// slides, so the card resizes along with it on the same timing rather than jumping to the end.
 - (void)followPane {
     NSView *pane = self.pane, *root = self.superview;
     if (!pane.window || !root) return;
     NSRect frame = [root convertRect:pane.bounds fromView:pane];
-    if (!NSEqualRects(frame, self.frame)) self.frame = frame;
+    if (NSEqualRects(frame, self.frame)) return;
+    NSAnimationContext *dia = NSAnimationContext.currentContext;
+    if (!dia.timingFunction) return (void)(self.frame = frame);
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = dia.duration;
+        context.timingFunction = dia.timingFunction;
+        context.allowsImplicitAnimation = YES;
+        self.animator.frame = frame;
+        [self layoutSubtreeIfNeeded];
+    }];
 }
 
 - (void)mouseDown:(NSEvent *)event { [self close:0]; }
@@ -63,9 +74,16 @@
 @end
 
 DPPeekCard *DPPeekCardIn(NSWindow *window) {
-    for (NSView *view in window.contentView.subviews)
-        if ([view isKindOfClass:DPPeekCard.class] && !((DPPeekCard *)view).closing) return (DPPeekCard *)view;
-    return nil;
+    return (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
+        return [view isKindOfClass:DPPeekCard.class] && !((DPPeekCard *)view).closing;
+    });
+}
+
+// The rounded page holding `pane`, or the window's root view if Dia's layout changed.
+static NSView *DPPeekHolder(NSWindow *window, NSView *pane) {
+    for (NSView *view = pane; view && view != window.contentView; view = view.superview)
+        if (view.layer.cornerRadius > 0 && view.layer.masksToBounds) return view;
+    return window.contentView;
 }
 
 static NSView *DPLayerView(void) {
@@ -95,7 +113,8 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin
     if (!window || !host || DPPeekCardIn(window)) return nil;
     for (NSView *candidate in DPFindViews(DPDiaContentPane))
         if (candidate.window == window && NSWidth(candidate.bounds) * NSHeight(candidate.bounds) > NSWidth(pane.bounds) * NSHeight(pane.bounds)) pane = candidate;
-    DPPeekCard *peek = [[DPPeekCard alloc] initWithFrame:pane ? [window.contentView convertRect:pane.bounds fromView:pane] : window.contentView.bounds];
+    NSView *holder = DPPeekHolder(window, pane);
+    DPPeekCard *peek = [[DPPeekCard alloc] initWithFrame:pane ? [holder convertRect:pane.bounds fromView:pane] : holder.bounds];
     peek.autoresizingMask = pane ? NSViewNotSizable : NSViewWidthSizable | NSViewHeightSizable;
     peek.pane = pane;
     peek.page = page;
@@ -119,7 +138,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSPoint origin
     [peek.clip addSubview:host];
     [peek.card addSubview:peek.clip];
     for (NSView *view in @[peek.blur, peek.card, peek.controls]) [peek addSubview:view];
-    [window.contentView addSubview:peek positioned:NSWindowAbove relativeTo:nil];
+    [holder addSubview:peek positioned:NSWindowAbove relativeTo:nil];
     [peek layoutSubtreeIfNeeded];
     [page attachToPaneHostView:host];
     [window makeFirstResponder:host];
