@@ -91,6 +91,7 @@ static NSString *DPVerifyLoadingProgress(DPPatch *patch) {
 
 DP_PATCH(DPShowLoadingProgress) {
     .key = @"showLoadingProgress",
+    .defaultOn = YES,
     .order = 43,
     .title = @"Show Loading Progress",
     .detail = @"Show Dia's loading glow along the top of the page while it loads, where the hidden toolbar would show it.",
