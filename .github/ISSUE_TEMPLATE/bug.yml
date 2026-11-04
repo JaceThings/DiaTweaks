@@ -38,6 +38,7 @@ body:
         - Hide Recent Tabs Button
         - Don’t Open Downloads List
         - Close Tabs from Tab Switcher
+        - Unload Tabs
         - Compact Command Bar
         - Compact with Chat Usage Too
         - Open New Tabs in Command Bar
