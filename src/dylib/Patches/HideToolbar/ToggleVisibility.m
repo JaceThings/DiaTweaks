@@ -29,7 +29,7 @@ DP_PATCH(DPToggleToolbarVisibility) {
     .title = @"Toggle toolbar visibility",
     .detail = @"Press ⌃D to hide or show the toolbar.",
     .symbol = @"command",
-    .tint = @"systemGrayColor",
+    .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
     .classes = DPClasses(DPDiaContentPane, DPDiaToolbar),
     .install = DPInstallToggleToolbar,
