@@ -44,8 +44,17 @@ static void DPExtra_setAlphaValue(NSView *self, SEL _cmd, CGFloat alpha) {
     DPCallOriginal(DPExtra_setAlphaValue, self, [DPGet(self, &DPStripHiddenKey) boolValue] ? 0 : alpha);
 }
 
+// Nor do they take clicks: the close button Dia shows under the pointer overlaps the folder's icon in the strip, where a
+// click would close the folder instead of opening it. Closing it is still in the folder's menu.
+static NSView *DPExtra_hitTest(NSView *self, SEL _cmd, NSPoint point) {
+    return [DPGet(self, &DPStripHiddenKey) boolValue] ? nil : DPCallOriginal(DPExtra_hitTest, self, point);
+}
+
 static void DPHideExtra(NSView *view, BOOL hide) {
-    if (hide) DPHookClass(view.class, @selector(setAlphaValue:), (IMP)DPExtra_setAlphaValue);
+    if (hide) {
+        DPHookClass(view.class, @selector(setAlphaValue:), (IMP)DPExtra_setAlphaValue);
+        DPHookClass(view.class, @selector(hitTest:), (IMP)DPExtra_hitTest);
+    }
     if ([DPGet(view, &DPStripHiddenKey) boolValue] == hide) return;
     DPSet(view, &DPStripHiddenKey, @(hide));
     view.alphaValue = hide ? 0 : 1;
