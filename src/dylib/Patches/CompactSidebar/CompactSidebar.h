@@ -3,7 +3,7 @@
 // It's built on Auto-Hide Tabs, which Dia lays the page out for, and which the patch's switch turns on and off.
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPCompactSidebar;
+extern DPPatch DPCompactSidebar, DPCompactSidebarHover;  // Hover.m: whether pointing at the strip opens it.
 static const CGFloat DPStripWidth = 64;       // Favorites stack in one column, with room round the selected tab.
 static const CGFloat DPLightsClearance = 10;  // Between the window buttons and the toolbar's first button.
 
@@ -53,7 +53,7 @@ void DPInstallCompactRows(void);
 void DPInstallCompactFolders(void);
 
 // Chrome.m: the strip, the toolbar and the space around the page share one color, with the page as a card in it.
-CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance);  // NULL until Dia has made the toolbar.
+CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance);
 CGFloat DPToolbarBottom(NSWindow *window);  // Where the toolbar's bottom edge is once it shows, from the window's bottom.
 BOOL DPToolbarHidden(NSWindow *window);     // Hide toolbar keeps it out of sight.
 void DPApplyChrome(NSView *pane);
