@@ -128,13 +128,33 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
             if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on;
             return NO;
         });
+    // The rows around one that comes or goes slide. One that comes stays clear until there's room for it, then fades in;
+    // its group grows from the bottom, so it would otherwise ride down over the row above.
+    NSMutableArray<NSView *> *appeared = [NSMutableArray new];
     for (NSView *row in _optionChoices) {
         BOOL shown = ((DPPatch *)[DPGet(row, &DPChoicePatchKey) pointerValue])->on;
+        if (row.hidden != shown) continue;
         NSArray<NSView *> *rows = ((NSStackView *)row.superview).arrangedSubviews;
         NSUInteger i = [rows indexOfObject:row];
-        row.hidden = !shown;
-        if (i != NSNotFound && i > 0) rows[i - 1].hidden = !shown;  // Its separator.
+        NSArray<NSView *> *views = i != NSNotFound && i > 0 ? @[row, rows[i - 1]] : @[row];  // With its separator.
+        // Hidden inside an animation, AppKit fades it out while it moves, which leaves a ghost behind.
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0;
+            context.allowsImplicitAnimation = NO;
+            for (NSView *view in views) {
+                view.hidden = !shown;
+                if (shown) view.alphaValue = 0;
+            }
+        }];
+        if (shown) [appeared addObjectsFromArray:views];
     }
+    if (appeared.count)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.2;
+                for (NSView *view in appeared) view.animator.alphaValue = 1;
+            }];
+        });
     _note.stringValue = DPWhyDisabled(_patch) ?: @"";
     _note.hidden = !_note.stringValue.length;
 }
