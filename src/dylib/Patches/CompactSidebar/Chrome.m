@@ -5,24 +5,14 @@
 static const CGFloat DPPageRadius = 10;
 static char DPChromeKey, DPRoundedKey;
 
-// Dia's toolbar color, which follows the page; nil until Dia has made the toolbar.
-static NSColor *DPToolbarColor(NSView *bar) {
-    NSView *fill = DPSubview(bar, DPDiaColorView);
-    void **slot = fill ? DPIvar(fill, "backgroundColor") : NULL;
-    id color = slot ? (__bridge id)*slot : nil;
-    return [color isKindOfClass:NSColor.class] ? color : nil;
-}
-
+// A shade darker than a plain page in the window's appearance. Not Dia's toolbar color, which takes each site's color:
+// the strip and the space round the page would change with every site, and not all at the same moment.
 CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance) {
-    NSView *bar = nil;
-    for (NSView *each in DPFindViews(DPDiaToolbar)) if (each.window == window) { bar = each; break; }
-    NSColor *toolbar = DPToolbarColor(bar);
-    if (!toolbar) return NULL;
     __block CGColorRef chrome = NULL;
     [appearance performAsCurrentDrawingAppearance:^{
         BOOL dark = [appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]] == NSAppearanceNameDarkAqua;
-        NSColor *rgb = [toolbar colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-        chrome = [rgb blendedColorWithFraction:dark ? 0.2 : 0.05 ofColor:NSColor.blackColor].CGColor;
+        NSColor *page = [NSColor.textBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        chrome = [page blendedColorWithFraction:dark ? 0.2 : 0.05 ofColor:NSColor.blackColor].CGColor;
     }];
     return chrome;
 }

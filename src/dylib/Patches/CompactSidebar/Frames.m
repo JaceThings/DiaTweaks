@@ -65,7 +65,8 @@ static NSRect DPHostTarget(NSView *host) {
         return NSMakeRect(x, NSMinY(dia), MIN(NSWidth(dia), DPStripWidth), NSHeight(dia));
     }
     // Dia sliding the sidebar in from the window's edge stops at the edge, as the strip opens it, not 3pt in.
-    if (DPDiaRevealing(host)) return NSMakeRect(MIN(NSMinX(dia), 0), NSMinY(dia), NSWidth(dia), NSHeight(dia));
+    // Unless the strip doesn't open on hover: then it stays the strip while Dia thinks it shows the sidebar.
+    if (DPDiaRevealing(host) && DPCompactSidebarHover.on) return NSMakeRect(MIN(NSMinX(dia), 0), NSMinY(dia), NSWidth(dia), NSHeight(dia));
     if (!DPStripOn(host)) return dia;
     BOOL open = DPStripExpanded(host);
     CGFloat strip = MIN(NSWidth(dia), DPStripWidth + DPRevealRoom(host.window) * DPLightsReveal(host.window));
