@@ -56,13 +56,6 @@ static NSString *DPPasskeysProblem(DPPatch *patch) {
 
 static BOOL gExtensionLoaded;
 
-// Dia passes Chromium its command line here.
-static id DPConfiguration_init(id self, SEL _cmd, int argc, NSArray *argv, NSString *profilePath, NSUInteger applicationID, BOOL isProduction,
-                               NSUInteger restorationPolicy, BOOL loadAllProfiles, BOOL quitRunLoop, NSString *suiteName) {
-    return DPCallOriginal(DPConfiguration_init, self, argc + 1, [argv arrayByAddingObject:[@"--load-extension=" stringByAppendingString:DPExtensionFolder()]], profilePath, applicationID, isProduction,
-                          restorationPolicy, loadAllProfiles, quitRunLoop, suiteName);
-}
-
 static void DPShowHelper(NSNotification *note) {
     NSRunningApplication *helper = [NSRunningApplication runningApplicationWithProcessIdentifier:[note.object intValue]];
     void (^show)(void) = ^{ [helper activateFromApplication:NSRunningApplication.currentApplication options:NSApplicationActivateAllWindows]; };
@@ -82,8 +75,7 @@ static void DPInstallPasskeys(void) {
         return;
     }
     if (!DPSetUpPasskeys()) return;
-    DPHook("ArcBrowserApplicationConfiguration", @selector(init:argv:profilePath:applicationID:isProduction:sessionRestorationPolicy:shouldLoadAllProfilesAtStartup:quitRunLoopOnTermination:userDefaultsSuiteName:),
-           (IMP)DPConfiguration_init);
+    DPLoadExtension(DPExtensionFolder());
     gExtensionLoaded = YES;
     for (NSString *name in @[ @"com.diapatches.passkeys.show", @"com.diapatches.passkeys.signIn" ])
         [NSDistributedNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { DPShowHelper(note); }];

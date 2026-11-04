@@ -106,6 +106,12 @@ void DPSet(id object, const void *key, id value);
 void DPOverride(id object, const void *key, id dia, id ours);
 id DPDiaValue(id object, const void *key, id current);
 
+#pragma mark Extensions
+
+// Loads the unpacked Chromium extension in `folder` into every profile. Chromium reads it once as Dia starts, so call
+// it from an `install`.
+void DPLoadExtension(NSString *folder);
+
 #pragma mark App
 
 void DPOnLaunch(void (^block)(void));
