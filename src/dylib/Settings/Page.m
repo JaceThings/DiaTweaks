@@ -7,12 +7,14 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
     NSMutableArray<DPPatchSwitch *> *_switches;
     NSTextField *_note;
     NSArray<NSView *> *_rows;
+    NSMutableArray<NSView *> *_optionChoices;  // Shown only while their option is on.
 }
 
 - (instancetype)initWithPatch:(DPPatch *)patch {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _patch = patch;
     _switches = [NSMutableArray new];
+    _optionChoices = [NSMutableArray new];
     _note = DPLabel(@"", 11, NSFontWeightRegular, NSColor.secondaryLabelColor);
 
     DPPreviewView *preview = [[DPPreviewView alloc] initWithKey:patch->key];
@@ -34,7 +36,11 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
         NSView *text = DPColumn(lines, 2);
         [options addObject:DPRow(text, [self switchFor:option])];
         // An option's own choice sits under its switch.
-        if (option->choices) [options addObject:[self choiceRowFor:option]];
+        if (!option->choices) return;
+        NSView *row = [self choiceRowFor:option];
+        DPSet(row, &DPChoicePatchKey, [NSValue valueWithPointer:option]);
+        [options addObject:row];
+        [self->_optionChoices addObject:row];
     });
     if (patch->choices) [options insertObject:[self choiceRowFor:patch] atIndex:0];
     _rows = patch->rows ? patch->rows() : @[];
@@ -90,6 +96,13 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
             if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on;
             return NO;
         });
+    for (NSView *row in _optionChoices) {
+        BOOL shown = ((DPPatch *)[DPGet(row, &DPChoicePatchKey) pointerValue])->on;
+        NSArray<NSView *> *rows = ((NSStackView *)row.superview).arrangedSubviews;
+        NSUInteger i = [rows indexOfObject:row];
+        row.hidden = !shown;
+        if (i != NSNotFound && i > 0) rows[i - 1].hidden = !shown;  // Its separator.
+    }
     _note.stringValue = DPWhyDisabled(_patch) ?: @"";
     _note.hidden = !_note.stringValue.length;
 }
