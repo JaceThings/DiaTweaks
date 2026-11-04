@@ -19,7 +19,7 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
     CGPathRef path = CGPathCreateWithEllipseInRect(self.bounds, NULL);
     self.circle.path = path;
     CGPathRelease(path);
-    self.iconLayer.position = CGPointMake(NSMidX(self.bounds), NSMidY(self.bounds));
+    self.iconLayer.frame = self.bounds;
 }
 
 - (void)setHighlighted:(BOOL)highlighted {
@@ -63,6 +63,29 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
     self.pill.alphaValue = 0;
 }
 @end
+
+// Where a symbol's ink centres when drawn at its own size at `scale`, from its bottom left. Symbol images aren't padded
+// evenly, and their ink shifts with the scale they're drawn at.
+static CGPoint DPPeekInkCentre(NSImage *image, CGFloat scale) {
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:image.size.width * scale pixelsHigh:image.size.height * scale
+                                                                    bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+                                                                   colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+    bitmap.size = image.size;
+    [NSGraphicsContext saveGraphicsState];
+    NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
+    [image drawInRect:(NSRect){NSZeroPoint, image.size}];
+    [NSGraphicsContext restoreGraphicsState];
+    NSInteger minX = bitmap.pixelsWide, maxX = 0, minY = bitmap.pixelsHigh, maxY = 0;
+    for (NSInteger y = 0; y < bitmap.pixelsHigh; y++)
+        for (NSInteger x = 0; x < bitmap.pixelsWide; x++) {
+            NSUInteger pixel[4];
+            [bitmap getPixel:pixel atX:x y:y];
+            if (pixel[3] < 77) continue;
+            minX = MIN(minX, x), maxX = MAX(maxX, x), minY = MIN(minY, y), maxY = MAX(maxY, y);
+        }
+    if (minX > maxX) return CGPointMake(image.size.width / 2, image.size.height / 2);
+    return CGPointMake((minX + maxX + 1) / (2 * scale), image.size.height - (minY + maxY + 1) / (2 * scale));
+}
 
 static NSView *DPPeekKeycap(NSString *glyph) {
     static const CGFloat height = 17;
@@ -144,6 +167,7 @@ void DPPeekLayoutHints(NSView *controls, CGFloat availableRight) {
 // Fixed frames, not a stack view, which squeezed the circles out of shape.
 NSView *DPPeekControls(id target, SEL action) {
     static const CGFloat side = 28, gap = 8;
+    CGFloat scale = NSScreen.mainScreen.backingScaleFactor ?: 2;
     NSArray<NSDictionary *> *specs = @[
         @{@"symbol": @"xmark", @"a11y": @"Close Peek", @"hint": @"Close", @"keys": @[@"⌘", @"W"]},
         @{@"symbol": @"arrow.up.left.and.arrow.down.right", @"a11y": @"Open as Tab", @"hint": @"Expand", @"keys": @[@"⌘", @"O"]},
@@ -155,8 +179,10 @@ NSView *DPPeekControls(id target, SEL action) {
         NSDictionary *spec = specs[i];
         NSImage *symbol = [[NSImage imageWithSystemSymbolName:spec[@"symbol"] accessibilityDescription:spec[@"a11y"]]
                            imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightSemibold]];
-        NSImage *white = [NSImage imageWithSize:symbol.size flipped:NO drawingHandler:^BOOL(NSRect rect) {
-            [symbol drawInRect:rect];
+        CGPoint ink = DPPeekInkCentre(symbol, scale);
+        NSPoint origin = NSMakePoint(side / 2 - ink.x, side / 2 - ink.y);
+        NSImage *icon = [NSImage imageWithSize:NSMakeSize(side, side) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+            [symbol drawInRect:(NSRect){origin, symbol.size}];
             [NSColor.whiteColor set];
             NSRectFillUsingOperation(rect, NSCompositingOperationSourceAtop);
             return YES;
@@ -176,10 +202,8 @@ NSView *DPPeekControls(id target, SEL action) {
         [button.layer addSublayer:button.circle];
 
         button.iconLayer = [CALayer layer];
-        button.iconLayer.contents = white;
-        button.iconLayer.contentsGravity = kCAGravityCenter;
-        button.iconLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor ?: 2;
-        button.iconLayer.bounds = (CGRect){CGPointZero, white.size};
+        button.iconLayer.contents = icon;
+        button.iconLayer.contentsScale = scale;
         [button.layer addSublayer:button.iconLayer];
 
         [controls addSubview:button];
