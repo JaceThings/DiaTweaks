@@ -111,11 +111,17 @@ static CGFloat DPSuggestionsHeight(NSView *panel) {
     return height > 0 ? height + 8 : 0;
 }
 
-// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar.
+static NSView *DPCardIn(NSWindow *window);
+
+// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar. Centered on the page,
+// the bar moves as the sidebar opens and closes, so that's a position of its own.
 static NSRect DPBarFrame(NSView *view, NSSize size, CGFloat collapsedHeight) {
-    NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame;
-    NSPoint origin = NSMakePoint(NSMidX(bounds) - size.width / 2, NSMidY(bounds) - collapsedHeight / 2);
-    if ([DPChoice(&DPCommandBar) isEqual:@"macos"] && view.window.screen) {
+    NSString *position = DPChoice(&DPCommandBar);
+    NSView *card = [position isEqual:@"page"] ? DPCardIn(view.window) : nil;
+    if (NSIsEmptyRect(card.bounds)) card = nil;  // A new tab's page has no size until Dia lays it out.
+    NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame, page = card ? [view convertRect:card.bounds fromView:card] : bounds;
+    NSPoint origin = NSMakePoint(NSMidX(page) - size.width / 2, NSMidY(page) - collapsedHeight / 2);
+    if ([position isEqual:@"macos"] && view.window.screen) {
         NSPoint topLeft = NSMakePoint(NSMidX(screen) - size.width / 2, NSMaxY(screen) - (NSHeight(screen) - collapsedHeight) * DPTuned(DPHeightKey));
         origin = [view convertPoint:[view.window convertPointFromScreen:topLeft] fromView:nil];
     }
@@ -276,9 +282,12 @@ static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
     else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
+    BOOL nowhereToGo = !overlay.returnTab;
     id tab = DPDismissCommandBar(overlay);
-    if (overBlank) DPMakeBlank(page);
-    else if (tab) DPCloseTab(tab);
+    if (!tab) return;
+    // Closing a window's only tab would close the window, and Dia with it.
+    if (overBlank || nowhereToGo) DPMakeBlank(page);
+    else DPCloseTab(tab);
 }
 
 static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
@@ -715,18 +724,18 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
     return row;
 }
 
+// Each sits under the heading of the option it tunes.
 static NSArray<NSView *> *DPCommandBarRows(void) {
-    return @[
-        DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"),
-        DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"),
-        DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
-        DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey),
-    ];
+    NSView *darkness = DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"), *radius = DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
+           *sidebar = DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey);
+    darkness.identifier = @"Darken";
+    radius.identifier = sidebar.identifier = @"Blur";
+    return @[ DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"), radius, sidebar, darkness ];
 }
 
 static NSMenu *DPCommandBarPositions(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Position"];
-    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ] ]) {
+    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ], @[ @"Center of Page", @"page" ] ]) {
         NSMenuItem *entry = [[NSMenuItem alloc] initWithTitle:item[0] action:nil keyEquivalent:@""];
         entry.representedObject = item[1];
         [menu addItem:entry];
@@ -760,8 +769,8 @@ DP_PATCH(DPCommandBarBlur) {
     .detail = @"Blur the page behind the command bar.",
     .symbol = @"aqi.medium",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
+    .section = @"Blur",
     .apply = DPApplyCommandBar,
 };
 
@@ -773,8 +782,8 @@ DP_PATCH(DPCommandBarDarken) {
     .detail = @"Darken the page behind the command bar.",
     .symbol = @"moon.fill",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
+    .section = @"Darken",
     .apply = DPApplyCommandBar,
 };
 
@@ -785,6 +794,6 @@ DP_PATCH(DPCommandBarKeepText) {
     .detail = @"Bring back what you typed when you open the bar again after Escape, selected so you can carry on or type over it.",
     .symbol = @"text.cursor",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
+    .section = @"Typing",
 };

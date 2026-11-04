@@ -28,7 +28,7 @@ DP_PATCH(DPChatGPTPreview) {
     .detail = @"Show recent ChatGPT conversations when hovering a tab. Pin one conversation in the preview, switch to a conversation, and follow ChatGPT’s own working and unread indicators. Experimental.",
     .symbol = @"bubble.left.and.bubble.right",
     .tint = @"systemGreenColor",
-    .section = @"Sidebar & Tab Bar",
+    .section = @"Tabs",
     .classes = DPTabIntegrationClasses,
     .install = DPInstallChatGPTPreview,
     .apply = DPApplyChatGPTPreview,

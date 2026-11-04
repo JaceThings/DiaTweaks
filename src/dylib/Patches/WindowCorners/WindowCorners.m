@@ -181,7 +181,7 @@ static void DPInstallWindowCorners(void) {
 
 DP_PATCH(DPWindowCorners) {
     .key = @"windowCorners",
-    .order = 94,
+    .order = 97,
     .title = @"macOS 26 Window Corners",
     .detail = @"Round Dia’s windows like other apps on macOS 26, with the page’s corners to match.",
     .symbol = @"app.fill",

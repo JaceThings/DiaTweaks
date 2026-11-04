@@ -28,7 +28,7 @@ build/integration-scripts.json: scripts/build-integration-scripts.py $(INTEGRATI
 	python3 scripts/build-integration-scripts.py $@
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) build/integration-scripts.json | build
-	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) $(INTEGRATION_SECTION) -framework AppKit -framework QuartzCore -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
+	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) $(INTEGRATION_SECTION) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
 
 # The patch list for diatweaks. With DIAPATCH_MANIFEST set, the dylib writes it and exits as it loads, so diapatch never runs.

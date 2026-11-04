@@ -16,7 +16,8 @@ static void DPMaskCorners(NSView *container, CALayer *layer, CGFloat left, CGFlo
     if ([layer respondsToSelector:@selector(setCornerRadii:)]) {
         layer.mask = nil;
         layer.maskedCorners = DPLeftCorners | DPRightCorners;
-        CGFloat l = layer.cornerRadius * (1 - left), r = layer.cornerRadius * (1 - right);
+        // All zero, the radii stop counting and the layer clips to its cornerRadius again, so square stays a hair above zero.
+        CGFloat l = MAX(0.01, layer.cornerRadius * (1 - left)), r = MAX(0.01, layer.cornerRadius * (1 - right));
         CACornerRadii radii = { { l, l }, { r, r }, { r, r }, { l, l } };
         DPAnimateLayer(container, layer, @"cornerRadii", [NSValue valueWithBytes:&radii objCType:@encode(CACornerRadii)]);
         return;
@@ -81,6 +82,13 @@ static void DPReshapePaths(NSView *container, CGFloat base, CGFloat grow, CGFloa
             CGPathRef shadow = DPReshapePath(sublayer, &DPShadowPathKey, sublayer.shadowPath, container, base, grow, left, right);
             if (shadow) DPSetPath(sublayer, @"shadowPath", shadow);
         }
+}
+
+BOOL DPCornersRound(CALayer *layer, BOOL right) {
+    if ([layer respondsToSelector:@selector(cornerRadii)] && layer._usesCornerRadii)
+        return (right ? layer.cornerRadii.topRight.width : layer.cornerRadii.topLeft.width) >= 0.5;
+    if (layer.mask) return layer.mask.sublayers[right].cornerRadius > 0;
+    return layer.cornerRadius > 0 && (layer.maskedCorners & (right ? DPRightCorners : DPLeftCorners));
 }
 
 BOOL DPBesideSidebar(NSView *container) {
@@ -179,9 +187,7 @@ static NSString *DPVerifySquareCorners(DPPatch *patch) {
         if (!layer) return @"no rounded web content found";
         if (!DPBesideSidebar(container)) continue;
         BOOL square = patch->on && DPEdgeToEdge.on;
-        BOOL round = [layer respondsToSelector:@selector(cornerRadii)] ? layer.cornerRadii.topLeft.width > 0
-                   : layer.mask ? layer.mask.sublayers.firstObject.cornerRadius > 0 : (layer.maskedCorners & DPLeftCorners) != 0;
-        if (round == square) return square ? @"corners by the sidebar are round" : @"corners by the sidebar are square";
+        if (DPCornersRound(layer, NO) == square) return square ? @"corners by the sidebar are round" : @"corners by the sidebar are square";
     }
     return nil;
 }

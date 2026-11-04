@@ -3,6 +3,8 @@
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
+#define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"  // The glow in the address field while a page loads.
+#define DPDiaReloadIcon         "_TtC13NavigationBar14ReloadIconView"  // Turns into a stop button while the page loads.
 #define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
 #define DPDiaSidebarHeader      "_TtC10TabSidebar17SidebarHeaderView"
 #define DPDiaTrafficLights      "_TtC5ARCUI21WindowStandardButtons"
@@ -23,10 +25,12 @@
 #define DPDiaWindowBackgroundTile "_TtC15WindowTreatment24WindowBackgroundBaseView"
 #define DPDiaNewTabPage         "NewTabPage.NewTabPageContentView"
 #define DPDiaShadowView         "_TtC5ARCUI10ShadowView"
-#define DPDiaWindowFrame        "_TtC6Window24PlatformWindowThemeFrame"
+#define DPDiaPopoverRoot        "_TtCC14DynamicPopover28DynamicPopoverViewControllerP33_AB0357A1429F4D6D7F128058B713C93F8RootView"
+#define DPDiaWindowFrame       "_TtC6Window24PlatformWindowThemeFrame"
 #define DPDiaWindowTint         "_TtC15WindowTreatment31WindowBackgroundOverlayTintView"
 #define DPDiaBrowser            "ArcBrowser"
 #define DPDiaBrowserDelegate    "_TtC3ADK15ChromiumBrowser"
+#define DPDiaWebContents        "ArcWebContents"  // A tab's page, declared in ArcCore's ArcWebContents.h.
 #define DPDiaTabGroupProperties "ArcTabGroupProperties"
 #define DPDiaToasts             "_TtC11DiaToastsV210ToastPanel"  // Dia 1.56 shows "Copied Current URL" with these.
 #define DPDiaTabSwitcher        "_TtC10RecentTabs26RecentTabsWindowController"
@@ -53,10 +57,15 @@
 #define DPDiaPopoverBackground  "ARCUI.PopoverBackgroundView"
 #define DPDiaTabShape           "_TtC5TabUIP33_903BE4B7F5DFD8B21A7A465D1A9EF8E412TabShapeView"
 #define DPDiaChatUsage          "_TtC15BoostCommandBar13ChatUsageView"
+#define DPDiaStatusText         "_TtC10StatusText14StatusTextView"
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
+#define DPDiaPersonalizeButton  "_TtC22AssistantPersonalityUI17PersonalizeButton"
+#define DPDiaNewTabLogo         "_TtC15Personalization13DiaIconButton"
+#define DPDiaNewTabLogoParticles "_TtC7PowerUp16LogoParticleView"
+#define DPDiaSkillsSuggestions  "_TtC17SkillsSuggestions21SkillsSuggestionsView"
 #define DPDiaNewTabButton       "_TtC7TabList14NewTabCellView"
 #define DPDiaBrowserContext     "ArcBrowserContext"
 #define DPDiaWebContents        "ArcWebContents"

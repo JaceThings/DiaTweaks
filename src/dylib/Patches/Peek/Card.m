@@ -13,8 +13,10 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 - (NSRect)cardFrame {
     NSRect card = DPPeekCardRect(self.bounds), page = self.bounds;
     CGFloat g = self.grown;
-    return NSMakeRect(NSMinX(card) + (NSMinX(page) - NSMinX(card)) * g, NSMinY(card) + (NSMinY(page) - NSMinY(card)) * g,
-                      NSWidth(card) + (NSWidth(page) - NSWidth(card)) * g, NSHeight(card) + (NSHeight(page) - NSHeight(card)) * g);
+    NSRect frame = NSMakeRect(NSMinX(card) + (NSMinX(page) - NSMinX(card)) * g, NSMinY(card) + (NSMinY(page) - NSMinY(card)) * g,
+                              NSWidth(card) + (NSWidth(page) - NSWidth(card)) * g, NSHeight(card) + (NSHeight(page) - NSHeight(card)) * g);
+    // Keep the settled Chromium surface on physical pixels; fractional placement filters its text.
+    return [self backingAlignedRect:frame options:NSAlignAllEdgesNearest];
 }
 
 - (void)layout {
