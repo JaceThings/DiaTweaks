@@ -34,27 +34,22 @@ typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit }; 
 - (void)finish:(DPPeekExit)exit;
 @end
 
-// Card.m
 DPPeekCard *DPPeekCardIn(NSWindow *window);
 DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink);
 NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page);
 
-// Controls.m
 NSView *DPPeekControls(id target, SEL action);
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
 
-// Tab.m
 void DPPeekShowTabBadge(DPPeekCard *peek, id source);
 void DPPeekHideTabBadge(DPPeekCard *peek);
 
-// Settings.m
 double DPPeekDarkness(void);
 double DPPeekResponse(void);
 double DPPeekBounce(void);
 BOOL DPPeekGenie(void);
 NSArray<NSView *> *DPPeekSettingsRows(void);
 
-// Pages.m
 void DPPeekInstallPages(void);
 BOOL DPPeekCanOpen(id source);
 BOOL DPPeekShows(id page);

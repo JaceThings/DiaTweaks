@@ -1,8 +1,6 @@
 #import "Patches/Peek/Peek.h"
 #import <objc/message.h>
 
-// A peek's page isn't a tab until it's expanded or split; then Dia is handed the live page as if a link had opened it.
-
 static NSMapTable *DPPeekFactories;                  // page -> the browser context or browser that made it
 static NSMapTable<NSWindow *, id> *DPPeekBrowsers;  // window -> its ArcBrowser
 static __weak id DPPeekLastFactory;
@@ -33,7 +31,6 @@ static void DPBrowser_setWindow(id self, SEL _cmd, NSWindow *window) {
     if (window) [DPPeekBrowsers setObject:self forKey:window];
 }
 
-// Dia showing a peek's page elsewhere, including after it's handed over, takes it out of the card in the same frame.
 static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     for (NSWindow *window in NSApp.windows) {
         DPPeekCard *peek = (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
@@ -44,7 +41,7 @@ static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     DPCallOriginal(DPPage_attach, self, host);
 }
 
-// Restored tabs' pages aren't made through the hooked createWebContents, so they fall back to the window's browser.
+// Restored tabs' pages skip the hooked createWebContents, so they fall back to the window's browser.
 static id DPPeekFactoryFor(id source, NSWindow *window) {
     if (!source) return nil;
     return [DPPeekFactories objectForKey:source] ?: (window ? [DPPeekBrowsers objectForKey:window] : nil) ?: DPPeekLastFactory;
@@ -80,7 +77,7 @@ static void DPPeekDiscard(id page, NSView *host) {
     [page performSelector:@selector(close)];
 }
 
-// Asks the page for the on-screen box of the link under `origin`, or the clicked line of one that wraps.
+// The on-screen box of the link under `origin`, or of the clicked line of one that wraps.
 static void DPPeekFindLink(NSWindow *window, id source, NSPoint origin, NSView *warmHost, void (^found)(NSRect link)) {
     NSRect fallback = NSMakeRect(origin.x - 40, origin.y - 10, 80, 20);
     NSPoint inWindow = [window convertPointFromScreen:origin];
@@ -177,7 +174,7 @@ static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegat
 }
 
 void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source) {
-    // Taken now, before letting go of Shift can cool it.
+    // Taken now, before releasing Shift can cool it.
     BOOL warm = DPPeekWarmPage && [url isEqual:DPPeekWarmURL] && DPPeekWarmView.window == window;
     id warmPage = warm ? DPPeekWarmPage : nil;
     NSView *warmHost = warm ? DPPeekWarmView : nil;
@@ -192,7 +189,7 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
     NSObject *page = (NSObject *)self.page;
     [self.window makeKeyWindow];
     if (exit != DPPeekClose && DPPeekGive(page, self.sourceDelegate, self.source, [page valueForKey:@"url"], exit)) {
-        // The card stays up until Dia attaches the page, which takes it down in the same frame.
+        // DPPage_attach takes the card down once Dia shows the page.
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ if (self.superview) [self handOver]; });
         return;
     }

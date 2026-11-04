@@ -39,7 +39,6 @@ BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
         DPPeekCardIn(window).blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
 }
 
-// ↑ and ↓ step by 1, or 10 with Shift.
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
     NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
     if (!step) return NO;

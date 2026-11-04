@@ -22,12 +22,12 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     self.blur.frame = self.bounds;
     self.card.frame = NSInsetRect(card, -DPPeekShadowRoom, -DPPeekShadowRoom);
     self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
-    CGPathRef outline = CGPathCreateWithRoundedRect(self.shade.bounds, 10, 10, NULL);  // Spares the GPU tracing the shadow's shape.
+    CGPathRef outline = CGPathCreateWithRoundedRect(self.shade.bounds, 10, 10, NULL);
     self.shade.layer.shadowPath = outline;
     CGPathRelease(outline);
     self.host.frame = self.clip.bounds;
     self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card) + 4}, self.controls.frame.size};
-    // Without this, hints rebuilt during the sidebar's slide fade in from showing.
+    // Outside the sidebar slide's animation, or the rebuilt hints fade in.
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         context.allowsImplicitAnimation = NO;
@@ -35,7 +35,6 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     }];
 }
 
-// Dia resizes the pane inside an animation group as the sidebar slides; matching its timing keeps the card in step.
 - (void)followPane {
     NSView *pane = self.pane, *root = self.superview;
     if (!pane.window || !root) return;
@@ -78,8 +77,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 - (void)handOver {
     [self stopWatching];
     [self removeFromSuperview];
-    // A card filling the page area is swapped for Dia's page in one frame; anywhere else it has to be off screen before
-    // the page leaves it, or it shows blank for a frame.
+    // Off screen before the page leaves it, or it shows blank for a frame; a full-size card is swapped in the same one.
     if (self.grown < 1) [CATransaction flush];
     [self.page detachFromPaneHostView:self.host];
 }
@@ -99,7 +97,6 @@ static NSView *DPPeekPane(NSWindow *window) {
     return pane;
 }
 
-// Dia's rounded page, so the card clips to its corners and slides with it.
 static NSView *DPPeekHolder(NSWindow *window, NSView *pane) {
     for (NSView *view = pane; view && view != window.contentView; view = view.superview)
         if (view.layer.cornerRadius > 0 && view.layer.masksToBounds) return view;
@@ -112,7 +109,7 @@ static NSView *DPLayerView(void) {
     return view;
 }
 
-// ⌘O opens as a tab; ⌘W, or Escape outside a text field, closes.
+// Key codes: O 31, W 13, Escape 53.
 static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
@@ -127,7 +124,7 @@ static id DPWatchKeys(DPPeekCard *card) {
     }];
 }
 
-// Behind the page area at the card's size, so it paints unseen and fits the card without a relayout.
+// Below the page area, so it paints unseen at the card's size.
 NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
     NSView *host = [page createPaneHostView], *pane = DPPeekPane(window);
     if (!host || !pane) return nil;
@@ -148,7 +145,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     peek.pane = pane;
     peek.page = page;
     peek.host = host;
-    // A scrim, not NSVisualEffectView: the page is GPU-composited, so an in-window blur can't sample it.
+    // Not NSVisualEffectView: the page is GPU-composited, so an in-window blur can't sample it.
     peek.blur = DPLayerView();
     peek.blur.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
     peek.card = DPLayerView();
@@ -156,7 +153,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
     shadow.shadowBlurRadius = 24;
     shadow.shadowOffset = NSMakeSize(0, -6);
-    peek.shade = DPLayerView();  // Casts the shadow, which the clip would cut off.
+    peek.shade = DPLayerView();  // The clip would cut its shadow off.
     peek.shade.shadow = shadow;
     peek.clip = DPLayerView();
     peek.clip.layer.masksToBounds = YES;

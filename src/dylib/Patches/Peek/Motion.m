@@ -14,7 +14,6 @@ static CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval respons
     return spring;
 }
 
-// 1 at the start, 0 at rest, below 0 while it overshoots.
 static CGFloat DPPeekRemaining(CFTimeInterval t, CFTimeInterval response, CGFloat dampingRatio) {
     if (t <= 0) return 1;
     CGFloat w = 2 * M_PI / response;
@@ -41,8 +40,7 @@ static id DPMesh(const CGPoint to[9]) {
                 9, vertices, 4, faces, @"none");
 }
 
-// Moves the card between its place and the link as a 3×3 mesh whose rows each ride their own spring (the genie), and
-// sets `corners` to keep the on-screen corner radius from 4 pt at the link to the card's own.
+// Each row of the 3×3 mesh rides its own spring: the genie. `corners` keeps the on-screen radius from 4 pt up.
 static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyframeAnimation **corners) {
     CFTimeInterval response = DPPeekResponse(), duration = 0, rows[3];
     CGFloat dampingRatio = 1 - DPPeekBounce();
@@ -54,7 +52,7 @@ static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyfr
         rows[r] = response * (1 - 0.5 * g + g * n);
         duration = MAX(duration, DPPeekSpring(@"meshTransform", rows[r], dampingRatio).settlingDuration);
     }
-    // Unit squares: the link within the card, and the card within its view, which has room around it for the shadow.
+    // Unit squares: the link within the card, and the card within its view, which has room for the shadow.
     NSRect card = peek.cardFrame, outer = peek.card.frame, link = peek.link;
     NSRect source = NSMakeRect((NSMinX(link) - NSMinX(card)) / NSWidth(card), (NSMinY(link) - NSMinY(card)) / NSHeight(card),
                                NSWidth(link) / NSWidth(card), NSHeight(link) / NSHeight(card));
@@ -92,7 +90,7 @@ static CAKeyframeAnimation *DPPeekTravel(DPPeekCard *peek, BOOL opening, CAKeyfr
         animation.duration = duration;
         animation.fillMode = kCAFillModeBoth;
         animation.preferredFrameRateRange = DPPeekFrameRate;
-        animation.removedOnCompletion = opening;  // Closing holds its end until the card is removed, or it flashes back.
+        animation.removedOnCompletion = opening;  // Closing holds its end, or the card flashes back.
     }
     return mesh;
 }
@@ -107,7 +105,6 @@ static CASpringAnimation *DPPeekDim(BOOL dimming) {
     return dim;
 }
 
-// Resizes the card for real each frame, so the page re-lays out as it grows rather than stretching.
 @interface DPPeekGrowth : NSObject
 @property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, strong) CADisplayLink *link;
@@ -161,7 +158,6 @@ static char DPGrowthKey;
 
 - (void)animateIn {
     self.controls.alphaValue = self.card.alphaValue = self.blur.alphaValue = 0;
-    // Gives the page a moment to paint its first frame, so it's in the card as it opens.
     CFTimeInterval start = CACurrentMediaTime();
     __weak DPPeekCard *weak = self;
     [NSTimer scheduledTimerWithTimeInterval:1 / 120.0 repeats:YES block:^(NSTimer *timer) {
@@ -186,7 +182,7 @@ static char DPGrowthKey;
 - (void)animateOut:(void (^)(void))completion {
     [CATransaction begin];
     [CATransaction setCompletionBlock:completion];
-    if (self.card.alphaValue > 0) {  // Not yet shown: closed while waiting for the page to paint.
+    if (self.card.alphaValue > 0) {  // Closed before it was shown.
         [self.blur.layer addAnimation:DPPeekDim(NO) forKey:@"peek"];
         [self move:NO];
     }

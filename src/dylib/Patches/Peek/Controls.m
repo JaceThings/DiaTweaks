@@ -76,8 +76,7 @@ static NSBitmapImageRep *DPPeekDraw(NSSize size, CGFloat scale, void (^draw)(voi
     return bitmap;
 }
 
-// Where a symbol's ink centres at `scale`, from its bottom left. Symbol images aren't padded evenly, and their ink
-// shifts with the scale they're drawn at.
+// Symbol images aren't padded evenly, and their ink shifts with the scale they're drawn at.
 static CGPoint DPPeekInkCentre(NSImage *symbol, CGFloat scale) {
     NSBitmapImageRep *bitmap = DPPeekDraw(symbol.size, scale, ^{ [symbol drawInRect:(NSRect){NSZeroPoint, symbol.size}]; });
     NSInteger minX = bitmap.pixelsWide, maxX = 0, minY = bitmap.pixelsHigh, maxY = 0;
@@ -88,11 +87,9 @@ static CGPoint DPPeekInkCentre(NSImage *symbol, CGFloat scale) {
             if (pixel[3] < 77) continue;
             minX = MIN(minX, x), maxX = MAX(maxX, x), minY = MIN(minY, y), maxY = MAX(maxY, y);
         }
-    if (minX > maxX) return CGPointMake(symbol.size.width / 2, symbol.size.height / 2);
     return CGPointMake((minX + maxX + 1) / (2 * scale), symbol.size.height - (minY + maxY + 1) / (2 * scale));
 }
 
-// A white symbol centred on its ink in a `side` square, drawn once per scale.
 static id DPPeekIcon(NSString *name, CGFloat side, CGFloat scale) {
     static NSMutableDictionary *icons;
     if (!icons) icons = [NSMutableDictionary new];
@@ -132,7 +129,6 @@ static NSSize DPPeekFit(NSTextField *label, CGFloat width) {
     return NSMakeSize(ceil(size.width), ceil(size.height));
 }
 
-// A pill with the label and its keycaps in a row, or with the keycaps centred under the label when the row won't fit.
 static NSView *DPPeekMakeHint(NSString *text, NSArray<NSString *> *keys, CGFloat maxWidth) {
     NSMutableArray<NSView *> *caps = [NSMutableArray array];
     CGFloat capsWidth = keys.count ? -DPHintCapGap : 0, capsHeight = 0;
@@ -186,7 +182,7 @@ void DPPeekLayoutHints(NSView *controls, CGFloat availableRight) {
     }
 }
 
-// Fixed frames, not a stack view, which squeezed the circles out of shape.
+// Not a stack view, which squeezed the circles out of shape.
 NSView *DPPeekControls(id target, SEL action) {
     static const CGFloat side = 28, gap = 8;
     CGFloat scale = NSScreen.mainScreen.backingScaleFactor ?: 2;

@@ -39,7 +39,7 @@ static NSView *DPPeekOriginTab(NSWindow *window, id source) {
     return selected;
 }
 
-// The first id in the tab's contentIDs; pinned tabs list none.
+// Pinned tabs list no contentIDs.
 static NSString *DPPeekTabContentKey(NSView *tab) {
     NSString *state = [DPTabState(tab) description];
     NSRange mark = [state rangeOfString:@"contentIDs: ["];
@@ -60,8 +60,7 @@ static BOOL DPTabIsTop(NSView *tab) {
     return NO;
 }
 
-// 👀 on the tab a peek came from. It follows the tab as the sidebar relays out and closes the peek when the tab is
-// closed or deselected. On a sidebar tab it hides on hover, so Dia's close button in the same spot stays usable.
+// Hides on hover over a sidebar tab, where Dia's close button shares its spot.
 @interface DPPeekTabBadge : NSView
 @property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, copy) NSString *contentKey;
@@ -92,7 +91,7 @@ static BOOL DPTabIsTop(NSView *tab) {
     if (!peek || peek.closing) return [self stop];
     NSView *tab = self.superview;
     if (!self.contentKey) {
-        // A pinned tab's state can be briefly unreadable; only a readable, unselected one means it was left.
+        // A pinned tab's state is briefly unreadable at times; only a readable, unselected one means it was left.
         if (self.pinned && tab && DPTabState(tab) && !DPTabSelected(tab)) [self closePeek];
         return;
     }

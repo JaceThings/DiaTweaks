@@ -34,7 +34,6 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
     return DPIgnoreAction;
 }
 
-// Holding Shift alone over a link starts loading it, so a Shift-click opens onto a page that has already painted.
 static void DPPeekLookAhead(void) {
     NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
     id page = DPPeekHoveredPage;
@@ -46,7 +45,7 @@ static void DPPeekLookAhead(void) {
 static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *text) {
     DPCallOriginal(DPWebContent_status, self, webContents, text);
     NSURL *url = text.length ? [NSURL URLWithString:text] : nil;
-    if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, the warm one included, clear their own status.
+    if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, the warm one included, clear their own.
     DPPeekHovered = [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString] ? url : nil;
     DPPeekHoveredPage = webContents;
     DPPeekLookAhead();
