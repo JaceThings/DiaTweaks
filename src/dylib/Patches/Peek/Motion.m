@@ -14,12 +14,11 @@ static CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval respons
     return spring;
 }
 
-static CGFloat DPPeekRemaining(CFTimeInterval t, CFTimeInterval response, CGFloat dampingRatio) {
+// How far a critically damped spring has left to go.
+static CGFloat DPPeekRemaining(CFTimeInterval t, CFTimeInterval response) {
     if (t <= 0) return 1;
     CGFloat w = 2 * M_PI / response;
-    if (dampingRatio >= 1) return (1 + w * t) * exp(-w * t);
-    CGFloat wd = w * sqrt(1 - dampingRatio * dampingRatio);
-    return exp(-dampingRatio * w * t) * (cos(wd * t) + dampingRatio * w / wd * sin(wd * t));
+    return (1 + w * t) * exp(-w * t);
 }
 
 // CAMeshTransform is private API, present in QuartzCore since 10.9.
@@ -54,14 +53,13 @@ static CAKeyframeAnimation *DPPeekKeyframes(NSString *keyPath, NSArray *values, 
 // Each row of the 3×3 mesh rides its own spring: the genie.
 static void DPPeekTravel(DPPeekCard *peek, BOOL opening) {
     CFTimeInterval response = DPPeekResponse(), duration = 0, rows[3];
-    CGFloat dampingRatio = 1 - DPPeekBounce();
     CGFloat ay = 2 * MIN(1, MAX(0, NSMidY(peek.link) / MAX(1, NSHeight(peek.bounds)))) - 1;
     CGFloat g = !DPPeekGenie() ? 0 : ay >= 0 ? ay : 0.75 * ay;
     if (!opening) g = -g;
     for (int r = 0; r < 3; r++) {
         CGFloat v = r / 2.0, n = g < 0 ? 1 - sqrt(1 - v) : sqrt(v);
         rows[r] = response * (1 - 0.5 * g + g * n);
-        duration = MAX(duration, DPPeekSpring(@"meshTransform", rows[r], dampingRatio).settlingDuration);
+        duration = MAX(duration, DPPeekSpring(@"meshTransform", rows[r], 1).settlingDuration);
     }
     // Unit squares: the link within the card, and the card within its view, which has room for the shadow.
     NSRect card = peek.cardFrame, outer = peek.card.frame, link = peek.link;
@@ -79,7 +77,7 @@ static void DPPeekTravel(DPPeekCard *peek, BOOL opening) {
         CGPoint to[9];
         CGFloat away[3];
         for (int r = 0; r < 3; r++) {
-            CGFloat remaining = DPPeekRemaining(t, rows[r], dampingRatio);
+            CGFloat remaining = DPPeekRemaining(t, rows[r]);
             away[r] = opening ? remaining : 1 - remaining;
             for (int c = 0; c < 3; c++) {
                 CGFloat x = (c / 2.0 - NSMinX(inner)) / NSWidth(inner), y = (r / 2.0 - NSMinY(inner)) / NSHeight(inner);
@@ -140,7 +138,6 @@ static void DPPeekRevealControls(NSView *controls) {
 @property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, strong) CADisplayLink *link;
 @property (nonatomic) CFTimeInterval start, response, duration;
-@property (nonatomic) CGFloat dampingRatio;
 @property (nonatomic, copy) void (^done)(void);
 @end
 
@@ -151,8 +148,7 @@ static char DPGrowthKey;
     DPPeekGrowth *growth = [DPPeekGrowth new];
     growth.peek = peek;
     growth.response = DPPeekResponse();
-    growth.dampingRatio = 1 - DPPeekBounce();
-    growth.duration = DPPeekSpring(@"bounds", growth.response, growth.dampingRatio).settlingDuration;
+    growth.duration = DPPeekSpring(@"bounds", growth.response, 1).settlingDuration;
     growth.done = done;
     growth.start = CACurrentMediaTime();
     DPSet(peek, &DPGrowthKey, growth);  // The display link doesn't retain it.
@@ -165,7 +161,7 @@ static char DPGrowthKey;
     DPPeekCard *peek = self.peek;
     CFTimeInterval t = CACurrentMediaTime() - self.start;
     BOOL settled = !peek || t >= self.duration;
-    peek.grown = settled ? 1 : 1 - DPPeekRemaining(t, self.response, self.dampingRatio);
+    peek.grown = settled ? 1 : 1 - DPPeekRemaining(t, self.response);
     peek.needsLayout = YES;
     [peek layoutSubtreeIfNeeded];
     if (!settled) return;

@@ -1,7 +1,6 @@
 #import "Patches/Peek/Peek.h"
 
-static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekSpeed", *const DPPeekBounceKey = @"peekBounce",
-                     *const DPPeekGenieKey = @"peekGenie";
+static NSString *const DPPeekDarknessKey = @"peekDarkness", *const DPPeekSpeedKey = @"peekSpeed", *const DPPeekGenieKey = @"peekGenie";
 
 static NSUserDefaults *DPSettings(void) {
     static NSUserDefaults *settings;
@@ -13,12 +12,11 @@ static NSUserDefaults *DPSettings(void) {
 static double DPPeekTuned(NSString *key) {
     id value = [DPSettings() objectForKey:key];
     if (value) return [value doubleValue];
-    return [@{ DPPeekDarknessKey : @0.35, DPPeekSpeedKey : @0.85, DPPeekBounceKey : @0, DPPeekGenieKey : @NO }[key] doubleValue];
+    return [@{ DPPeekDarknessKey : @0.35, DPPeekSpeedKey : @0.85, DPPeekGenieKey : @NO }[key] doubleValue];
 }
 
 double DPPeekDarkness(void) { return DPPeekTuned(DPPeekDarknessKey); }
 double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // iOS's response at 100%.
-double DPPeekBounce(void) { return DPPeekTuned(DPPeekBounceKey); }
 BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
 
 @interface DPPeekTuneRow : NSStackView <NSTextFieldDelegate>
@@ -95,7 +93,6 @@ NSArray<NSView *> *DPPeekSettingsRows(void) {
     return @[
         DPPeekSlider(@"Darken the page behind", DPPeekDarknessKey, 0, 100, 100, @"%"),
         DPPeekSlider(@"Speed", DPPeekSpeedKey, 25, 300, 100, @"%"),
-        DPPeekSlider(@"Bounce", DPPeekBounceKey, 0, 60, 100, @"%"),
         DPPeekSwitch(@"Genie effect", DPPeekGenieKey),
     ];
 }

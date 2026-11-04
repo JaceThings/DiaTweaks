@@ -48,7 +48,6 @@ void DPPeekHideTabBadge(DPPeekCard *peek);
 
 double DPPeekDarkness(void);
 double DPPeekResponse(void);
-double DPPeekBounce(void);
 BOOL DPPeekGenie(void);
 NSArray<NSView *> *DPPeekSettingsRows(void);
 
