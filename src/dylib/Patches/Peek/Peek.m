@@ -1,7 +1,7 @@
 #import "Patches/Peek/Peek.h"
 
 static NSURL *DPPeekHovered;
-static __weak id DPPeekHoveredPage;
+static __weak id DPPeekHoveredPage, DPPeekHoveredDelegate;
 
 static BOOL DPPeekWanted(NSInteger disposition) {
     BOOL elsewhere = disposition == DPForegroundTab || disposition == DPBackgroundTab || disposition == DPPopup || disposition == DPNewWindow;
@@ -69,7 +69,15 @@ static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *tex
     if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, the warm one included, clear their own.
     DPPeekHovered = [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString] ? url : nil;
     DPPeekHoveredPage = webContents;
+    DPPeekHoveredDelegate = self;
     DPPeekLookAhead();
+}
+
+// A dragged link was pointed at first, so the page it came from is the last one that reported one.
+void DPPeekOpenDragged(NSURL *url, NSPoint origin) {
+    id page = DPPeekHoveredPage;
+    if (DPPeekShows(page)) return DPPeekLoad(page, url);
+    if (DPPeekCanOpen(page)) DPPeekOpen(NSApp.keyWindow, url, origin, DPPeekHoveredDelegate, page);
 }
 
 static void DPInstallPeek(void) {
