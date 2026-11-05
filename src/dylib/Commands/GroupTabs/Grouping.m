@@ -1,6 +1,8 @@
 #import "GroupTabs.h"
 #import <objc/message.h>
 
+extern DPPatch DPGroupTabsMergeSubdomains;
+
 static void DPCollectPinned(NSMutableSet<NSNumber *> *sessions, NSMutableSet<NSString *> *pinnedURLs, NSMutableSet<NSString *> *openURLs) {
     id app = NSApp.delegate;
     if (![app respondsToSelector:@selector(appleScriptWindows)]) return;
@@ -93,7 +95,9 @@ void DPGroupTabsOnce(void) {
     for (id contents in DPTrackedContents(browser)) {
         long long sid = DPSessionOf(contents);
         NSString *url = DPText(DPMsg(contents, @selector(url)));
+        // Merge Subdomains uses the registrable site. Off, the full host stays the group.
         NSString *domain = DPDomainKey(url);
+        if (domain && DPGroupTabsMergeSubdomains.on) domain = DPRegistrableDomain(domain);
         if (sid <= 0 || !domain || DPPinned(sid, url, pinnedSessions, pinnedURLs, openURLs)) continue;
         [tabs addObject:@{@"session": @(sid), @"domain": domain, @"url": url}];
     }
