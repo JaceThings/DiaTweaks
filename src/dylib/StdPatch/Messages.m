@@ -1,4 +1,4 @@
-#import "GroupTabs.h"
+#import "StdPatch/StdPatch.h"
 #import <objc/message.h>
 
 long long DPLongID(id value) {

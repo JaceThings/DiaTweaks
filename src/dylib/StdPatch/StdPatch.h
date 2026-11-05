@@ -60,6 +60,8 @@ NSString *DPAppSupport(NSString *path);
 NSString *DPRelayProblem(void);  // nil if diapatch and the original Dia it starts are in place.
 NSString *DPHostProblem(NSString *manifest, NSString *name);  // nil if the native host manifest at that path sends `name` to diapatch.
 extern NSNotificationName const DPPatchesDidChangeNotification;
+// YES under make test: a patch with effects outside Dia's windows (the network, the user's tabs) skips them.
+extern BOOL DPTesting;
 
 #pragma mark Hooks
 
@@ -105,6 +107,21 @@ void DPSet(id object, const void *key, id value);
 // DPDiaValue returns Dia's remembered value while `current` is still ours, else `current`.
 void DPOverride(id object, const void *key, id dia, id ours);
 id DPDiaValue(id object, const void *key, id current);
+
+#pragma mark Browsers
+
+id DPCommandBrowser(void);
+id DPBrowserOfWindow(NSWindow *window);
+NSWindow *DPBrowserWindow(id browser);
+id DPGroupingDelegate(id browser);
+NSArray *DPTrackedContents(id browser);
+long long DPSessionOf(id contents);
+void DPInstallBrowserTracking(void);  // DPInstallPatches runs it before the patches' installs.
+
+long long DPLongID(id value);
+id DPMsg(id object, SEL sel);
+BOOL DPMsgBool(id object, SEL sel);
+NSString *DPText(id value);
 
 #pragma mark App
 

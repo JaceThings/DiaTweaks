@@ -1,4 +1,4 @@
-#import "GroupTabs.h"
+#import "StdPatch/StdPatch.h"
 
 static NSHashTable *DPContents, *DPBrowsers;
 static NSMapTable *DPBrowserByContents, *DPDelegateByBrowser, *DPWindowByBrowser;
@@ -70,6 +70,12 @@ id DPCommandBrowser(void) {
     return ready.count == 1 ? ready[0] : nil;
 }
 
+id DPBrowserOfWindow(NSWindow *window) {
+    for (id browser in DPBrowsers.allObjects)
+        if ([DPWindowByBrowser objectForKey:browser] == window) return browser;
+    return nil;
+}
+
 id DPGroupingDelegate(id browser) { return [DPDelegateByBrowser objectForKey:browser]; }
 
 NSArray *DPTrackedContents(id browser) {
@@ -83,7 +89,7 @@ long long DPSessionOf(id contents) {
     return sid > 0 ? sid : DPLongID(DPGet(contents, &DPSessionKey));
 }
 
-void DPInstallGroupTabs(void) {
+void DPInstallBrowserTracking(void) {
     DPContents = [NSHashTable weakObjectsHashTable];
     DPBrowsers = [NSHashTable weakObjectsHashTable];
     DPBrowserByContents = [NSMapTable weakToWeakObjectsMapTable];
@@ -96,6 +102,4 @@ void DPInstallGroupTabs(void) {
     DPHook(DPDiaBrowser, @selector(takeOwnershipOfWebContents:), (IMP)DPBrowser_takeOwnership);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didRestoreWebContents:withSessionId:), (IMP)DPBrowser_didRestore);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
-    DPInstallGroupMenus();
-    DPInstallGroupTabsShortcut();
 }

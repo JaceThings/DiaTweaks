@@ -19,5 +19,6 @@ __attribute__((constructor)) static void DPInit(void) {
 
     NSString *report = NSProcessInfo.processInfo.environment[@"DIAPATCH_TEST"];
     unsetenv("DIAPATCH_TEST");  // A relaunched Dia would inherit it and test again.
+    DPTesting = report != nil;
     if (report) DPRunTests(report);
 }

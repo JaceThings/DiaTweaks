@@ -30,7 +30,7 @@ build/patches.json: build/DiaPatches.dylib build/diapatch
 build:
 	mkdir -p $@
 
-GROUP_TABS := $(addprefix src/dylib/Commands/GroupTabs/,Plan.m Title.m Registrable.m Messages.m)
+GROUP_TABS := $(addprefix src/dylib/Commands/GroupTabs/,Plan.m Title.m Registrable.m) src/dylib/StdPatch/Messages.m
 
 build/group-tabs: tests/group-tabs.m $(GROUP_TABS) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $^

@@ -163,6 +163,11 @@ void DPInstallGroupMenus(void) {
     DPOnLaunch(^{ DPInstallMenuBarItem(); });
 }
 
+static void DPInstallGroupTabs(void) {
+    DPInstallGroupMenus();
+    DPInstallGroupTabsShortcut();
+}
+
 static void DPApplyGroupTabs(DPPatch *patch) {
     for (NSMenuItem *top in NSApp.mainMenu.itemArray) {
         [top.submenu itemWithTag:DPGroupMenuTag].hidden = !patch->on;

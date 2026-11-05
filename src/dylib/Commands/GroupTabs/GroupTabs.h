@@ -1,18 +1,5 @@
 #import "StdPatch/StdPatch.h"
 
-void DPInstallGroupTabs(void);
-
-id DPCommandBrowser(void);
-NSWindow *DPBrowserWindow(id browser);
-id DPGroupingDelegate(id browser);
-NSArray *DPTrackedContents(id browser);
-long long DPSessionOf(id contents);
-
-long long DPLongID(id value);
-id DPMsg(id object, SEL sel);
-BOOL DPMsgBool(id object, SEL sel);
-NSString *DPText(id value);
-
 NSString *DPDomainKey(NSString *urlString);
 NSString *DPGroupTitle(NSString *domain);
 NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups);

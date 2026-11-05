@@ -10,6 +10,7 @@ static const CFTimeInterval DPAnimationDuration = 0.25;
 DPPatch *const *DPPatches;
 NSUInteger DPPatchCount;
 static NSUserDefaults *DPDefaults;
+BOOL DPTesting;
 
 NSNotificationName const DPPatchesDidChangeNotification = @"DPPatchesDidChange";
 
@@ -158,6 +159,7 @@ static void DPApplySavedSettings(void) {
 }
 
 void DPInstallPatches(void) {
+    DPInstallBrowserTracking();
     for (NSUInteger i = 0; i < DPPatchCount; i++) if (!DPPatches[i]->unavailable && DPPatches[i]->install) DPPatches[i]->install();
     DPOnLaunch(^{
         for (NSUInteger i = 0; i < DPPatchCount; i++) if (DPPatches[i]->on && DPPatches[i]->ready) DPEnsureReady(DPPatches[i]);
