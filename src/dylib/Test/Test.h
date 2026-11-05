@@ -3,3 +3,7 @@
 void DPRunTests(NSString *reportPath);
 NSMutableArray<NSArray<NSString *> *> *DPScenarios(void);  // [name, one '0' or '1' per patch]
 NSString *DPBits(const int8_t *state);
+NSArray<NSArray<NSString *> *> *DPProfileIconScenarios(NSString *savedBits);
+void DPApplyProfileIconTestCase(NSString *name);
+NSString *DPVerifyProfileIconTestCase(void);
+NSString *DPVerifyProfileIconPicker(void);

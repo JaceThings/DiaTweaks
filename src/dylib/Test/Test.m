@@ -20,6 +20,7 @@ static void DPWriteReport(NSArray<NSDictionary *> *results, NSString *path) {
 
 static void DPRunScenario(NSArray<NSArray<NSString *> *> *scenarios, NSUInteger index, NSMutableArray<NSDictionary *> *results, NSString *path) {
     if (index == scenarios.count) return DPWriteReport(results, path);
+    DPApplyProfileIconTestCase(scenarios[index].count > 2 ? scenarios[index][2] : nil);
     NSString *bits = scenarios[index][1];
     for (NSUInteger i = 0; i < DPPatchCount; i++) DPSetPatch(DPPatches[i], [bits characterAtIndex:i] == '1', NO);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(DPSettleSeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -32,6 +33,8 @@ static void DPRunScenario(NSArray<NSArray<NSString *> *> *scenarios, NSUInteger 
             if (!problem && !patch->on && !patch->unavailable && [bits characterAtIndex:i] == '1') problem = @"couldn't turn on";
             if (problem) failures[patch->key] = problem;
         }
+        NSString *profileProblem = DPVerifyProfileIconTestCase();
+        if (profileProblem && !failures[@"profileEmoji"]) failures[@"profileEmoji"] = profileProblem;
         [results addObject:@{@"name": scenarios[index][0], @"states": states, @"failures": failures}];
         DPRunScenario(scenarios, index + 1, results, path);
     });
@@ -48,7 +51,9 @@ void DPRunTests(NSString *path) {
             NSMutableArray<NSArray<NSString *> *> *scenarios = DPScenarios();
             int8_t saved[DPPatchCount];
             for (NSUInteger i = 0; i < DPPatchCount; i++) saved[i] = DPSavedOn(DPPatches[i]);
-            [scenarios addObject:@[@"saved settings", DPBits(saved)]];
+            NSString *savedBits = DPBits(saved);
+            [scenarios addObjectsFromArray:DPProfileIconScenarios(savedBits)];
+            [scenarios addObject:@[@"saved settings", savedBits]];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 DPRunScenario(scenarios, 0, [NSMutableArray new], path);
             });

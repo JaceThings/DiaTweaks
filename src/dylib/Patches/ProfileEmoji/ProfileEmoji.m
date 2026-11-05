@@ -1,16 +1,9 @@
-#import "StdPatch/StdPatch.h"
+#import "ProfileIcons.h"
 
-extern DPPatch DPProfileEmoji;
-
-static NSString *const DPEmojisKey = @"profileEmojis";
 // The gap is between what's drawn, so emoji and dots sit the same distance apart in any mix.
 static const CGFloat DPSidebarEmojiSize = 13.5, DPSidebarEmojiWidth = 16, DPSidebarDotWidth = 6, DPSidebarGap = 10;
-static NSUserDefaults *DPEmojiDefaults;
-static char DPLabelKey, DPFieldKey;
-
-static NSString *DPEmoji(NSString *spaceID) {
-    return DPProfileEmoji.on && spaceID ? [DPEmojiDefaults dictionaryForKey:DPEmojisKey][spaceID] : nil;
-}
+static const CGFloat DPSidebarSymbolSize = 16, DPSidebarSymbolWidth = 32;
+static char DPLabelKey;
 
 // Keys are Swift SpaceIDs, which describe themselves as the ID.
 static NSString *DPSpaceIDOf(NSView *view, NSDictionary *views) {
@@ -18,39 +11,59 @@ static NSString *DPSpaceIDOf(NSView *view, NSDictionary *views) {
     return nil;
 }
 
-static void DPShowEmoji(NSView *host, NSView *dot, NSString *emoji, CGFloat size, CGFloat alpha) {
-    NSTextField *label = DPGet(host, &DPLabelKey);
-    if (!emoji) {
-        if (!label) return;
+static void DPShowIcon(NSView *host, NSView *dot, NSString *spaceID, CGFloat size, CGFloat alpha) {
+    NSImage *image = DPProfileEmoji.on ? DPProfileSymbolImage(DPProfileSymbolName(spaceID), size) : nil;
+    NSString *emoji = DPProfileEmoji.on ? DPProfileEmojiValue(spaceID) : nil;
+    NSView *icon = DPGet(host, &DPLabelKey);
+    if (!image && !emoji) {
+        if (!icon) return;
         dot.hidden = NO;
-        [label removeFromSuperview];
+        [icon removeFromSuperview];
         DPSet(host, &DPLabelKey, nil);
         return;
     }
     dot.hidden = YES;
-    if (!label) {
-        label = [NSTextField labelWithString:@""];
-        label.alignment = NSTextAlignmentCenter;
-        [host addSubview:label];
-        DPSet(host, &DPLabelKey, label);
+    if (icon && [icon isKindOfClass:NSImageView.class] != (image != nil)) {
+        [icon removeFromSuperview];
+        icon = nil;
     }
-    label.stringValue = emoji;
-    label.font = [NSFont systemFontOfSize:size];
-    label.alphaValue = alpha;
-    [label sizeToFit];
-    label.frame = (NSRect){ { NSMidX(host.bounds) - label.frame.size.width / 2, NSMidY(host.bounds) - label.frame.size.height / 2 }, label.frame.size };
+    if (!icon) {
+        icon = image ? [NSImageView new] : [NSTextField labelWithString:@""];
+        icon.identifier = @"diatweaks.profileIcon";
+        [host addSubview:icon];
+        DPSet(host, &DPLabelKey, icon);
+    }
+    if (image) {
+        NSImageView *view = (NSImageView *)icon;
+        view.image = image;
+        view.contentTintColor = NSColor.labelColor;
+        view.imageScaling = NSImageScaleProportionallyDown;
+        view.frame = NSMakeRect(0, 0, size, size);
+    } else {
+        NSTextField *label = (NSTextField *)icon;
+        label.stringValue = emoji;
+        label.font = [NSFont systemFontOfSize:size];
+        label.alignment = NSTextAlignmentCenter;
+        [label sizeToFit];
+    }
+    icon.alphaValue = alpha;
+    icon.frame = (NSRect){ { NSMidX(host.bounds) - NSWidth(icon.frame) / 2, NSMidY(host.bounds) - NSHeight(icon.frame) / 2 }, icon.frame.size };
+    if (image) icon.frame = [host backingAlignedRect:icon.frame options:NSAlignAllEdgesNearest];
 }
 
 static void DPShowSidebarItem(NSView *item) {
-    NSString *emoji = DPEmoji(DPSpaceIDOf(item, DPSwiftValue(item.superview, @"itemViews")));
+    NSString *spaceID = DPSpaceIDOf(item, DPSwiftValue(item.superview, @"itemViews"));
     BOOL selected = [DPSwiftValue(item, @"isSelected") boolValue];
     NSView *dot = DPSwiftValue(item, @"$__lazy_storage_$_dotView");
     [dot setFrameOrigin:NSMakePoint(round(NSMidX(item.bounds) - NSWidth(dot.frame) / 2), NSMinY(dot.frame))];
-    DPShowEmoji(item, dot, emoji, DPSidebarEmojiSize, selected ? 1 : 0.45);
+    CGFloat size = DPProfilePreferredSymbolName(DPProfileSymbolName(spaceID)) ? DPSidebarSymbolSize : DPSidebarEmojiSize;
+    DPShowIcon(item, dot, spaceID, size, selected ? 1 : 0.45);
 }
 
 static CGFloat DPSidebarItemWidth(NSView *item, NSDictionary *views) {
-    return (DPEmoji(DPSpaceIDOf(item, views)) ? DPSidebarEmojiWidth : DPSidebarDotWidth) + DPSidebarGap;
+    NSString *spaceID = DPSpaceIDOf(item, views);
+    if (DPProfileEmoji.on && DPProfilePreferredSymbolName(DPProfileSymbolName(spaceID))) return DPSidebarSymbolWidth;
+    return (DPProfileHasIcon(spaceID) ? DPSidebarEmojiWidth : DPSidebarDotWidth) + DPSidebarGap;
 }
 
 // Dia packs items 12 points apart, which crowds emoji, so each item gets its own width and the row stays centered.
@@ -58,9 +71,9 @@ static CGFloat DPSidebarItemWidth(NSView *item, NSDictionary *views) {
 static void DPSidebarItem_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     NSView *switcher = self.superview;
     NSDictionary *views = DPSwiftValue(switcher, @"itemViews");
-    BOOL anyEmoji = NO;
-    for (id key in views) anyEmoji = anyEmoji || DPEmoji([key description]);
-    if (anyEmoji && NSWidth(frame) > 0 && NSWidth(frame) < DPSidebarDotWidth + DPSidebarGap) {
+    BOOL anyIcon = NO;
+    for (id key in views) anyIcon = anyIcon || DPProfileHasIcon([key description]);
+    if (anyIcon && NSWidth(frame) > 0 && NSWidth(frame) < DPSidebarDotWidth + DPSidebarGap) {
         CGFloat middle = NSMidX(switcher.bounds);
         NSInteger index = lround((NSMinX(frame) - (middle - views.count * NSWidth(frame) / 2)) / NSWidth(frame));
         NSMutableArray<NSView *> *row = [[views.allValues filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"self != %@", self]] mutableCopy];
@@ -87,81 +100,73 @@ static void DPSidebarItem_updateLayer(NSView *self, SEL _cmd) {
     DPShowSidebarItem(self);
 }
 
-static void DPTopDot_layout(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPTopDot_layout, self);
+static void DPShowTopItem(NSView *self) {
     NSView *indicator = self.superview;
     NSString *spaceID = DPSpaceIDOf(self, DPSwiftValue(indicator, @"dotViews"));
     BOOL focused = [[DPSwiftValue(indicator, @"focusedSpaceID") description] isEqual:spaceID];
-    DPShowEmoji(self, self.subviews.firstObject, DPEmoji(spaceID), 8, focused ? 1 : 0.45);
+    CGFloat size = DPProfilePreferredSymbolName(DPProfileSymbolName(spaceID)) ? 10 : 8;
+    DPShowIcon(self, self.subviews.firstObject, spaceID, size, focused ? 1 : 0.45);
+}
+
+static void DPTopDot_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPTopDot_layout, self);
+    DPShowTopItem(self);
+}
+
+static void DPTopDot_updateLayer(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPTopDot_updateLayer, self);
+    DPShowTopItem(self);
+}
+
+void DPRefreshProfileIcons(void) {
+    for (NSString *name in @[ @DPDiaSpaceSwitcher, @DPDiaSpaceSwitcherItem, @DPDiaPageIndicatorDot ])
+        for (NSView *view in DPFindViews(name.UTF8String)) view.needsLayout = YES;
+    DPUpdateProfilePanes();
 }
 
 static void DPRefresh(DPPatch *patch) {
-    for (NSString *name in @[ @DPDiaSpaceSwitcher, @DPDiaSpaceSwitcherItem, @DPDiaPageIndicatorDot ])
-        for (NSView *view in DPFindViews(name.UTF8String)) view.needsLayout = YES;
-}
-
-@interface DPEmojiField : NSTextField <NSTextFieldDelegate>
-@property(copy) NSString *spaceID;
-@end
-
-@implementation DPEmojiField
-- (BOOL)becomeFirstResponder {
-    BOOL became = [super becomeFirstResponder];
-    if (became) dispatch_async(dispatch_get_main_queue(), ^{ [NSApp orderFrontCharacterPalette:self]; });
-    return became;
-}
-
-- (void)controlTextDidChange:(NSNotification *)note {
-    __block NSString *last = @"";
-    [self.stringValue enumerateSubstringsInRange:NSMakeRange(0, self.stringValue.length) options:NSStringEnumerationByComposedCharacterSequences
-                                      usingBlock:^(NSString *character, NSRange _, NSRange __, BOOL *___) { last = character; }];
-    last = [last stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (![self.stringValue isEqual:last]) self.stringValue = last;
-    NSMutableDictionary *emoji = [[DPEmojiDefaults dictionaryForKey:DPEmojisKey] mutableCopy] ?: [NSMutableDictionary dictionary];
-    emoji[self.spaceID] = last.length ? last : nil;
-    [DPEmojiDefaults setObject:emoji forKey:DPEmojisKey];
-    DPRefresh(&DPProfileEmoji);
-}
-@end
-
-static void DPAddEmojiRow(NSViewController *pane) {
-    NSView *group = DPFindView(pane.view, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaSettingsFormGroup); });
-    NSStackView *rows = (NSStackView *)DPSubview(group, "NSStackView");
-    NSTextField *title = (NSTextField *)DPFindView(rows.arrangedSubviews.firstObject, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextField.class]; });
-    NSString *spaceID = [DPSwiftValue(pane, @"spaceID") description];
-    if (!rows || !title || !spaceID || DPGet(pane, &DPFieldKey)) return;
-
-    NSTextField *label = [NSTextField labelWithString:@"Emoji"];
-    label.font = title.font;
-    label.textColor = title.textColor;
-    DPEmojiField *field = [DPEmojiField textFieldWithString:[DPEmojiDefaults dictionaryForKey:DPEmojisKey][spaceID] ?: @""];
-    field.spaceID = spaceID;
-    field.delegate = field;
-    field.alignment = NSTextAlignmentCenter;
-    field.bezelStyle = NSTextFieldRoundedBezel;
-    field.placeholderString = @"None";
-    NSView *row = [NSView new];
-    for (NSView *view in @[ label, field ]) {
-        view.translatesAutoresizingMaskIntoConstraints = NO;
-        [row addSubview:view];
-    }
-    NSBox *line = [NSBox new];
-    line.boxType = NSBoxSeparator;
-    [rows addArrangedSubview:line];
-    [rows addArrangedSubview:row];
-    [NSLayoutConstraint activateConstraints:@[
-        [row.heightAnchor constraintEqualToConstant:42], [row.widthAnchor constraintEqualToAnchor:rows.widthAnchor],
-        [line.widthAnchor constraintEqualToAnchor:rows.widthAnchor],
-        [label.leadingAnchor constraintEqualToAnchor:row.leadingAnchor], [label.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [field.trailingAnchor constraintEqualToAnchor:row.trailingAnchor], [field.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [field.widthAnchor constraintEqualToConstant:64],
-    ]];
-    DPSet(pane, &DPFieldKey, field);
+    DPRefreshProfileIcons();
 }
 
 static void DPProfilePane_viewDidLoad(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPProfilePane_viewDidLoad, self);
-    if (DPProfileEmoji.on) DPAddEmojiRow(self);
+    DPTrackProfilePane(self);
+}
+
+static NSString *DPVerifyProfileIcons(DPPatch *patch) {
+    for (NSString *className in @[ @DPDiaSpaceSwitcherItem, @DPDiaPageIndicatorDot ]) {
+        BOOL sidebar = [className isEqual:@DPDiaSpaceSwitcherItem];
+        for (NSView *host in DPFindViews(className.UTF8String)) {
+            if (host.hiddenOrHasHiddenAncestor) continue;
+            NSDictionary *views = DPSwiftValue(host.superview, sidebar ? @"itemViews" : @"dotViews");
+            NSString *spaceID = DPSpaceIDOf(host, views);
+            NSView *icon = DPGet(host, &DPLabelKey);
+            BOOL expected = DPProfileHasIcon(spaceID);
+            if (expected != (icon != nil)) return @"Profile icon visibility does not match the selection";
+            NSView *dot = sidebar ? DPSwiftValue(host, @"$__lazy_storage_$_dotView") : host.subviews.firstObject;
+            if (!dot || dot.hidden != expected) return @"Profile dot visibility does not match the selection";
+            if (!expected) continue;
+            BOOL selected = sidebar ? [DPSwiftValue(host, @"isSelected") boolValue]
+                : [[DPSwiftValue(host.superview, @"focusedSpaceID") description] isEqual:spaceID];
+            if (fabs(icon.alphaValue - (selected ? 1 : 0.45)) > 0.01) return @"Profile icon opacity is stale";
+            BOOL symbol = DPProfileSymbolImage(DPProfileSymbolName(spaceID), 13.5) != nil;
+            if (symbol != [icon isKindOfClass:NSImageView.class]) return @"Profile icon type does not match the selection";
+            CGFloat tolerance = 0.5 / host.window.backingScaleFactor + 0.01;
+            if (fabs(NSMidX(icon.frame) - NSMidX(host.bounds)) > tolerance || fabs(NSMidY(icon.frame) - NSMidY(host.bounds)) > tolerance) return @"Profile icon is not centered";
+            if (symbol) {
+                NSImageView *image = (NSImageView *)icon;
+                if (!image.image.isTemplate || ![image.contentTintColor isEqual:NSColor.labelColor]) return @"Profile symbol is not theme-adaptive monochrome";
+                CGFloat size = sidebar ? 16 : 10;
+                if (fabs(NSWidth(image.frame) - size) > 0.01 || fabs(NSHeight(image.frame) - size) > 0.01 || !NSContainsRect(host.bounds, image.frame)) return @"Profile symbol size or clipping is incorrect";
+                NSRect pixels = [host convertRectToBacking:image.frame];
+                if (fabs(NSMinX(pixels) - round(NSMinX(pixels))) > 0.01 || fabs(NSMinY(pixels) - round(NSMinY(pixels))) > 0.01) return @"Profile symbol is not pixel-aligned";
+            } else {
+                NSTextField *label = (NSTextField *)icon;
+                if (![label.stringValue isEqual:DPProfileEmojiValue(spaceID)] || label.font.pointSize != (sidebar ? 13.5 : 8)) return @"Profile emoji content or size is incorrect";
+            }
+        }
+    }
+    return nil;
 }
 
 static void DPInstallProfileEmoji(void) {
@@ -170,6 +175,7 @@ static void DPInstallProfileEmoji(void) {
     DPHook(DPDiaSpaceSwitcherItem, @selector(layout), (IMP)DPSidebarItem_layout);
     DPHook(DPDiaSpaceSwitcherItem, @selector(updateLayer), (IMP)DPSidebarItem_updateLayer);
     DPHook(DPDiaPageIndicatorDot, @selector(layout), (IMP)DPTopDot_layout);
+    DPHook(DPDiaPageIndicatorDot, @selector(updateLayer), (IMP)DPTopDot_updateLayer);
     DPHook(DPDiaProfilePane, @selector(viewDidLoad), (IMP)DPProfilePane_viewDidLoad);
 }
 
@@ -178,11 +184,12 @@ DP_PATCH(DPProfileEmoji) {
     .order = 78,
     .defaultOn = YES,
     .title = @"Profile Emoji",
-    .detail = @"Show an emoji in place of each profile’s dot in the profile switcher. Choose them in Settings › Profiles.",
+    .detail = @"Show an emoji or monochrome icon in place of each profile’s dot. Choose them in Settings › Profiles.",
     .symbol = @"emoji.face.grinning.inverse face.smiling.inverse",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaSpaceSwitcher, DPDiaSpaceSwitcherItem, DPDiaPageIndicatorDot, DPDiaProfilePane, DPDiaSettingsFormGroup),
     .install = DPInstallProfileEmoji,
     .apply = DPRefresh,
+    .verify = DPVerifyProfileIcons,
 };
