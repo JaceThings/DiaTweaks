@@ -34,12 +34,15 @@ class NewIntegrationTests(unittest.TestCase):
             self.assertIn("DPTabIntegrationListPreview", source)
             self.assertIn("context.URLString", source)
             self.assertIn("DPTabIntegrationDefaultEmptyMessage", source)
+            self.assertIn('.requires = @"extendedIntegrations"', source)
+            self.assertIn('.section = @"Websites"', source)
             custom_source = (custom / "CustomPreview.m").read_text()
             self.assertIn("DPTabIntegrationPreview", custom_source)
             self.assertNotIn("DPTabIntegrationListPreview", custom_source)
             self.assertIn("- (void)loadView", custom_source)
             self.assertIn("- (void)update", custom_source)
             self.assertIn('DPIntegrationOrigins("https://shop.example:8443")', custom_source)
+            self.assertIn('.requires = @"extendedIntegrations"', custom_source)
 
     def test_cli_root_option_and_origin_canonicalization(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

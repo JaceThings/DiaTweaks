@@ -1,6 +1,8 @@
 # Claude, Gemini and T3 Chat previews
 
-Enable each provider separately in Settings → Tabs. Hover its Dia tab to see up to three conversations from the website's sidebar, plus one separate preview pin. Whole-row clicks select the website tab before opening the conversation. Pinning affects the preview only. Titles truncate within the same compact native hover container as ChatGPT.
+Open Settings → Patches → Tabs → **Extended Integrations**. The detail page has a master switch and a **Websites** list with independent ChatGPT, Claude, Gemini and T3 Chat switches. Turning the master off pauses every integration without changing the website selections; turning it back on resumes only the selected websites. The master defaults on to preserve existing preferences on upgrade, while individual websites remain off by default. Existing per-site preference keys are unchanged.
+
+Hover a website's Dia tab to see up to three conversations from its sidebar, plus one separate preview pin. Whole-row clicks select the website tab before opening the conversation. Pinning affects the preview only. Titles truncate within the same compact native hover container as ChatGPT.
 
 These experimental adapters use the shared conversation renderer, scheduler, commands and cache policy. They collect only sidebar titles, conversation links and supported status markers; they do not read message bodies, cookies, tokens or authentication stores. No website API requests are made. Missing markup becomes unavailable rather than being treated as a confirmed empty list. Loading has a six-second limit. Claude and Gemini do not yet have a verified empty-account marker, so a blank sidebar is treated as unavailable and cannot erase scoped fallback data. T3 guest mode also checks its Login footer and sidebar busy indicator before reporting an empty list.
 

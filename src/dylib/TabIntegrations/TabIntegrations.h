@@ -20,6 +20,7 @@ extern const char *const DPTabIntegrationClasses[]; // Shared Dia dependency set
 
 BOOL DPTabIntegrationInstall(DPTabIntegration *integration);
 void DPTabIntegrationApply(DPTabIntegration *integration);
+void DPTabIntegrationApplyAll(void); // Reapply effective state after a shared parent switch changes.
 NSString *DPTabIntegrationVerify(DPTabIntegration *integration);
 
 NSString *DPTabIntegrationURLString(id value);

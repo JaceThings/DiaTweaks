@@ -1,6 +1,6 @@
 # ChatGPT tab preview
 
-An experimental, off-by-default patch for `chatgpt.com`. Enable **ChatGPT Tab Preview** in Settings → Patches → Tabs, or run `diatweaks enable chatgptPreview` after installing a build containing it.
+An experimental, off-by-default patch for `chatgpt.com`. Open Settings → Patches → Tabs → **Extended Integrations**, then enable **ChatGPT** in the Websites list. The master switch must also be on. The existing `diatweaks enable chatgptPreview` command and saved preference key are unchanged.
 
 The adapter maps its validated metadata into the shared optional list components. Refresh observation, loading deadlines and native transport live in the common integration layer; the existing website collector still owns ChatGPT's account and pin semantics. Other providers can use these components, replace individual rows or provide a fully custom view; see the [integration guide](tab-integrations.md).
 

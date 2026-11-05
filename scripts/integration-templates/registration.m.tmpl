@@ -24,7 +24,8 @@ DP_PATCH(DP@@NAME@@) {
     .title = @"@@NAME@@ Tab Integration",
     .detail = @"@@DETAIL@@",
     .symbol = @"globe",
-    .section = @"Tabs",
+    .section = @"Websites",
+    .requires = @"extendedIntegrations",
     .classes = DPTabIntegrationClasses,
     .install = install, .apply = apply, .verify = verify,
 };

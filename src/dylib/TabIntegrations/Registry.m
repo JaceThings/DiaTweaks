@@ -5,7 +5,12 @@
 static NSMutableArray<NSValue *> *DPIntegrations;
 
 NSArray<NSValue *> *DPRegisteredTabIntegrations(void) { return DPIntegrations.copy ?: @[]; }
-BOOL DPTabIntegrationEnabled(DPTabIntegration *site) { return site && site->patch && site->patch->on && !site->patch->unavailable; }
+BOOL DPTabIntegrationEnabled(DPTabIntegration *site) {
+    if (!site || !site->patch) return NO;
+    for (DPPatch *patch = site->patch; patch; patch = DPRequired(patch))
+        if (!patch->on || patch->unavailable) return NO;
+    return YES;
+}
 
 DPTabIntegration *DPTabIntegrationForURL(id value) {
     DPTabIntegration *match = NULL;
@@ -45,6 +50,15 @@ BOOL DPTabIntegrationInstall(DPTabIntegration *site) {
 
 void DPTabIntegrationApply(DPTabIntegration *site) {
     if (!DPTabIntegrationEnabled(site)) DPTabIntegrationClearCaches(site);
+    DPApplyIntegrationHover();
+    DPApplyIntegrationPages();
+}
+
+void DPTabIntegrationApplyAll(void) {
+    for (NSValue *entry in DPRegisteredTabIntegrations()) {
+        DPTabIntegration *site = entry.pointerValue;
+        if (!DPTabIntegrationEnabled(site)) DPTabIntegrationClearCaches(site);
+    }
     DPApplyIntegrationHover();
     DPApplyIntegrationPages();
 }

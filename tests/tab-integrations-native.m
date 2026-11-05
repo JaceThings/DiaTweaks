@@ -24,6 +24,8 @@
 @end
 
 BOOL DPIntegrationHostAvailable(void) { return YES; }
+static DPPatch fixtureParent = {.key=@"extendedIntegrations", .on=YES};
+DPPatch *DPRequired(DPPatch *patch) { return [patch->requires isEqual:fixtureParent.key] ? &fixtureParent : NULL; }
 void DPInstallIntegrationHover(void) {}
 void DPApplyIntegrationHover(void) {}
 NSString *DPVerifyIntegrationHover(DPTabIntegration *site) { return nil; }
@@ -187,6 +189,32 @@ int main(void) { @autoreleasepool {
     DPRememberIntegrationPage(timed, replacementBrowser);
     complete(timed, @{@"fromOldBrowser":@YES});
     NSCAssert(!pending.snapshot, @"ownership changes invalidate callbacks as well as cache");
+    patchB.on = YES; DPTabIntegrationApply(&b);
+    patchA.requires = fixtureParent.key;
+    DPFixtureContents *grouped = [DPFixtureContents new]; grouped.url = [NSURL URLWithString:@"https://a.example/grouped"];
+    DPRememberIntegrationPage(grouped, browser);
+    DPTabIntegrationPage *groupedPage = DPTabIntegrationPageForURL(&a, nil, grouped.url);
+    DPTabIntegrationRead(groupedPage); complete(grouped, @{@"owner":@"grouped"});
+    DPTabIntegrationCache *groupedCache = DPTabIntegrationCacheForPage(groupedPage);
+    [groupedCache observeValue:@{@"rows":@[]} scope:@"account:grouped" receivedAt:NSDate.timeIntervalSinceReferenceDate];
+    DPTabIntegrationRead(groupedPage);
+    fixtureParent.on = NO; DPTabIntegrationApplyAll();
+    NSCAssert(patchA.on && !DPTabIntegrationEnabled(&a), @"master off preserves the child's selection while pausing its effective state");
+    NSCAssert(!DPTabIntegrationForURL(grouped.url) && DPTabIntegrationForURL(cb.url) == &b, @"parent gating does not affect unrelated integrations");
+    NSCAssert(!groupedCache.value && !groupedPage.snapshot && !DPTabIntegrationPages(&a, nil).count, @"master off clears dependent caches and page data");
+    complete(grouped, @{@"owner":@"late grouped"});
+    NSCAssert(!groupedPage.snapshot, @"in-flight results cannot revive a provider while its master is off");
+    [grouped.callbacks removeAllObjects];
+    fixtureParent.on = YES; DPTabIntegrationApplyAll();
+    groupedPage = DPTabIntegrationPageForURL(&a, nil, grouped.url);
+    DPTabIntegrationRead(groupedPage); complete(grouped, @{@"owner":@"resumed"});
+    NSCAssert([groupedPage.snapshot[@"owner"] isEqual:@"resumed"] && DPTabIntegrationEnabled(&a), @"master on resumes the previously enabled website");
+    fixtureParent.on = NO; DPTabIntegrationApplyAll();
+    patchA.on = NO; fixtureParent.on = YES; DPTabIntegrationApplyAll();
+    NSCAssert(!patchA.on && !DPTabIntegrationForURL(grouped.url), @"master on does not enable a website the user disabled");
+    patchA.on = YES; fixtureParent.unavailable = YES;
+    NSCAssert(!DPTabIntegrationEnabled(&a), @"an unavailable parent also disables dependent providers");
+    fixtureParent.unavailable = NO; patchA.requires = nil;
     patchA.on = patchB.on = NO; DPTabIntegrationApply(&a);
     NSDictionary *scripts = @{@"poll":poll, @"install":install, @"command":command, @"dispose":dispose, @"payload":payload};
     [[NSJSONSerialization dataWithJSONObject:scripts options:0 error:nil] writeToFile:@"build/integration-protocol-scripts.json" atomically:YES];

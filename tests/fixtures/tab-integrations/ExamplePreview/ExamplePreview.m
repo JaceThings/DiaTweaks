@@ -52,7 +52,8 @@ DP_PATCH(DPExamplePreview) {
     .title = @"Example Tab Preview",
     .detail = @"Show example.com’s page title in a tab preview.",
     .symbol = @"globe",
-    .section = @"Tabs",
+    .section = @"Websites",
+    .requires = @"extendedIntegrations",
     .classes = DPTabIntegrationClasses,
     .install = install, .apply = apply, .verify = verify,
 };

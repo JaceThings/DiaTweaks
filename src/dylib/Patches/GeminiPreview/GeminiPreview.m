@@ -26,8 +26,9 @@ static void apply(DPPatch *patch) { DPTabIntegrationApply(&site); }
 static NSString *verify(DPPatch *patch) { return DPTabIntegrationVerify(&site); }
 DP_PATCH(DPGeminiPreview) {
     .key = @"geminiPreview", .order = 77,
-    .title = @"Gemini Tab Preview",
+    .title = @"Gemini",
     .detail = @"Show recent Gemini conversations when hovering a tab, with a separate preview pin and conversation shortcuts. Experimental; live activity and unread status are not yet supported.",
-    .symbol = @"sparkles", .tint = @"systemBlueColor", .section = @"Tabs",
+    .symbol = @"sparkles", .tint = @"systemBlueColor", .section = @"Websites",
+    .requires = @"extendedIntegrations",
     .classes = DPTabIntegrationClasses, .install = install, .apply = apply, .verify = verify,
 };
