@@ -14,7 +14,7 @@ static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey =
 @property(strong) NSArray<NSView *> *shownShadows;
 @property(strong) NSTimer *watch;
 @property(copy) NSString *startURL;
-@property CGFloat collapsedHeight;
+@property CGFloat collapsedHeight, collapsedWidth;
 @property CFTimeInterval sizedAt;
 @property BOOL picked, overBlank;
 @end
@@ -210,8 +210,11 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 // ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
 - (NSRect)frameForPanelSize:(NSSize)size {
     if (!DPIsKind(self.page, DPDiaPopover)) {
-        if (!self.collapsedHeight) {  // From the bar, since a tweak may clip the panel.
-            NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
+        // From the bar, since a tweak may clip the panel. A bar restored at launch is first laid out a few points wide and
+        // too tall, so its height counts once it has its real width.
+        NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
+        if (!self.collapsedHeight || NSWidth(bar.frame) != self.collapsedWidth) {
+            self.collapsedWidth = NSWidth(bar.frame);
             self.collapsedHeight = NSHeight(bar.frame) - DPSuggestionsHeight(self.panel);
         }
         return DPBarFrame(self, size, self.collapsedHeight);
