@@ -73,6 +73,7 @@
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
+#define DPDiaHoverableControl   "_TtC5ARCUI16HoverableControl"  // Dia's toolbar buttons that take a closure.
 #define DPDiaPersonalizeButton  "_TtC22AssistantPersonalityUI17PersonalizeButton"
 #define DPDiaNewTabLogo         "_TtC15Personalization13DiaIconButton"
 #define DPDiaNewTabLogoParticles "_TtC7PowerUp16LogoParticleView"

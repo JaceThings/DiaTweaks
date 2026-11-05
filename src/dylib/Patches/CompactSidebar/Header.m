@@ -89,8 +89,12 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     }
     NSView *host = DPHostOf(self);
     CGFloat alpha = DPStripPresent(self.window) && !DPStripExpanded(host) ? 0 : 1;
-    NSView *profile = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaProfileIndicator); });
-    if (profile.alphaValue != alpha) profile.alphaValue = alpha;
+    // The profile switcher and the downloads button beside the window buttons would land on the toolbar's own buttons;
+    // they show once the sidebar opens.
+    for (const char *const *kind = DPClasses(DPDiaProfileIndicator, DPDiaDownloadsButton); *kind; kind++) {
+        NSView *view = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, *kind); });
+        if (view && view.alphaValue != alpha) view.alphaValue = alpha;
+    }
 }
 
 // Over the toolbar, the window buttons take clicks and the toolbar gets the rest, until the sidebar opens over it. The
