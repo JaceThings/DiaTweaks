@@ -2,6 +2,10 @@
 
 Run `make test-integrations test-chatgpt` on Apple Silicon macOS. This checks generated list/custom adapters, the opt-in JavaScript runtime with synthetic mail/order/summary data, script packaging, origin routing, account/cache isolation, late callbacks, shared observation cancellation, and ChatGPT's existing collector. It does not install or relaunch Dia.
 
+The optional conversation runtime checks use synthetic records to exercise URL validation, preview-only pins, identity changes, blocked storage and unknown activity. The Claude, Gemini and T3 collector checks model observed sidebar structures with synthetic titles, IDs and account labels. See [live coverage and remaining gaps](../docs/conversation-previews.md); the tests do not establish support for unobserved site states.
+
+`tab-integrations-navigation.m` runs the production navigation and backend code against a scripting tab whose URL setter intentionally does nothing. It requires the selected destination to reach the real backing-page transport after immediate or deferred focus, and checks window isolation, stale metadata, foreign origins, unavailable backing pages and disable cancellation. A live check is still needed to confirm the installed Dia navigation API.
+
 `make integration NAME=ExamplePreview ORIGIN=https://example.com` generates a starter adapter and its synthetic page/collector check. Add `CUSTOM=1` for a fully custom AppKit view. Replace the synthetic fixture and collector assertions with a minimized, anonymized example of the supported website markup as the adapter develops; do not use live account data in fixtures. See [the integration guide](../docs/tab-integrations.md).
 
 # Toolbar and restyle performance

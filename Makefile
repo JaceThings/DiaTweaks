@@ -24,7 +24,7 @@ build/diapatch: $(wildcard src/diapatch/*.[hm]) | build
 build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
-build/integration-scripts.json: scripts/build-integration-scripts.py $(INTEGRATIONS)/AdapterRuntime.js $(INTEGRATION_INPUTS) $(INTEGRATION_DIRS) | build
+build/integration-scripts.json: scripts/build-integration-scripts.py $(INTEGRATIONS)/AdapterRuntime.js $(INTEGRATIONS)/ConversationRuntime.js $(INTEGRATION_INPUTS) $(INTEGRATION_DIRS) | build
 	python3 scripts/build-integration-scripts.py $@
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) build/integration-scripts.json | build
@@ -55,16 +55,25 @@ test-integrations: | build
 	python3 -B -m unittest discover -s tests -p 'test_integration_scripts.py'
 	python3 -B -m unittest discover -s tests -p 'test_new_integration.py'
 	node tests/tab-integration-runtime.test.js
+	node tests/conversation-runtime.test.js
+	node tests/claude-preview-collector.test.js
+	node tests/gemini-preview-collector.test.js
+	node tests/t3-preview-collector.test.js
+	clang $(CFLAGS) -Isrc/dylib -fsyntax-only $(foreach name,ClaudePreview GeminiPreview T3Preview,src/dylib/Patches/$(name)/$(name).m)
 	clang $(CFLAGS) -Isrc/dylib -fsyntax-only tests/fixtures/tab-integrations/ExamplePreview/ExamplePreview.m
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-native.m $(foreach file,Registry Data Pages PageHooks Bridge ScriptBuilders Selection Cache Backend Scheduler Context RefreshPolicy,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-native
 	build/tab-integrations-native
 	node tests/tab-integrations-protocol.test.js
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-navigation.m $(foreach file,Navigation Backend Data,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-navigation
+	build/tab-integrations-navigation
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-cache.m $(INTEGRATIONS)/Cache.m -o build/tab-integrations-cache
 	build/tab-integrations-cache
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit tests/tab-integrations-context.m $(foreach file,Context Scheduler Preview Cache Data Backend,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-context
 	build/tab-integrations-context
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore tests/tab-integrations-components.m $(foreach file,Components ListRows ListRowContent ListActions ListModel ListScroll ListPreview,$(INTEGRATIONS)/$(file).m) -o build/tab-integrations-components
 	build/tab-integrations-components
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore tests/conversation-preview-native.m $(foreach file,ConversationPreview Context Scheduler Preview Cache Data Backend Components ListRows ListRowContent ListActions ListModel ListScroll ListPreview,$(INTEGRATIONS)/$(file).m) -o build/conversation-preview-native
+	build/conversation-preview-native
 
 # make patch NAME=HideFooButton starts a new patch in src/dylib/Patches/HideFooButton.
 patch:

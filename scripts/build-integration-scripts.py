@@ -11,6 +11,7 @@ from pathlib import Path
 
 DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "dylib" / "Patches"
 RUNTIME_SOURCE = Path(__file__).resolve().parents[1] / "src" / "dylib" / "TabIntegrations" / "AdapterRuntime.js"
+CONVERSATION_SOURCE = RUNTIME_SOURCE.with_name("ConversationRuntime.js")
 
 
 class BuildError(Exception):
@@ -28,6 +29,9 @@ def read_provider(folder: Path) -> str:
     runtime = config.get("runtime", False)
     if not isinstance(runtime, bool):
         raise BuildError(f"{config_path}: 'runtime' must be a boolean when present")
+    conversations = config.get("conversations", False)
+    if not isinstance(conversations, bool) or (conversations and not runtime):
+        raise BuildError(f"{config_path}: 'conversations' must be a boolean and requires runtime: true")
     scripts = config.get("scripts")
     if not isinstance(scripts, list) or not scripts:
         raise BuildError(f"{config_path}: 'scripts' must be a non-empty array of relative .js paths")
@@ -39,6 +43,11 @@ def read_provider(folder: Path) -> str:
             parts.append(RUNTIME_SOURCE.read_text(encoding="utf-8"))
         except (OSError, UnicodeError) as error:
             raise BuildError(f"{RUNTIME_SOURCE}: cannot read UTF-8 integration runtime: {error}") from error
+    if conversations:
+        try:
+            parts.append(CONVERSATION_SOURCE.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError) as error:
+            raise BuildError(f"{CONVERSATION_SOURCE}: cannot read UTF-8 conversation runtime: {error}") from error
     for name in scripts:
         if not isinstance(name, str) or not name or "\\" in name:
             raise BuildError(f"{config_path}: script paths must be non-empty relative paths")

@@ -77,6 +77,23 @@ class IntegrationScriptBuilderTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("'runtime' must be a boolean", result.stderr)
 
+    def test_conversation_helper_is_opt_in_and_precedes_provider(self):
+        self.provider("Chats", {"runtime": True, "conversations": True, "scripts": ["Collector.js"]}, {"Collector.js": "adapter()"})
+        result = self.run_builder()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        source = json.loads(self.output.read_text(encoding="utf-8"))["Chats"]
+        self.assertEqual(source, RUNTIME.read_text(encoding="utf-8") + "\n;\n" + RUNTIME.with_name("ConversationRuntime.js").read_text(encoding="utf-8") + "\n;\nadapter()")
+
+    def test_conversation_option_rejects_wrong_type_and_missing_runtime(self):
+        for config in [{"conversations": True}, {"runtime": True, "conversations": "true"}]:
+            with self.subTest(config=config):
+                self.provider("BadConversations", dict(config, scripts=["Collector.js"]), {"Collector.js": "adapter()"})
+                result = self.run_builder()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("'conversations'", result.stderr)
+                for file in (self.root / "BadConversations").iterdir(): file.unlink()
+                (self.root / "BadConversations").rmdir()
+
     def test_rejects_malformed_configs_and_missing_files(self):
         invalid_configs = [[], {"scripts": "State.js"}, {"scripts": []}, {"other": []}]
         for index, config in enumerate(invalid_configs):

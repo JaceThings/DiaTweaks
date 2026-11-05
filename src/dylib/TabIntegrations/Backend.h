@@ -6,3 +6,4 @@ NSString *DPIntegrationContentsURL(id contents);
 NSString *DPIntegrationTabURL(id tab);
 BOOL DPIntegrationCanEvaluate(id contents);
 void DPIntegrationExecute(id contents, NSString *script, void (^completion)(NSString *result));
+BOOL DPIntegrationNavigateToURL(id contents, NSString *url);

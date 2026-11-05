@@ -29,3 +29,13 @@ void DPIntegrationExecute(id contents, NSString *script, void (^completion)(NSSt
     ((void (*)(id, SEL, id, id))objc_msgSend)(contents, @selector(executeJavascript:completion:),
         script, ^(NSString *result, BOOL _) { if (completion) completion(result); });
 }
+
+BOOL DPIntegrationNavigateToURL(id contents, NSString *url) {
+    if (![contents respondsToSelector:@selector(navigationController)]) return NO;
+    id controller = ((id (*)(id, SEL))objc_msgSend)(contents, @selector(navigationController));
+    SEL load = @selector(load:initiatorOrigin:);
+    NSURL *destination = [NSURL URLWithString:url];
+    if (!destination || ![controller respondsToSelector:load]) return NO;
+    // ArcCore's shipped navigation controller takes NSURLs; the scripting URL setter can be inert.
+    return ((id (*)(id, SEL, id, id))objc_msgSend)(controller, load, destination, nil) != nil;
+}

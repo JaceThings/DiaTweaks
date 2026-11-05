@@ -1,4 +1,5 @@
 #import "Internal.h"
+#import "Backend.h"
 #import <objc/message.h>
 
 static id DPScriptWindowWithID(NSString *identifier) {
@@ -23,7 +24,12 @@ static void DPNavigateAfterSelection(DPTabIntegration *integration, NSString *wi
                 || DPTabIntegrationForURL(currentURL) != integration
                 || !DPTabIntegrationMatchesURL(integration, url)
                 || DPTabIntegrationForURL(url) != integration) return;
-            [target setValue:url forKey:@"URL"];
+            DPTabIntegrationPage *page = DPTabIntegrationPageForTab(integration, target);
+            id contents = page.contents;
+            NSString *actualURL = DPIntegrationContentsURL(contents);
+            if (!DPTabIntegrationMatchesURL(integration, actualURL)
+                || DPTabIntegrationForURL(actualURL) != integration) return;
+            DPIntegrationNavigateToURL(contents, url);
             return;
         }
         return;
