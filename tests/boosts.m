@@ -19,6 +19,8 @@ int main(void) {
         assert([DPCleanBoost(@{})[@"enabled"] boolValue] && !DPCleanBoost(@"not a boost"));
 
         assert([DPBoostHosts(@"example.com") isEqual:(@[ @"example.com", @"www.example.com" ])]);
+        assert([DPBoostSiteName(@"en.wikipedia.org") isEqual:@"Wikipedia"] && [DPBoostSiteName(@"bbc.co.uk") isEqual:@"Bbc"]);
+        assert([DPBoostSiteName(@"x.com") isEqual:@"X"] && [DPBoostSiteName(@"github.com") isEqual:@"Github"]);
 
         // A selector can't end its rule: the picker's answer comes back through the page.
         NSArray *sneaky = @[ @{ @"selector" : @"p } body { display: none" }, @{ @"selector" : @"a /* rest" }, @{ @"selector" : @"div.ok" } ];

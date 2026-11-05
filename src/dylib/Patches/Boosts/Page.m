@@ -11,9 +11,16 @@ id DPFrontContents(void) {
     return visible;
 }
 
+// The host as Chromium has it, so a Boost's host pattern matches it: DPDomainKey turns punycode into Unicode, which
+// Effects never match. Without www., which DPBoostHosts adds back.
 NSString *DPFrontDomain(void) {
     id contents = DPFrontContents();
-    return [contents respondsToSelector:@selector(url)] ? DPDomainKey(DPText(DPMsg(contents, @selector(url)))) : nil;
+    NSURL *url = [contents respondsToSelector:@selector(url)] ? [NSURL URLWithString:DPText(DPMsg(contents, @selector(url))) ?: @""] : nil;
+    if (![@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]) return nil;
+    NSString *host = url.host.lowercaseString;
+    while ([host hasSuffix:@"."]) host = [host substringToIndex:host.length - 1];
+    if ([host hasPrefix:@"www."]) host = [host substringFromIndex:4];
+    return host.length ? host : nil;
 }
 
 // Dia hands back the script's value as JSON: a string comes back quoted.
@@ -32,15 +39,17 @@ static void DPRunScript(id contents, NSString *script, void (^done)(NSString *re
     });
 }
 
-// Like Arc's selector picker: highlight what's under the pointer, and on click name it with the steadiest parts it has
-// (an id, test id or label before class names that look generated), adding parents until it names only that element.
+// Like Arc's selector picker: highlight what's under the pointer, and on each click name it with the steadiest parts it
+// has (an id, test id or label before class names that look generated), adding parents until it names only that
+// element. It keeps going until Escape, so several things can go in one go; each click waits in __dpZaps for the poll.
 static NSString *const DPPickerScript = @"(() => {"
     "if (window.__dpZap) return;"
     "window.__dpZap = true;"
+    "window.__dpZaps = [];"
     "const box = document.createElement('div');"
     "box.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;background:rgba(255,59,48,.2);outline:2px solid #ff3b30;border-radius:4px';"
     "const hint = document.createElement('div');"
-    "hint.textContent = 'Click something to hide it \u00B7 Esc to stop';"
+    "hint.textContent = 'Click what you want to hide \u00B7 Esc when you\u2019re done';"
     "hint.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483647;pointer-events:none;"
     "font:500 13px -apple-system,system-ui,sans-serif;color:#fff;background:rgba(20,20,20,.82);padding:8px 16px;border-radius:999px';"
     "document.documentElement.append(box, hint);"
@@ -68,41 +77,53 @@ static NSString *const DPPickerScript = @"(() => {"
     "  const text = (el.getAttribute('aria-label') || el.innerText || el.alt || el.title || '').trim().replace(/\\s+/g, ' ');"
     "  return text ? `${kind} \u201C${text.length > 40 ? text.slice(0, 40) + '\u2026' : text}\u201D` : kind; };"
     "let target = null;"
+    "const clear = () => { target = null; Object.assign(box.style, { width: '0px', height: '0px' }); };"
     "const move = e => { target = e.target; const r = target.getBoundingClientRect();"
     "  Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' }); };"
     "const block = e => { e.preventDefault(); e.stopImmediatePropagation(); };"
     "const presses = ['pointerdown', 'mousedown', 'pointerup', 'mouseup'];"
-    "const finish = result => { removeEventListener('mousemove', move, true); removeEventListener('click', click, true);"
-    "  removeEventListener('keydown', key, true); presses.forEach(k => removeEventListener(k, block, true)); box.remove(); hint.remove();"
-    "  window.__dpZap = false; delete window.__dpZapStop; window.__dpZapResult = result; };"
-    "const click = e => { block(e); finish(target ? JSON.stringify({ selector: name(target), label: label(target) }) : ''); };"
-    "window.__dpZapStop = () => finish('');"
-    "const key = e => { if (e.key === 'Escape') { block(e); finish(''); } };"
-    "addEventListener('mousemove', move, true); addEventListener('click', click, true); addEventListener('keydown', key, true);"
+    "const leave = e => { if (!e.relatedTarget) clear(); };"  // Off the page, such as into the Boost popover.
+    "const finish = () => { removeEventListener('mousemove', move, true); removeEventListener('click', click, true);"
+    "  removeEventListener('mouseout', leave, true); removeEventListener('keydown', key, true);"
+    "  presses.forEach(k => removeEventListener(k, block, true)); box.remove(); hint.remove();"
+    "  window.__dpZap = false; delete window.__dpZapStop; };"
+    "const click = e => { block(e); if (!target) return;"
+    "  window.__dpZaps.push({ selector: name(target), label: label(target) }); clear(); };"  // The Boost hides it a moment later.
+    "window.__dpZapStop = finish;"
+    "const key = e => { if (e.key === 'Escape') { block(e); finish(); } };"
+    "addEventListener('mousemove', move, true); addEventListener('click', click, true); addEventListener('mouseout', leave, true);"
+    "addEventListener('keydown', key, true);"
     "presses.forEach(k => addEventListener(k, block, true));"
     "})()";
 
-// A page that navigated away has neither a result nor the picker: that ends it as if Escape.
-static NSString *const DPPollScript = @"(() => { const r = window.__dpZapResult;"
-    "if (r === undefined) return window.__dpZap ? 'dp:pending' : ''; delete window.__dpZapResult; return r; })()";
+// What was clicked since the last poll. A page that navigated away has no picker any more, which ends it as if Escape.
+static NSString *const DPPollScript = @"(() => { const zaps = window.__dpZaps || []; window.__dpZaps = [];"
+    "return JSON.stringify({ zaps, picking: !!window.__dpZap }); })()";
 
-static NSDictionary *DPZap(NSString *json) {
-    NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
-    NSDictionary *zap = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-    return [zap isKindOfClass:NSDictionary.class] && [zap[@"selector"] length] ? zap : nil;
-}
-
-static void DPPoll(id contents, int left, void (^picked)(NSDictionary *)) {
+static void DPPoll(id contents, void (^picked)(NSDictionary *), void (^done)(void)) {
+    __weak id weak = contents;
     DPRunScript(contents, DPPollScript, ^(NSString *result) {
-        if (![result isEqual:@"dp:pending"]) return picked(DPZap(result));
-        if (left <= 0) return picked(nil);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{ DPPoll(contents, left - 1, picked); });
+        NSData *data = [result dataUsingEncoding:NSUTF8StringEncoding];
+        NSDictionary *state = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        if (![state isKindOfClass:NSDictionary.class]) return done();
+        for (id zap in [state[@"zaps"] isKindOfClass:NSArray.class] ? state[@"zaps"] : @[]) picked(zap);
+        if (![state[@"picking"] boolValue]) return done();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{ DPPoll(weak, picked, done); });
     });
 }
 
-void DPPickElement(id contents, void (^picked)(NSDictionary *zap)) {
+void DPPickElements(id contents, void (^picked)(NSDictionary *zap), void (^done)(void)) {
     __weak id weak = contents;
-    DPRunScript(contents, DPPickerScript, ^(NSString *_) { DPPoll(weak, 4 * 120, picked); });  // Gives up after two minutes.
+    DPRunScript(contents, DPPickerScript, ^(NSString *_) { DPPoll(weak, picked, done); });
+}
+
+// The page's own name for its site, such as GitHub where the domain only gives Github.
+void DPPageSiteName(id contents, void (^done)(NSString *name)) {
+    NSString *script = @"((document.querySelector('meta[property=\"og:site_name\"]') || document.querySelector('meta[name=\"application-name\"]')"
+        "|| {}).content || '').trim()";
+    DPRunScript(contents, script, ^(NSString *name) {
+        if (name.length && name.length <= 60) done(name);
+    });
 }
 
 void DPStopPicking(id contents) {

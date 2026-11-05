@@ -9,6 +9,7 @@ extern DPPatch DPBoosts;
 // enabled, zaps (@[ @{ selector, label } ]), font, css, js.
 NSString *DPBoostStylesheet(NSDictionary *boost);
 NSArray<NSString *> *DPBoostHosts(NSString *domain);
+NSString *DPBoostSiteName(NSString *domain);
 BOOL DPIsBoostDomain(NSString *domain);
 NSDictionary *DPCleanBoost(id raw);  // Known fields of the right types, with defaults; nil if it isn't a dictionary.
 // A .diaboost file is JSON: { format: "diatweaks-boost", version: 1, domain, boost }.
@@ -30,8 +31,10 @@ void DPLoadFavicon(NSString *domain, CGFloat points, void (^done)(NSImage *favic
 // Page.m: the front tab.
 id DPFrontContents(void);
 NSString *DPFrontDomain(void);
-void DPPickElement(id contents, void (^picked)(NSDictionary *zap));  // @{ selector, label }, or nil after Escape.
-void DPStopPicking(id contents);  // As if Escape: `picked` gets nil.
+// Each click on the page hands `picked` @{ selector, label }, as it came from the page, until Escape or DPStopPicking.
+void DPPickElements(id contents, void (^picked)(NSDictionary *zap), void (^done)(void));
+void DPStopPicking(id contents);
+void DPPageSiteName(id contents, void (^done)(NSString *name));  // Only called if the page names itself.
 
 // Toolbar.m: the Boost button in each tab's address field.
 void DPInstallBoostButton(void);
@@ -46,6 +49,8 @@ void DPImportBoost(NSWindow *window);  // Opens the imported boost in the editor
 // Sites.m: the Options on Boosts' Settings page.
 NSArray<NSView *> *DPBoostSettingsRows(void);
 NSImageView *DPBoostFavicon(NSString *domain, CGFloat points);  // A globe until the site's favicon loads.
+NSTextField *DPBoostLabel(NSString *text);  // One line, cut short with an ellipsis rather than wrapped.
+NSAttributedString *DPBoostTitle(NSString *name, NSString *domain, NSFontWeight weight);  // Wikipedia (en.wikipedia.org)
 
 // Editor.m: a popover under the Boost button, else under the top of the front window.
 void DPShowBoostEditor(NSString *domain);

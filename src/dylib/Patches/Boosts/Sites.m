@@ -47,7 +47,9 @@
             control.identifier = domain;
             control.enabled = DPBoosts.on;
         }
-        NSStackView *row = [NSStackView stackViewWithViews:@[ DPBoostFavicon(domain, 16), DPLabel(domain, 13, NSFontWeightRegular, NSColor.labelColor) ]];
+        NSTextField *title = DPBoostLabel(@"");
+        title.attributedStringValue = DPBoostTitle(DPBoostSiteName(domain), domain, NSFontWeightRegular);
+        NSStackView *row = [NSStackView stackViewWithViews:@[ DPBoostFavicon(domain, 16), title ]];
         [row addView:delete inGravity:NSStackViewGravityTrailing];
         [row addView:toggle inGravity:NSStackViewGravityTrailing];
         [self addArrangedSubview:row];
@@ -75,6 +77,25 @@
 }
 
 @end
+
+// DPLabel wraps, and a wrapping label squeezed by its row's button grows a line per letter.
+NSTextField *DPBoostLabel(NSString *text) {
+    NSTextField *label = [NSTextField labelWithString:text];
+    label.font = [NSFont systemFontOfSize:13];
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    [label setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    return label;
+}
+
+NSAttributedString *DPBoostTitle(NSString *name, NSString *domain, NSFontWeight weight) {
+    NSMutableAttributedString *title = [[NSMutableAttributedString alloc] initWithString:name attributes:@{
+        NSFontAttributeName : [NSFont systemFontOfSize:13 weight:weight], NSForegroundColorAttributeName : NSColor.labelColor,
+    }];
+    [title appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@" (%@)", domain] attributes:@{
+        NSFontAttributeName : [NSFont systemFontOfSize:13], NSForegroundColorAttributeName : NSColor.secondaryLabelColor,
+    }]];
+    return title;
+}
 
 NSImageView *DPBoostFavicon(NSString *domain, CGFloat points) {
     NSImageView *icon = DPSymbol(@"globe", points * 0.75, NSColor.secondaryLabelColor);

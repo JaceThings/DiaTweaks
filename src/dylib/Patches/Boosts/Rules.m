@@ -17,6 +17,16 @@ NSArray<NSString *> *DPBoostHosts(NSString *domain) {
     return @[ domain, [@"www." stringByAppendingString:domain] ];
 }
 
+// A name to show until the page gives its own: the label before the public suffix, so en.wikipedia.org is Wikipedia.
+// A short second-level label is taken for part of the suffix, as in bbc.co.uk.
+NSString *DPBoostSiteName(NSString *domain) {
+    NSArray<NSString *> *labels = [domain componentsSeparatedByString:@"."];
+    if (labels.count < 2) return domain;
+    NSString *name = labels[labels.count - 2];
+    if (name.length <= 3 && labels.count > 2) name = labels[labels.count - 3];
+    return [[name substringToIndex:1].uppercaseString stringByAppendingString:[name substringFromIndex:1]];
+}
+
 static NSString *const DPBoostFormat = @"diatweaks-boost";
 
 static id DPOf(id value, Class cls) { return [value isKindOfClass:cls] ? value : nil; }

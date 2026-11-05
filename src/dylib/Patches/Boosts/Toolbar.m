@@ -1,13 +1,15 @@
 #import "Patches/Boosts/Boosts.h"
 
-// A paintbrush among the address field's own buttons, styled like them. Dia shows those while the field is hovered and
-// hides them otherwise, so the paintbrush follows the bookmark button. It's pink while the site has a Boost on.
+// A paintbrush among the address field's own buttons, styled like them: 22 points square, a 5-point radius and a faint
+// fill under the pointer. Dia shows those while the field is hovered and hides them otherwise, so the paintbrush
+// follows the bookmark button. It's pink while the site has a Boost on.
 #define DPAnchorLabels (@[ @"Bookmark this page", @"Site menu" ])
 static char DPButtonKey;
 
 @interface DPBoostButton : NSButton
 @property (nonatomic, copy) NSString *symbol;  // Set only when it changes: a new image lays the field out again.
 @property (nonatomic) BOOL hovered;
+@property (nonatomic, strong) CALayer *fill;
 @end
 
 @implementation DPBoostButton
@@ -16,14 +18,15 @@ static char DPButtonKey;
     if (!(self = [super initWithFrame:NSMakeRect(0, 0, 22, 22)])) return nil;
     self.bordered = NO;
     self.wantsLayer = YES;
-    self.layer.cornerRadius = 5;
-    self.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium];
+    self.fill = [CALayer layer];
+    self.fill.cornerRadius = 5;
+    [self.layer addSublayer:self.fill];
+    self.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightRegular];
     self.imagePosition = NSImageOnly;
     self.accessibilityLabel = @"Boost This Site";
     self.target = self;
     self.action = @selector(open:);
     [self.widthAnchor constraintEqualToConstant:22].active = YES;
-    [self.heightAnchor constraintEqualToConstant:22].active = YES;
     [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
         options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect owner:self userInfo:nil]];
     return self;
@@ -47,14 +50,18 @@ static char DPButtonKey;
 - (void)restyle {
     [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
         BOOL active = [self.symbol hasSuffix:@".fill"];
-        self.contentTintColor = active ? NSColor.systemPinkColor : self.hovered ? NSColor.labelColor : NSColor.secondaryLabelColor;
-        self.layer.backgroundColor = self.hovered ? NSColor.quaternaryLabelColor.CGColor : NSColor.clearColor.CGColor;
+        self.contentTintColor = active ? NSColor.systemPinkColor : NSColor.secondaryLabelColor;
+        self.fill.backgroundColor = self.hovered ? [NSColor.labelColor colorWithAlphaComponent:0.06].CGColor : NSColor.clearColor.CGColor;
     }];
 }
 
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    DPSetHint(self, self.window ? @"Boost This Site" : nil);  // Closes a bubble that would point at nothing.
+// The field's stack gives it its full height, where Dia's own buttons keep to 22 points, so the fill sits in the middle.
+- (void)layout {
+    [super layout];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    self.fill.frame = NSMakeRect(0, round((NSHeight(self.bounds) - 22) / 2), 22, 22);
+    [CATransaction commit];
 }
 
 - (void)setHovered:(BOOL)hovered { _hovered = hovered; [self restyle]; }
