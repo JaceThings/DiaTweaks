@@ -20,7 +20,7 @@ NSString *DPText(id value);
 NSString *DPDomainKey(NSString *urlString);
 NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups);
 
-// Registrable.m: eTLD+1 for Merge Subdomains. A short country-code rule, not the Public Suffix List.
+// Registrable.m: eTLD+1 for Merge Subdomains, from a host DPDomainKey returned. A short rule, not the Public Suffix List.
 NSString *DPRegistrableDomain(NSString *host);
 
 // Order.m: where tabs sit, so undo can put them back.
