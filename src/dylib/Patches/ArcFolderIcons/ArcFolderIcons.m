@@ -8,6 +8,11 @@ extern DPPatch DPArcFolderIcons;
 static char DPImageKey;  // On an icon view: @[Dia's image, ours]
 static char DPTintKey;   // On a window: the sidebar colour its folders were last drawn in.
 
+// Tab groups in the sidebar, then in the tab strip. Both keep their icon views and state under the same names.
+static NSArray<NSView *> *DPGroupViews(void) {
+    return [DPFindViews(DPDiaTabGroupCell) arrayByAddingObjectsFromArray:DPFindViews(DPDiaTabGroupView)];
+}
+
 // Dia's own folder: its fallback icon, or the 📁 it gives imported Arc folders. Other emoji people picked stay.
 static NSString *DPFolderState(NSView *cell) {
     NSString *state = [[[[cell safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"] description];
@@ -32,13 +37,13 @@ static void DPStyleIcon(NSView *cell) {
     }
 }
 
-static void DPGroupCell_layout(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPGroupCell_layout, self);
+static void DPGroup_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPGroup_layout, self);
     DPStyleIcon(self);
 }
 
-static void DPGroupCell_updateLayer(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPGroupCell_updateLayer, self);
+static void DPGroup_updateLayer(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPGroup_updateLayer, self);
     DPStyleIcon(self);
 }
 
@@ -54,16 +59,16 @@ static void DPGradient_setColors(CAGradientLayer *self, SEL _cmd, NSArray *color
         NSString *drawn = [NSString stringWithFormat:@"%@ %d", tint, dark];
         if (!tint || [DPGet(window, &DPTintKey) isEqual:drawn]) return;
         DPSet(window, &DPTintKey, drawn);
-        for (NSView *cell in DPFindViews(DPDiaTabGroupCell)) if (cell.window == window) DPStyleIcon(cell);
+        for (NSView *cell in DPGroupViews()) if (cell.window == window) DPStyleIcon(cell);
     });
 }
 
 static void DPApplyArcFolderIcons(DPPatch *patch) {
-    for (NSView *cell in DPFindViews(DPDiaTabGroupCell)) DPStyleIcon(cell);
+    for (NSView *cell in DPGroupViews()) DPStyleIcon(cell);
 }
 
 static NSString *DPVerifyArcFolderIcons(DPPatch *patch) {
-    for (NSView *cell in DPFindViews(DPDiaTabGroupCell)) {
+    for (NSView *cell in DPGroupViews()) {
         if (!DPFolderState(cell)) continue;
         NSView *container = [cell safeSwiftValueForKey:@"$__lazy_storage_$_iconContainerView"];
         NSImageView *icon = (NSImageView *)DPFindView(container, ^BOOL(NSView *view) { return [view isKindOfClass:NSImageView.class] && !view.hidden; });
@@ -73,8 +78,10 @@ static NSString *DPVerifyArcFolderIcons(DPPatch *patch) {
 }
 
 static void DPInstallArcFolderIcons(void) {
-    DPHook(DPDiaTabGroupCell, @selector(layout), (IMP)DPGroupCell_layout);
-    DPHook(DPDiaTabGroupCell, @selector(updateLayer), (IMP)DPGroupCell_updateLayer);
+    DPHook(DPDiaTabGroupCell, @selector(layout), (IMP)DPGroup_layout);
+    DPHook(DPDiaTabGroupCell, @selector(updateLayer), (IMP)DPGroup_updateLayer);
+    DPHook(DPDiaTabGroupView, @selector(layout), (IMP)DPGroup_layout);
+    DPHook(DPDiaTabGroupView, @selector(updateLayer), (IMP)DPGroup_updateLayer);
     DPHook("CAGradientLayer", @selector(setColors:), (IMP)DPGradient_setColors);
 }
 
