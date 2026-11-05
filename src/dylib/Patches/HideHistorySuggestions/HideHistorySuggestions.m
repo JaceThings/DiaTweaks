@@ -1,13 +1,8 @@
 #import "StdPatch/StdPatch.h"
 #import <objc/message.h>
 
-// The address field and command bar ask Chromium's autocomplete for suggestions. The ones that come from browsing history
-// are dropped from its answer; searches, open tabs and Dia's own site suggestions stay.
-
 extern DPPatch DPHideHistorySuggestions;
 
-// Chromium's history providers are HistoryQuick, HistoryURL, HistoryFuzzy and the like. Shortcuts remembers what you
-// picked before, and a past search comes back as search-history.
 static BOOL DPFromHistory(id match) {
     if ([[match valueForKey:@"hasTabMatch"] boolValue]) return NO;
     NSString *provider = [match valueForKey:@"providerType"], *type = [match valueForKey:@"matchType"];
@@ -26,7 +21,6 @@ static id DPWithoutHistory(id result) {
     return ((id (*)(id, SEL, id, id))objc_msgSend)([[result class] alloc], @selector(init:perProviderMatches:), combined, filtered);
 }
 
-// The completion runs once per provider that answers, with whether it's the last.
 static BOOL DPBrowser_autocomplete(id self, SEL _cmd, NSString *text, int cursor, BOOL prevent, BOOL fresh, id keyword, id *error, void (^completion)(id, BOOL)) {
     if (!DPHideHistorySuggestions.on || !completion) return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, prevent, fresh, keyword, error, completion);
     return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, prevent, fresh, keyword, error, ^(id result, BOOL done) {
