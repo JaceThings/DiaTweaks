@@ -19,6 +19,9 @@ static NSRect DPDiaListFrame(NSView *list) {
 static NSRect DPListFrame(NSView *list, NSRect dia) {
     NSWindow *window = list.window;
     NSView *root = list.superview, *host = DPHostIn(window), *card = DPSubview(host.superview, DPDiaContentContainer);
+    CGFloat chats = DPChatsRoom(window);  // Over the footer, for the Chats row.
+    dia.size.height = MAX(0, NSHeight(dia) - chats);
+    if (!root.isFlipped) dia.origin.y += chats;
     if (!DPStripPresent(window) || DPStripExpanded(host) || !card) return dia;
     CGFloat shown = [root convertPoint:NSMakePoint(0, DPToolbarBottom(window)) fromView:nil].y;
     NSView *frameView = window.contentView.superview;
