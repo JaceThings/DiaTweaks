@@ -31,16 +31,22 @@ body:
         - Hide Chat Button
         - Hide Personalize Button
         - Hide Sidebar Button
+        - Extensions Shortcut
         - Tidy Tabs
         - Profile Emoji
+        - Switch Profiles with ⌘1–9
         - Translucent Sidebar
         - Compact Sidebar Header
         - Hide Chats Button
         - Hide Pinned Tab Border
+        - Hide Pinned Tab Card
+        - Hide Group Background
         - Hide Recent Tabs Button
         - Don’t Open Downloads List
         - Close Tabs from Tab Switcher
         - Unload Tabs
+        - Save Page As
+        - Hide Sleeping Tabs
         - Compact Command Bar
         - Compact with Chat Usage Too
         - Open New Tabs in Command Bar
@@ -48,6 +54,7 @@ body:
         - Darken Page Behind
         - Remember What You Typed
         - Hide Upgrade Banner
+        - Hide History Suggestions
         - Hide New Tab Logo
         - Hide Skills Suggestions
         - Window Material
@@ -59,6 +66,7 @@ body:
         - Allow iCloud Passwords
         - Group Tabs by Domain
         - Peek on Shift-Click
+        - Peek from Pinned Tabs
         - Hide Link Address
         - Patches pane in Settings
         - Installing, updating or restoring
