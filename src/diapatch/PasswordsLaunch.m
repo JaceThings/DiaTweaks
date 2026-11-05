@@ -6,6 +6,7 @@
 #import <sys/socket.h>
 #import <sys/un.h>
 #import <sys/wait.h>
+#import "LaunchServices.h"
 #import "PasswordsParts.h"
 
 extern char **environ;
@@ -134,6 +135,7 @@ pid_t DPStartHelperThroughOriginal(NSString *home, int argc, const char *argv[])
     if (client >= 0 && handOver(client, argc, argv) && becameHelper(client, peer)) helper = peer;
     if (client >= 0) close(client);
     if (dia) kill(dia, SIGKILL), waitpid(dia, NULL, 0);
+    if (dia) DPForgetApp([home stringByAppendingPathComponent:@"pristine/Dia.app"]);
     [NSFileManager.defaultManager removeItemAtPath:folder error:nil];
     logLine(home, [NSString stringWithFormat:helper ? @"the original Dia started Apple's helper in %.2f s" : @"the original Dia didn't start Apple's helper (%.2f s)",
                                              -start.timeIntervalSinceNow]);

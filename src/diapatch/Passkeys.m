@@ -4,6 +4,7 @@
 #import <spawn.h>
 #import <sys/file.h>
 #import <sys/wait.h>
+#import "LaunchServices.h"
 #import "Passkeys.h"
 
 extern char **environ;
@@ -252,6 +253,7 @@ int DPRunPasskeyHost(NSString *home) {
     send(@"Browser.close", nil, nil);
     for (int i = 0; i < 50 && waitpid(pid, NULL, WNOHANG) == 0; i++) usleep(100000);
     kill(pid, SIGKILL);
+    DPForgetApp([home stringByAppendingPathComponent:@"pristine/Dia.app"]);
     writeMessage(result);
     return 0;
 }
