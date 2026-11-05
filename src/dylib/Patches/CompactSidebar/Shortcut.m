@@ -75,6 +75,29 @@ static void DPItem_performWithSender(NSMenuItem *self, SEL _cmd, id sender) {
     DPSlideStrip(host, !DPStripHiddenIn(window));
 }
 
+// The toolbar's sidebar button docks the sidebar, as ⌘S would; with the strip on, it slides the strip like ⌘S instead.
+static BOOL DPIsSidebarButton(NSView *view) {
+    if (view.class != objc_getClass(DPDiaHoverableControl) || ![view.accessibilityLabel isEqualToString:@"Toggle sidebar"]) return NO;
+    for (NSView *up = view.superview; up; up = up.superview)
+        if (DPIsKind(up, DPDiaToolbar)) return YES;
+    return NO;
+}
+
+static BOOL DPTakesSidebarButton(NSView *button) {
+    return DPCompactSidebar.on && DPIsSidebarButton(button) && DPDiaParked(DPHostIn(button.window));
+}
+
+static void DPButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
+    if (!DPTakesSidebarButton(self)) DPCallOriginal(DPButton_mouseDown, self, event);
+}
+
+static void DPButton_mouseUp(NSView *self, SEL _cmd, NSEvent *event) {
+    if (!DPTakesSidebarButton(self)) return DPCallOriginal(DPButton_mouseUp, self, event);
+    if (!NSPointInRect([self convertPoint:event.locationInWindow fromView:nil], self.bounds)) return;
+    NSView *host = DPHostIn(self.window);
+    DPSlideStrip(host, !DPStripHiddenIn(self.window));
+}
+
 static NSMenuItem *DPAutoHideItemIn(NSMenu *menu) {
     for (NSMenuItem *item in menu.itemArray) {
         NSMenuItem *found = DPIsAutoHideItem(item) ? item : item.submenu ? DPAutoHideItemIn(item.submenu) : nil;
@@ -101,4 +124,6 @@ void DPMatchAutoHide(BOOL on) {
 
 void DPInstallCompactShortcut(void) {
     DPHook(DPDiaCallbackMenuItem, NSSelectorFromString(@"performWithSender:"), (IMP)DPItem_performWithSender);
+    DPHook(DPDiaHoverableControl, @selector(mouseDown:), (IMP)DPButton_mouseDown);
+    DPHook(DPDiaHoverableControl, @selector(mouseUp:), (IMP)DPButton_mouseUp);
 }
