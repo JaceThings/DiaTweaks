@@ -7,7 +7,7 @@ static NSString *DPBrandSpelling(NSString *label) {
     dispatch_once(&once, ^{
         brands = @{@"youtube": @"YouTube", @"github": @"GitHub", @"icloud": @"iCloud", @"linkedin": @"LinkedIn",
                    @"paypal": @"PayPal", @"tiktok": @"TikTok", @"openai": @"OpenAI", @"chatgpt": @"ChatGPT",
-                   @"ebay": @"eBay", @"imdb": @"IMDb", @"whatsapp": @"WhatsApp"};
+                   @"ebay": @"eBay", @"imdb": @"IMDb", @"whatsapp": @"WhatsApp", @"bbc": @"BBC", @"cnn": @"CNN", @"nytimes": @"NYTimes"};
     });
     return brands[label];
 }
@@ -20,13 +20,9 @@ static NSString *DPCapitalise(NSString *label) {
     return [first stringByAppendingString:[label substringFromIndex:1]];
 }
 
-// name.tld becomes the capitalised name (reddit.com -> Reddit). Further labels stay, so docs.github.com is not
-// also titled GitHub. Only the last label is dropped.
+// The site's name: reddit.com and old.reddit.com are Reddit, and bbc.co.uk is BBC. An address keeps the host.
 NSString *DPGroupTitle(NSString *domain) {
-    if (!domain.length) return domain;
-    NSArray<NSString *> *labels = [domain componentsSeparatedByString:@"."];
-    if (labels.count >= 2) labels = [labels subarrayWithRange:NSMakeRange(0, labels.count - 1)];
-    NSMutableArray<NSString *> *parts = [NSMutableArray array];
-    for (NSString *label in labels) if (label.length) [parts addObject:DPCapitalise(label)];
-    return parts.count ? [parts componentsJoinedByString:@" "] : domain;
+    NSArray<NSString *> *labels = [DPRegistrableDomain(domain) componentsSeparatedByString:@"."];
+    if (labels.count < 2 || [labels.lastObject rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet].location == NSNotFound) return domain;
+    return DPCapitalise(labels.firstObject);
 }
