@@ -1,11 +1,8 @@
 #import "StdPatch/StdPatch.h"
 
-// Dia shows only pinned extensions in the toolbar and has no menu of the rest. The shortcut opens one at the top right of
-// the page, and choosing an extension clicks it, as its toolbar button would.
-
 extern DPPatch DPExtensionsShortcut;
-static NSString *const DPExtensionsShortcutKey = @"extensionsShortcut";
-static NSMapTable<NSWindow *, id> *DPBrowsers;  // Each window's ArcBrowser.
+static NSString *const DPExtensionsShortcutKey = @"extensionsMenuShortcut";
+static NSMapTable<NSWindow *, id> *DPBrowsers;
 
 static NSDictionary *DPDefaultExtensionsShortcut(void) {
     return @{ @"keyCode" : @7, @"modifiers" : @(NSEventModifierFlagShift | NSEventModifierFlagCommand), @"key" : @"X" };
@@ -16,7 +13,7 @@ static void DPBrowser_setWindow(id self, SEL _cmd, NSWindow *window) {
     if (window) [DPBrowsers setObject:self forKey:window];
 }
 
-// A pinned extension shows its toolbar icon. Chromium's icon for the others can be blank, as Dark Reader's is.
+// Chromium's icon can be blank, as Dark Reader's is, so a pinned extension's toolbar icon comes first.
 static NSImage *DPIconFor(id info, NSWindow *window) {
     NSView *pinned = DPFindView(window.contentView, ^BOOL(NSView *view) {
         return DPIsKind(view, DPDiaPinnedExtension) && [view.accessibilityLabel isEqualToString:[info valueForKey:@"name"]];
@@ -58,8 +55,7 @@ static void DPInstallExtensionsShortcut(void) {
         NSWindow *window = event.window;
         id browser = window ? [DPBrowsers objectForKey:window] : nil;
         if (!DPExtensionsShortcut.on || !browser || !DPShortcutMatches(event, DPExtensionsShortcutKey, DPDefaultExtensionsShortcut())) return event;
-        // The menu runs its own loop, so it opens once this key has been taken.
-        if (!event.isARepeat) dispatch_async(dispatch_get_main_queue(), ^{ DPShowExtensions(window, browser); });
+        if (!event.isARepeat) dispatch_async(dispatch_get_main_queue(), ^{ DPShowExtensions(window, browser); });  // The menu's loop would block this key.
         return nil;
     }];
 }

@@ -17,7 +17,7 @@
 #define DPDiaWindow             "_TtC6Window14PlatformWindow"
 #define DPDiaLibraryButton      "_TtC10DiaLibrary17LibraryButtonView"
 #define DPDiaLibraryCell        "_TtC10TabSidebar15LibraryCellView"
-#define DPDiaPinnedExtension    "_TtC16PinnedExtensions19PinnedExtensionView"  // An extension pinned to the toolbar.
+#define DPDiaPinnedExtension    "_TtC16PinnedExtensions19PinnedExtensionView"
 #define DPDiaPinnedTab          "_TtC5TabUI15TabDockItemView"
 #define DPDiaPinnedTabOutline   "_TtC5TabUIP33_CFF5B89D7BC9743BBA6108D119E2E37020SelectionOutlineView"
 #define DPDiaContentPane        "_TtC11ContentPane15ContentPaneView"
