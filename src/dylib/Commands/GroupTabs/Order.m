@@ -1,25 +1,38 @@
 // Dia's scripting tabs list a window's tabs in order, but a group's index counts from the first unpinned tab, which nothing reports.
 // So the first tab put back goes to index 0, and where it lands gives the offset. A tab moves by going alone into a scratch group,
-// moving that group, and ungrouping it.
+// moving that group, and ungrouping it. Places can name a window; undo then reads that window's tabs, which grouping every window needs.
 #import "GroupTabs.h"
 #import <objc/message.h>
 
 static NSString *DPURLOf(id tab) { return DPText(DPMsg(tab, @selector(URL))); }
 
-static NSArray *DPWindowTabsMatching(BOOL (^match)(id tab)) {
+static id DPScriptedWindow(id identifier) {
+    if (!identifier) return nil;
+    for (id window in DPMsg(NSApp.delegate, @selector(appleScriptWindows)))
+        if ([[window valueForKey:@"windowId"] isEqual:identifier]) return window;
+    return nil;
+}
+
+// With a scripted window, its tabs. Otherwise the window whose tabs contain the most matches.
+static NSArray *DPWindowTabs(id scripted, BOOL (^match)(id tab)) {
+    if (scripted) {
+        NSArray *tabs = DPMsg(scripted, @selector(appleScriptTabs));
+        return [tabs isKindOfClass:NSArray.class] ? tabs : nil;
+    }
     NSArray *best = nil;
     NSUInteger most = 0;
     for (id window in DPMsg(NSApp.delegate, @selector(appleScriptWindows))) {
         NSArray *tabs = DPMsg(window, @selector(appleScriptTabs));
+        if (![tabs isKindOfClass:NSArray.class]) continue;
         NSUInteger count = [tabs indexesOfObjectsPassingTest:^BOOL(id tab, NSUInteger i, BOOL *stop) { return match(tab); }].count;
         if (count > most) { best = tabs; most = count; }
     }
     return best;
 }
 
-NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls) {
+static NSDictionary *DPPlaces(id scripted, NSDictionary<NSNumber *, NSString *> *urls) {
     NSSet *wanted = [NSSet setWithArray:urls.allValues];
-    NSArray *tabs = DPWindowTabsMatching(^BOOL(id tab) { return [wanted containsObject:DPURLOf(tab)]; });
+    NSArray *tabs = DPWindowTabs(scripted, ^BOOL(id tab) { return [wanted containsObject:DPURLOf(tab)]; });
     // Scripting tabs have a URL but no session, so each session claims the first unclaimed tab at its URL.
     NSMutableDictionary<NSString *, NSNumber *> *sessions = [NSMutableDictionary new];
     for (NSNumber *sid in urls)
@@ -28,21 +41,33 @@ NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls) {
                 sessions[[tab valueForKey:@"tabId"]] = sid;
                 break;
             }
-    return tabs && sessions.count == urls.count ? @{@"order": [tabs valueForKey:@"tabId"], @"sessions": sessions} : nil;
+    if (!tabs || sessions.count != urls.count) return nil;
+    NSMutableDictionary *places = [@{@"order": [tabs valueForKey:@"tabId"], @"sessions": sessions} mutableCopy];
+    id identifier = scripted ? [scripted valueForKey:@"windowId"] : nil;
+    if (identifier) places[@"window"] = identifier;
+    return places;
 }
 
-static void DPMoveTab(id delegate, id browser, NSNumber *sid, NSInteger index, void (^done)(void)) {
+NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls) { return DPPlaces(nil, urls); }
+
+NSDictionary *DPTabPlacesInWindow(NSWindow *window, NSDictionary<NSNumber *, NSString *> *urls) {
+    if (!window) return nil;
+    id scripted = DPScriptedWindow(window.identifier);
+    return scripted ? DPPlaces(scripted, urls) : nil;
+}
+
+static void DPMoveTab(id delegate, id browser, NSNumber *sid, NSInteger index, void (^done)(BOOL moved)) {
     void (*create)(id, SEL, id, NSArray *, id, void (^)(id)) = (void *)objc_msgSend;
     void (*move)(id, SEL, id, id, NSInteger, void (^)(id)) = (void *)objc_msgSend;
     void (*ungroup)(id, SEL, id, NSArray *, void (^)(id)) = (void *)objc_msgSend;
     create(delegate, @selector(browser:createTabGroupWithSessionIds:properties:completion:), browser, @[sid], [objc_getClass(DPDiaTabGroupProperties) new], ^(id result) {
         dispatch_async(dispatch_get_main_queue(), ^{
             id group = [result respondsToSelector:@selector(groupId)] ? DPMsg(result, @selector(groupId)) : nil;
-            if (!group) return;
+            if (!group) return done(NO);  // Stop this window's remaining moves, and let the next window undo.
             move(delegate, @selector(browser:moveTabGroupWithId:toNewIndex:completion:), browser, group, index, ^(id _) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     ungroup(delegate, @selector(browser:removeTabsFromGroupWithSessionIds:completion:), browser, @[sid], ^(id _) {
-                        dispatch_async(dispatch_get_main_queue(), done);
+                        dispatch_async(dispatch_get_main_queue(), ^{ done(YES); });
                     });
                 });
             });
@@ -50,9 +75,12 @@ static void DPMoveTab(id delegate, id browser, NSNumber *sid, NSInteger index, v
     });
 }
 
-static void DPRunMoves(id delegate, id browser, NSArray<NSArray *> *moves, NSUInteger index) {
-    if (index >= moves.count) return;
-    DPMoveTab(delegate, browser, moves[index][0], [moves[index][1] integerValue], ^{ DPRunMoves(delegate, browser, moves, index + 1); });
+static void DPRunMoves(id delegate, id browser, NSArray<NSArray *> *moves, NSUInteger index, void (^done)(void)) {
+    if (index >= moves.count) return done();
+    DPMoveTab(delegate, browser, moves[index][0], [moves[index][1] integerValue], ^(BOOL moved) {
+        if (!moved) return done();
+        DPRunMoves(delegate, browser, moves, index + 1, done);
+    });
 }
 
 // A moved tab that's due comes up; one in the way goes to the end until it's due. Tabs that weren't grouped keep their order, so one
@@ -74,13 +102,23 @@ static NSArray<NSArray *> *DPPlanMoves(NSArray<NSString *> *target, NSMutableArr
     return moves;
 }
 
-void DPRestorePlaces(id delegate, id browser, NSDictionary *places) {
+void DPRestorePlaces(id delegate, id browser, NSDictionary *places, void (^done)(void)) {
+    void (^finish)(void) = ^{};
+    if (done) finish = done;
+    id scoped = places[@"window"];
+    id scripted = DPScriptedWindow(scoped);
+    if (scoped && !scripted) return finish();  // Don't put this window's tabs back using some other window's order.
     NSDictionary<NSString *, NSNumber *> *sessions = places[@"sessions"];
     NSString *first = sessions.allKeys.firstObject;
-    DPMoveTab(delegate, browser, sessions[first], 0, ^{
-        NSArray *tabs = DPWindowTabsMatching(^BOOL(id tab) { return [[tab valueForKey:@"tabId"] isEqual:first]; });
+    if (!first) return finish();
+    DPMoveTab(delegate, browser, sessions[first], 0, ^(BOOL moved) {
+        if (!moved) return finish();
+        id current = scoped ? DPScriptedWindow(scoped) : nil;
+        if (scoped && !current) return finish();
+        NSArray *tabs = DPWindowTabs(current, ^BOOL(id tab) { return [[tab valueForKey:@"tabId"] isEqual:first]; });
         NSMutableArray *now = [[tabs valueForKey:@"tabId"] mutableCopy];
         NSUInteger start = [now indexOfObject:first];
-        if (start != NSNotFound) DPRunMoves(delegate, browser, DPPlanMoves(places[@"order"], now, sessions, start), 0);
+        if (start == NSNotFound) return finish();
+        DPRunMoves(delegate, browser, DPPlanMoves(places[@"order"], now, sessions, start), 0, finish);
     });
 }

@@ -60,14 +60,44 @@ static void DPBrowser_takeOwnership(id self, SEL _cmd, id contents) {
     DPRemember(contents, nil, self, [DPDelegateByBrowser objectForKey:self]);
 }
 
-id DPCommandBrowser(void) {
+static NSArray *DPReadyBrowsers(void) {
     NSMutableArray *ready = [NSMutableArray new];
     for (id browser in DPBrowsers.allObjects)
         if ([[DPDelegateByBrowser objectForKey:browser] respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)]) [ready addObject:browser];
+    return ready;
+}
+
+// `openOnly` skips windows that aren't on screen or minimized, so a panel Dia still holds doesn't get grouped.
+static void DPCollectBrowsers(NSArray<NSWindow *> *windows, NSArray *ready, NSMutableArray *ordered, NSHashTable *seen, BOOL openOnly) {
+    for (NSWindow *window in windows) {
+        if (openOnly && !(window.isVisible || window.isMiniaturized)) continue;
+        for (id browser in ready) {
+            if ([DPWindowByBrowser objectForKey:browser] != window || [seen containsObject:browser]) continue;
+            [ordered addObject:browser];
+            [seen addObject:browser];
+        }
+    }
+}
+
+NSArray *DPCommandBrowsers(void) {
+    NSArray *ready = DPReadyBrowsers();
+    NSMutableArray *ordered = [NSMutableArray new];
+    NSHashTable *seen = [NSHashTable weakObjectsHashTable];
+    DPCollectBrowsers(NSApp.orderedWindows, ready, ordered, seen, NO);
+    DPCollectBrowsers(NSApp.windows, ready, ordered, seen, YES);  // Minimized, or on another Space.
+    return ordered;
+}
+
+id DPCommandBrowser(void) {
+    NSArray *ready = DPReadyBrowsers();
     for (NSWindow *window in NSApp.orderedWindows)
         for (id browser in ready)
             if ([DPWindowByBrowser objectForKey:browser] == window) return browser;
     return ready.count == 1 ? ready[0] : nil;
+}
+
+NSWindow *DPBrowserWindow(id browser) {
+    return [DPWindowByBrowser objectForKey:browser];
 }
 
 id DPGroupingDelegate(id browser) {
