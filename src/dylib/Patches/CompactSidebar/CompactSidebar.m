@@ -46,7 +46,7 @@ static NSString *DPVerifyCompactSidebar(DPPatch *patch) {
             if (bar.window != window || bar.hiddenOrHasHiddenAncestor || lights == 0) continue;
             NSView *field = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); });
             for (NSView *item in field.superview.subviews) {
-                if (item.hidden || NSWidth(item.frame) == 0) continue;
+                if (item.hidden || NSWidth(item.frame) == 0 || DPIsDownloadsHover(item)) continue;  // It sits under the downloads button.
                 NSRect r = [item convertRect:item.bounds toView:nil];
                 if (NSMinX(r) < lights && NSMaxX(r) > 0) return @"toolbar buttons under the window buttons";
             }

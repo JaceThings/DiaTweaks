@@ -19,30 +19,6 @@ CGFloat DPLightsRight(NSWindow *window) {
     return NSMaxX([lights convertRect:lights.bounds toView:nil]);
 }
 
-// Dia's downloads button follows the window buttons in their row, so it shows over the toolbar with them.
-static NSView *DPDownloadsIn(NSView *root) {
-    NSView *header = root ? DPSubview(root, DPDiaSidebarHeader) : nil;
-    return header ? DPFindView(header, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaDownloadsButton); }) : nil;
-}
-
-CGFloat DPHeaderButtonsRight(NSWindow *window) {
-    CGFloat right = DPLightsRight(window);
-    NSView *downloads = DPDownloadsIn(DPSidebarRootIn(window));
-    if (right > 0 && downloads && !downloads.hiddenOrHasHiddenAncestor && NSWidth(downloads.frame) > 0)
-        right = MAX(right, NSMaxX([downloads convertRect:downloads.bounds toView:nil]));
-    return right;
-}
-
-// Over the toolbar, the downloads button fades with it, as the window buttons do. Without the window buttons, which Hide
-// Window Controls takes out of the row, it would land on the toolbar's own buttons, so it shows once the sidebar opens.
-static void DPMatchDownloads(NSWindow *window) {
-    NSView *root = DPSidebarRootIn(window), *downloads = DPDownloadsIn(root);
-    if (!downloads) return;
-    BOOL flat = DPStripPresent(window) && !DPStripExpanded(DPHostIn(window));
-    CGFloat alpha = !flat ? 1 : DPLightsRight(window) > 0 ? DPToolbarAlpha(window) : 0;
-    if (downloads.alphaValue != alpha) downloads.alphaValue = alpha;
-}
-
 CGFloat DPLightsLeft(NSWindow *window) {
     NSView *lights = DPLightsIn(DPSidebarRootIn(window));
     if (!lights || lights.hiddenOrHasHiddenAncestor) return 0;

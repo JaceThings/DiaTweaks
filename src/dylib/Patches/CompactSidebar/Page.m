@@ -53,22 +53,29 @@ static void DPPane_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     DPPaneAsked(self, (NSRect){DPDiaPaneFrame(self).origin, size});
 }
 
-// The toolbar's buttons left of the address field move right of the window buttons, and of the downloads button after
-// them, and the field gives up the room.
+// The toolbar's buttons left of the address field move right of the window buttons, and the field gives up the room.
+// After the downloads button, they keep their own spacing from it, as if it were the first of them.
 static void DPClearLights(NSView *bar) {
     NSView *field = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); }), *items = field.superview;
     if (!field) return;
-    CGFloat lights = DPStripPresent(bar.window) ? DPHeaderButtonsRight(bar.window) : 0;
-    CGFloat edge = lights > 0 ? [items convertPoint:NSMakePoint(lights + DPLightsClearance, 0) fromView:nil].x : -CGFLOAT_MAX;
     NSRect fieldFrame = [DPDiaValue(field, &DPItemFrameKey, @(field.frame)) rectValue];
     NSMutableArray<NSView *> *leading = [NSMutableArray new];
-    CGFloat first = NSMinX(fieldFrame);
     for (NSView *item in items.subviews) {
+        if (item == field || item.hidden || DPIsDownloadsHover(item)) continue;
         NSRect laidOut = [DPDiaValue(item, &DPItemFrameKey, @(item.frame)) rectValue];
-        if (item == field || item.hidden || NSMaxX(laidOut) > NSMinX(fieldFrame) + 0.5) continue;
+        if (NSMaxX(laidOut) > NSMinX(fieldFrame) + 0.5) continue;
         [leading addObject:item];
-        first = MIN(first, NSMinX(laidOut));
     }
+    NSRect (^laid)(NSView *) = ^NSRect(NSView *item) { return [DPDiaValue(item, &DPItemFrameKey, @(item.frame)) rectValue]; };
+    [leading sortUsingComparator:^NSComparisonResult(NSView *a, NSView *b) { return [@(NSMinX(laid(a))) compare:@(NSMinX(laid(b)))]; }];
+    CGFloat first = leading.count ? NSMinX(laid(leading[0])) : NSMinX(fieldFrame);
+    BOOL present = DPStripPresent(bar.window);
+    CGFloat lights = present ? DPLightsRight(bar.window) : 0, downloads = present ? DPDownloadsMid(bar.window) : NAN, edge = -CGFLOAT_MAX;
+    if (!isnan(downloads) && leading.count) {
+        NSRect one = laid(leading[0]);
+        CGFloat pitch = leading.count > 1 ? NSMidX(laid(leading[1])) - NSMidX(one) : NSWidth(one) + 5;
+        edge = [items convertPoint:NSMakePoint(downloads, 0) fromView:nil].x + pitch - NSWidth(one) / 2;
+    } else if (lights > 0) edge = [items convertPoint:NSMakePoint(lights + DPLightsClearance, 0) fromView:nil].x;
     CGFloat shift = MAX(0, edge - first);
     for (NSView *item in [leading arrayByAddingObject:field]) {
         NSRect laidOut = [DPDiaValue(item, &DPItemFrameKey, @(item.frame)) rectValue], frame = laidOut;
@@ -77,6 +84,7 @@ static void DPClearLights(NSView *bar) {
         DPOverride(item, &DPItemFrameKey, @(laidOut), @(frame));
         if (!NSEqualRects(item.frame, frame)) item.frame = frame;
     }
+    DPPlaceDownloadsHover(bar);
 }
 
 void DPClearLightsIn(NSWindow *window) {
