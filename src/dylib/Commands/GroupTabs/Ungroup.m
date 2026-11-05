@@ -1,5 +1,6 @@
-// Ungroup This Domain takes apart the site group the current tab is in. Dia's ungroup leaves the tabs open; Close this
-// Group would close them, and the browser delegate has no call for that. Command-Z groups them again.
+// Ungroup This Domain takes apart the site group the current tab is in, and Ungroup All Domains every site group in the
+// window. Dia's ungroup leaves the tabs open; Close this Group would close them, and the browser delegate has no call for
+// that. Command-Z groups them again.
 #import "GroupTabs.h"
 #import <objc/message.h>
 
@@ -104,4 +105,9 @@ void DPUngroupDomain(void) {
             if ([op[@"ids"] containsObject:@(active)]) return @[ op ];
         return @[];
     });
+}
+
+// Ungroup All Domains takes apart every site group in the front window. Groups with other names stay.
+void DPUngroupAllDomains(void) {
+    DPUngroupSiteGroups(^NSArray<NSDictionary *> *(NSArray<NSDictionary *> *sites) { return sites; });
 }

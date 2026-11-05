@@ -1,10 +1,11 @@
 #import "GroupTabs.h"
 
-static const NSInteger DPGroupMenuTag = 0xD1A7001, DPExpandMenuTag = 0xD1A7004, DPCollapseMenuTag = 0xD1A7005, DPUngroupMenuTag = 0xD1A7002;
+static const NSInteger DPGroupMenuTag = 0xD1A7001, DPExpandMenuTag = 0xD1A7004, DPCollapseMenuTag = 0xD1A7005, DPUngroupMenuTag = 0xD1A7002,
+                       DPUngroupAllMenuTag = 0xD1A7003;
 static NSString *const DPGroupMenuTitle = @"Group Tabs by Domain";
 static NSString *const DPExpandMenuTitle = @"Expand All Tab Groups";
 static NSString *const DPCollapseMenuTitle = @"Collapse All Tab Groups";
-static const NSInteger DPFollowerTags[] = {DPExpandMenuTag, DPCollapseMenuTag, DPUngroupMenuTag};
+static const NSInteger DPFollowerTags[] = {DPExpandMenuTag, DPCollapseMenuTag, DPUngroupMenuTag, DPUngroupAllMenuTag};
 static const NSInteger DPFollowerCount = sizeof(DPFollowerTags) / sizeof(DPFollowerTags[0]);
 static BOOL DPInserting;
 
@@ -44,7 +45,8 @@ static NSMenuItem *DPFollowerItem(NSInteger tag) {
         return DPCommandItem(DPExpandMenuTitle, tag, @"rectangle.expand.vertical", ^{ DPSetAllGroupsCollapsed(NO); });
     if (tag == DPCollapseMenuTag)
         return DPCommandItem(DPCollapseMenuTitle, tag, @"rectangle.compress.vertical", ^{ DPSetAllGroupsCollapsed(YES); });
-    return DPCommandItem(@"Ungroup This Domain", tag, @"rectangle.stack.badge.minus", ^{ DPUngroupDomain(); });
+    if (tag == DPUngroupMenuTag) return DPCommandItem(@"Ungroup This Domain", tag, @"rectangle.stack.badge.minus", ^{ DPUngroupDomain(); });
+    return DPCommandItem(@"Ungroup All Domains", tag, @"square.stack.3d.down.right", ^{ DPUngroupAllDomains(); });
 }
 
 // How many of the followers already sit, in order, on the lines right after `index`.
@@ -54,7 +56,7 @@ static NSInteger DPFollowersInPlace(NSMenu *menu, NSInteger index) {
     return n;
 }
 
-// Expand, Collapse, then Ungroup This Domain, sit on the lines under Group Tabs by Domain. Context menus are built each time they open.
+// Expand, Collapse, Ungroup This Domain, then Ungroup All Domains, sit on the lines under Group Tabs by Domain. Context menus are built each time they open.
 // Dia rebuilds the Tabs menu by adding copies of the items in it, tags and all, and later removes those copies itself, so
 // the last item with a tag is the one to keep. Dropping Dia's copy instead crashes Dia when it goes to remove it.
 static void DPPlaceFollowerItems(NSMenu *menu) {
@@ -175,7 +177,7 @@ DP_PATCH(DPGroupTabs) {
     .order = 86,
     .defaultOn = YES,
     .title = @"Group Tabs by Domain",
-    .detail = @"Adds Group Tabs by Domain, Expand All Tab Groups, Collapse All Tab Groups and Ungroup This Domain to the tab right-click menu and the Tabs menu. Grouping puts a window’s tabs together by site, also with a shortcut, ⌃⇧G unless you set another. Expand All and Collapse All open or close every group in the front window. Ungroup This Domain takes apart the current tab’s site group and leaves its tabs open.",
+    .detail = @"Adds Group Tabs by Domain, Expand All Tab Groups, Collapse All Tab Groups, Ungroup This Domain and Ungroup All Domains to the tab right-click menu and the Tabs menu. Grouping puts a window’s tabs together by site, also with a shortcut, ⌃⇧G unless you set another. Expand All and Collapse All open or close every group in the front window. Ungroup This Domain takes apart the current tab’s site group, and Ungroup All Domains every site group in the window, leaving the tabs open.",
     .symbol = @"rectangle.3.group.fill",
     .tint = @"systemPinkColor",
     .section = @"Tabs",
