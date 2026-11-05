@@ -19,6 +19,30 @@ CGFloat DPLightsRight(NSWindow *window) {
     return NSMaxX([lights convertRect:lights.bounds toView:nil]);
 }
 
+// Dia's downloads button follows the window buttons in their row, so it shows over the toolbar with them.
+static NSView *DPDownloadsIn(NSView *root) {
+    NSView *header = root ? DPSubview(root, DPDiaSidebarHeader) : nil;
+    return header ? DPFindView(header, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaDownloadsButton); }) : nil;
+}
+
+CGFloat DPHeaderButtonsRight(NSWindow *window) {
+    CGFloat right = DPLightsRight(window);
+    NSView *downloads = DPDownloadsIn(DPSidebarRootIn(window));
+    if (right > 0 && downloads && !downloads.hiddenOrHasHiddenAncestor && NSWidth(downloads.frame) > 0)
+        right = MAX(right, NSMaxX([downloads convertRect:downloads.bounds toView:nil]));
+    return right;
+}
+
+// Over the toolbar, the downloads button fades with it, as the window buttons do. Without the window buttons, which Hide
+// Window Controls takes out of the row, it would land on the toolbar's own buttons, so it shows once the sidebar opens.
+static void DPMatchDownloads(NSWindow *window) {
+    NSView *root = DPSidebarRootIn(window), *downloads = DPDownloadsIn(root);
+    if (!downloads) return;
+    BOOL flat = DPStripPresent(window) && !DPStripExpanded(DPHostIn(window));
+    CGFloat alpha = !flat ? 1 : DPLightsRight(window) > 0 ? DPToolbarAlpha(window) : 0;
+    if (downloads.alphaValue != alpha) downloads.alphaValue = alpha;
+}
+
 CGFloat DPLightsLeft(NSWindow *window) {
     NSView *lights = DPLightsIn(DPSidebarRootIn(window));
     if (!lights || lights.hiddenOrHasHiddenAncestor) return 0;
@@ -82,19 +106,17 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPHeader_layout, self);
     DPPlaceLights(self, DPStripPresent(self.window) && !DPStripExpanded(DPHostOf(self)));
     // Other tweaks move the window buttons as the header lays out; the toolbar's buttons follow them.
-    NSNumber *lights = @(DPLightsRight(self.window));
+    NSNumber *lights = @(DPHeaderButtonsRight(self.window));
     if (![DPGet(self, &DPLightsKey) isEqual:lights]) {
         DPSet(self, &DPLightsKey, lights);
         DPClearLightsIn(self.window);
     }
     NSView *host = DPHostOf(self);
     CGFloat alpha = DPStripPresent(self.window) && !DPStripExpanded(host) ? 0 : 1;
-    // The profile switcher and the downloads button beside the window buttons would land on the toolbar's own buttons;
-    // they show once the sidebar opens.
-    for (const char *const *kind = DPClasses(DPDiaProfileIndicator, DPDiaDownloadsButton); *kind; kind++) {
-        NSView *view = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, *kind); });
-        if (view && view.alphaValue != alpha) view.alphaValue = alpha;
-    }
+    // The profile switcher beside the window buttons would land on the toolbar's own buttons; it shows once the sidebar opens.
+    NSView *profile = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaProfileIndicator); });
+    if (profile.alphaValue != alpha) profile.alphaValue = alpha;
+    DPMatchDownloads(self.window);
 }
 
 // Over the toolbar, the window buttons take clicks and the toolbar gets the rest, until the sidebar opens over it. The
@@ -104,6 +126,9 @@ static NSView *DPStripHitTest(NSView *self, NSPoint point, NSView *(^original)(v
     NSView *root = DPSidebarRootIn(self.window), *header = root ? DPSubview(root, DPDiaSidebarHeader) : nil, *lights = DPLightsIn(root);
     if (lights && !lights.hiddenOrHasHiddenAncestor && lights.alphaValue > 0.01 && NSPointInRect([lights convertPoint:point fromView:self.superview], lights.bounds))
         return [lights hitTest:[lights.superview convertPoint:point fromView:self.superview]];
+    NSView *downloads = DPDownloadsIn(root);
+    if (downloads && !downloads.hiddenOrHasHiddenAncestor && downloads.alphaValue > 0.01 && NSPointInRect([downloads convertPoint:point fromView:self.superview], downloads.bounds))
+        return [downloads hitTest:[downloads.superview convertPoint:point fromView:self.superview]];
     // With the toolbar hidden, the tabs rise into the header's space, where they take clicks.
     NSView *list = DPListIn(self.window);
     NSPoint inRoot = [root convertPoint:point fromView:self.superview];
@@ -126,6 +151,7 @@ static void DPBar_setAlphaValue(NSView *self, SEL _cmd, CGFloat alpha) {
     DPCallOriginal(DPBar_setAlphaValue, self, alpha);
     NSView *lights = DPLightsIn(DPSidebarRootIn(self.window));
     if (lights && DPStripPresent(self.window)) lights.alphaValue = alpha;  // Its setter adds the reveal.
+    DPMatchDownloads(self.window);
     DPPlaceListIn(self.window);
     DPSettleReveal(self.window);
 }

@@ -53,11 +53,12 @@ static void DPPane_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     DPPaneAsked(self, (NSRect){DPDiaPaneFrame(self).origin, size});
 }
 
-// The toolbar's buttons left of the address field move right of the window buttons, and the field gives up the room.
+// The toolbar's buttons left of the address field move right of the window buttons, and of the downloads button after
+// them, and the field gives up the room.
 static void DPClearLights(NSView *bar) {
     NSView *field = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); }), *items = field.superview;
     if (!field) return;
-    CGFloat lights = DPStripPresent(bar.window) ? DPLightsRight(bar.window) : 0;
+    CGFloat lights = DPStripPresent(bar.window) ? DPHeaderButtonsRight(bar.window) : 0;
     CGFloat edge = lights > 0 ? [items convertPoint:NSMakePoint(lights + DPLightsClearance, 0) fromView:nil].x : -CGFLOAT_MAX;
     NSRect fieldFrame = [DPDiaValue(field, &DPItemFrameKey, @(field.frame)) rectValue];
     NSMutableArray<NSView *> *leading = [NSMutableArray new];
