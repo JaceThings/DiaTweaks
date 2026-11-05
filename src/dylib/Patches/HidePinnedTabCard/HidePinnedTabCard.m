@@ -2,7 +2,6 @@
 
 extern DPPatch DPHidePinnedTabCard;
 
-// The card is a window of its own, so it's kept from coming on screen rather than hidden in place.
 static void DPCard_orderWindow(NSWindow *self, SEL _cmd, NSWindowOrderingMode place, NSInteger other) {
     if (DPHidePinnedTabCard.on && place != NSWindowOut) return;
     DPCallOriginal(DPCard_orderWindow, self, place, other);
