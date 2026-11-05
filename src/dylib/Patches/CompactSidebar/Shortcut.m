@@ -14,7 +14,7 @@ CGFloat DPStripVisible(NSWindow *window) {
     return slide ? slide.doubleValue : DPStripShown(window) ? 1 : 0;
 }
 
-// Far enough that the window buttons, which reach past the strip, leave the window too.
+// Far enough that the window buttons and the downloads button, which reach past the strip, leave the window too.
 CGFloat DPStripSlideDistance(NSWindow *window) {
     NSNumber *distance = DPGet(window, &DPSlideDistanceKey);
     return distance ? distance.doubleValue : DPStripWidth;
@@ -32,7 +32,7 @@ static void DPSlideStrip(NSView *host, BOOL hide) {
     NSWindow *window = host.window;
     CGFloat from = DPStripVisible(window), to = hide ? 0 : 1;
     if (!DPStripSliding(window)) {
-        CGFloat lights = hide ? DPLightsRight(window) : [DPGet(window, &DPSlideDistanceKey) doubleValue];
+        CGFloat lights = hide ? DPHeaderButtonsRight(window) : [DPGet(window, &DPSlideDistanceKey) doubleValue];
         DPSet(window, &DPSlideDistanceKey, @(MAX(DPStripWidth, ceil(lights) + 2)));
     }
     [(NSTimer *)DPGet(window, &DPSlideTimerKey) invalidate];

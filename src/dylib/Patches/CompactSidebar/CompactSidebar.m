@@ -41,7 +41,7 @@ static NSString *DPVerifyCompactSidebar(DPPatch *patch) {
             if (pane.window != window || pane.hiddenOrHasHiddenAncestor) continue;
             if (NSMinX([pane convertRect:pane.bounds toView:nil]) < DPStripRight(window) - 0.5) return @"page runs under the strip";
         }
-        CGFloat lights = DPLightsRight(window);
+        CGFloat lights = DPHeaderButtonsRight(window);
         for (NSView *bar in DPFindViews(DPDiaToolbar)) {
             if (bar.window != window || bar.hiddenOrHasHiddenAncestor || lights == 0) continue;
             NSView *field = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); });

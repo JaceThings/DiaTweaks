@@ -36,9 +36,10 @@ void DPRefreshWindow(NSWindow *window);  // Places the page and the toolbar's bu
 void DPRelayoutCompactSidebar(void);
 void DPInstallCompactFrames(void);
 
-// Header.m: the window buttons stay over the toolbar, and only they take clicks there.
+// Header.m: the window buttons and Dia's downloads button stay over the toolbar, and only they take clicks there.
 CGFloat DPLightsRight(NSWindow *window);  // The window buttons' right edge from the window's left, or 0.
 CGFloat DPLightsLeft(NSWindow *window);   // And their left edge.
+CGFloat DPHeaderButtonsRight(NSWindow *window);  // The downloads button's right edge after them, while it shows, or theirs.
 CGFloat DPToolbarAlpha(NSWindow *window);
 void DPInstallCompactHeader(void);
 
