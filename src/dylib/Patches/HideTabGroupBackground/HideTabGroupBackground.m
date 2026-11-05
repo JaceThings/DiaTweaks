@@ -52,7 +52,7 @@ static void DPInstallHideTabGroupBackground(void) {
 DP_PATCH(DPHideTabGroupBackground) {
     .key = @"hideTabGroupBackground",
     .order = 81,
-    .title = @"Hide Tab Group Background",
+    .title = @"Hide Group Background",
     .detail = @"Leave an open tab group without the grey behind it, unless you've picked a colour for the group.",
     .symbol = @"square.stack.fill square.fill",
     .tint = @"systemTealColor",
