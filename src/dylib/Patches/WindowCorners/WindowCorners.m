@@ -178,9 +178,12 @@ static void DPApplyWindowCorners(DPPatch *patch) {
 }
 
 static NSString *DPVerifyWindowCorners(DPPatch *patch) {
-    for (NSWindow *window in NSApp.windows)
-        if (DPIsKind(window, DPDiaWindow) && window.isVisible && (DPCornerRadius(window) == DPWindowRadius()) != patch->on)
+    for (NSWindow *window in NSApp.windows) {
+        if (!DPIsKind(window, DPDiaWindow) || !window.isVisible) continue;
+        CGFloat radius = DPCornerRadius(window), dia = [DPDiaValue(window, &DPRadiusKey, @(radius)) doubleValue];
+        if (radius != (patch->on ? DPWindowRadius() : dia))
             return patch->on ? @"window corners aren't the chosen radius" : @"window corners keep the chosen radius";
+    }
     return nil;
 }
 
