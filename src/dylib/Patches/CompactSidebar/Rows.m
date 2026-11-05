@@ -61,38 +61,42 @@ static NSView *DPFooterItem(NSView *footer, const char *kind) {
 // The footer's height as Dia lays it out: one row.
 static CGFloat DPFooterRow(NSView *footer) { return NSHeight([DPDiaValue(footer, &DPFooterFrameKey, @(footer.frame)) rectValue]); }
 
-// With Hide Chats Button off, Chats goes on a row of its own over recent tabs: side by side they don't fit the strip.
-CGFloat DPChatsRoom(NSWindow *window) {
+static const CGFloat DPFooterPadding = 6;  // Under the bottom row, as the tabs are from the strip's sides.
+
+// In the strip, the footer leaves room under its buttons. With Hide Chats Button off, Chats also goes on a row of its
+// own over recent tabs: side by side they don't fit the strip.
+CGFloat DPFooterRoom(NSWindow *window) {
     NSView *footer = DPSubview(DPSidebarRootIn(window), DPDiaSidebarFooter);
+    if (!DPFooterInStrip(footer)) return 0;
     BOOL both = DPFooterItem(footer, DPDiaSidebarOverflow) && DPFooterItem(footer, DPDiaLibraryCell);
-    return DPFooterInStrip(footer) && both ? DPFooterRow(footer) : 0;
+    return DPFooterPadding + (both ? DPFooterRow(footer) : 0);
 }
 
-// The footer grows up by that row, and the tabs above give it up (List.m).
+// The footer grows up by that, and the tabs above give it up (List.m).
 static void DPPlaceFooter(NSView *root) {
     NSView *footer = DPSubview(root, DPDiaSidebarFooter);
     if (!footer) return;
     NSRect dia = [DPDiaValue(footer, &DPFooterFrameKey, @(footer.frame)) rectValue], frame = dia;
-    CGFloat room = DPChatsRoom(root.window);
+    CGFloat room = DPFooterRoom(root.window);
     frame.size.height += room;
     if (root.isFlipped) frame.origin.y -= room;
     DPOverride(footer, &DPFooterFrameKey, @(dia), @(frame));
     DPPlace(footer, frame);
 }
 
-// At the bottom of the strip, the recent tabs button is centered, with Chats over it while it shows.
+// At the bottom of the strip, the recent tabs button is centered over the padding, with Chats over it while it shows.
 static void DPFooter_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPFooter_layout, self);
     if (!DPFooterInStrip(self)) return;
     NSView *chats = DPFooterItem(self, DPDiaLibraryCell), *recent = DPFooterItem(self, DPDiaSidebarOverflow);
-    CGFloat width = NSWidth(self.bounds);
-    if (!recent) return;
-    if (!chats) return DPMove(recent, (width - NSWidth(recent.frame)) / 2);
+    CGFloat width = NSWidth(self.bounds), row = DPFooterRow(self);
+    CGFloat bottomY = self.isFlipped ? NSHeight(self.bounds) - DPFooterPadding - row : DPFooterPadding;
+    CGFloat upperY = self.isFlipped ? bottomY - row : bottomY + row;
+    if (recent)
+        DPPlace(recent, NSMakeRect(round((width - NSWidth(recent.frame)) / 2), bottomY, NSWidth(recent.frame), MIN(row, NSHeight(recent.frame))));
     // Chats' highlight is inset from its sides, so it's wider than recent tabs by that, and its highlight matches.
-    CGFloat row = DPFooterRow(self), chatsWidth = MIN(width, NSWidth(recent.frame) + 12);
-    CGFloat recentY = self.isFlipped ? NSHeight(self.bounds) - row : 0, chatsY = self.isFlipped ? recentY - row : row;
-    DPPlace(recent, NSMakeRect(round((width - NSWidth(recent.frame)) / 2), recentY, NSWidth(recent.frame), MIN(row, NSHeight(recent.frame))));
-    DPPlace(chats, NSMakeRect(round((width - chatsWidth) / 2), chatsY, chatsWidth, row));
+    CGFloat chatsWidth = MIN(width, (recent ? NSWidth(recent.frame) : 42) + 12);
+    if (chats) DPPlace(chats, NSMakeRect(round((width - chatsWidth) / 2), recent ? upperY : bottomY, chatsWidth, row));
 }
 
 // Chats in the strip: only its icon, centered, as the tabs show.
