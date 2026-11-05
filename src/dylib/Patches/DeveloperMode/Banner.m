@@ -21,21 +21,47 @@ static NSColor *DPBannerColor(NSString *name, BOOL light) {
     return DPBannerColor(@"Indigo", light);
 }
 
-NSMenu *DPColorChoices(void) {
-    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Banner color"];
-    NSMutableArray<NSString *> *names = [NSMutableArray new];
-    for (size_t i = 0; i < sizeof DPHues / sizeof *DPHues; i++) [names addObject:DPHues[i].name];
-    for (NSString *name in [names arrayByAddingObject:@"Graphite"]) {
-        NSColor *color = DPBannerColor(name, NO);
-        NSMenuItem *item = [menu addItemWithTitle:name action:nil keyEquivalent:@""];
-        item.representedObject = name;
-        item.image = [NSImage imageWithSize:NSMakeSize(12, 12) flipped:NO drawingHandler:^BOOL(NSRect rect) {
-            [color setFill];
-            [[NSBezierPath bezierPathWithOvalInRect:rect] fill];
-            return YES;
-        }];
-    }
-    return menu;
+static NSString *const DPHexSetting = @"developerModeColorHex", *const DPNameSetting = @"developerModeColor";
+
+static NSUserDefaults *DPSettings(void) {
+    static NSUserDefaults *settings;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ settings = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; });
+    return settings;
+}
+
+// The picked color, or else the named one an earlier version saved, as it looks for a dark bar.
+static NSColor *DPPickedColor(void) {
+    NSScanner *scanner = [NSScanner scannerWithString:[[DPSettings() stringForKey:DPHexSetting] ?: @"" stringByReplacingOccurrencesOfString:@"#" withString:@""]];
+    unsigned value;
+    if (![scanner scanHexInt:&value]) return nil;
+    return [NSColor colorWithSRGBRed:(value >> 16 & 0xFF) / 255.0 green:(value >> 8 & 0xFF) / 255.0 blue:(value & 0xFF) / 255.0 alpha:1];
+}
+
+static NSColor *DPCurrentColor(BOOL light) { return DPPickedColor() ?: DPBannerColor([DPSettings() stringForKey:DPNameSetting] ?: @"Indigo", light); }
+
+@interface DPBannerColorWell : NSColorWell
+@end
+
+@implementation DPBannerColorWell
+- (void)pick:(NSColorWell *)well {
+    NSColor *srgb = [well.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace] ?: NSColor.blackColor;
+    [DPSettings() setObject:[NSString stringWithFormat:@"#%02X%02X%02X", (int)round(srgb.redComponent * 255), (int)round(srgb.greenComponent * 255), (int)round(srgb.blueComponent * 255)] forKey:DPHexSetting];
+    DPRelayoutDevMode(NO);
+}
+@end
+
+NSArray<NSView *> *DPBannerColorRows(void) {
+    DPBannerColorWell *well = [DPBannerColorWell new];
+    well.color = DPCurrentColor(NO);
+    well.target = well;
+    well.action = @selector(pick:);
+    [well.widthAnchor constraintEqualToConstant:44].active = YES;
+    [well.heightAnchor constraintEqualToConstant:24].active = YES;
+    NSView *spacer = [NSView new];
+    [spacer setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Banner color"], spacer, well ]];
+    return @[ row ];
 }
 
 @interface DPDevBanner : NSView
@@ -48,7 +74,7 @@ NSMenu *DPColorChoices(void) {
 
 - (void)drawRect:(NSRect)dirty {
     BOOL light = [[self.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] isEqualToString:NSAppearanceNameAqua];
-    NSColor *color = DPBannerColor(DPChoice(&DPDeveloperMode), light);
+    NSColor *color = DPCurrentColor(light);
     CGFloat hue, saturation, brightness;
     [[color colorUsingColorSpace:NSColorSpace.sRGBColorSpace] getHue:&hue saturation:&saturation brightness:&brightness alpha:NULL];
     // On the pale banner the bands go slightly darker instead.

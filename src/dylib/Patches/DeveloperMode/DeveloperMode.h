@@ -29,7 +29,7 @@ void DPWatchDevMode(void);  // The Control-D key, and a timer that notices navig
 
 // Banner.m
 NSView *DPMakeDevBanner(NSRect frame);
-NSMenu *DPColorChoices(void);  // The Settings menu of banner colors.
+NSArray<NSView *> *DPBannerColorRows(void);  // The banner's color well in Settings.
 
 // TabBorder.m
 void DPPlaceTabBorder(NSView *row);  // Shows or removes the hazard border on a sidebar tab, from the last refresh.
