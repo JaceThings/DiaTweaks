@@ -2,6 +2,7 @@
 #import <spawn.h>
 #import <sys/clonefile.h>
 #import <sys/wait.h>
+#import "LaunchServices.h"
 #import "Passwords.h"
 #import "PasswordsParts.h"
 
@@ -130,13 +131,6 @@ static NSString *attach(const DPPasswordsService *service) {
     return session && DPDevToolsAsk(@"Runtime.addBinding", @{ @"name" : @"relayOut" }, session) ? session : nil;
 }
 
-// Launch Services would send links and "open Dia" to the windowless copy.
-static void unregister(void) {
-    NSTask *task = [NSTask launchedTaskWithExecutableURL:[NSURL fileURLWithPath:@"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"]
-                                               arguments:@[ @"-u", [DPCopyFolder stringByAppendingPathComponent:@"Dia.app"] ] error:nil terminationHandler:nil];
-    [task waitUntilExit];
-}
-
 BOOL DPCopyStart(NSString *home) {
     gDia = launch(home);
     BOOL attached = gDia != 0;
@@ -144,7 +138,7 @@ BOOL DPCopyStart(NSString *home) {
         gSessions[i] = gDia ? attach(&DPPasswordsServices[i]) : nil;
         attached = attached && gSessions[i];
     }
-    unregister();
+    DPForgetApp([DPCopyFolder stringByAppendingPathComponent:@"Dia.app"]);  // or links and "open Dia" go to the windowless copy
     return attached;
 }
 
