@@ -314,6 +314,12 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
     DPPlaceShade(overlay.shade, window);
     id tab = DPScriptTab(window, DPTabID(overlay.openedTab));
     if (!tab) return (void)DPDismissCommandBar(overlay);
+    // Another tab came to the front, such as a link opened from another app, so the new tab went unused.
+    NSString *active = DPActiveTabID(window);
+    if (active && ![active isEqual:DPTabID(tab)] && ![active isEqual:DPTabID(overlay.returnTab)]) {
+        DPDismissCommandBar(overlay);
+        return DPCloseTab(tab);
+    }
     // A chat loads no page; Dia empties the bar once it has taken what was typed.
     BOOL taken = overlay.picked && !DPBarText(overlay).string.length;
     NSString *url = [tab valueForKey:@"URL"];
@@ -578,6 +584,8 @@ static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     NSString *active = DPActiveTabID(window);
     if (active && DPInSplit(self)) [DPSplits(window) addObject:active];
     else if (active) [DPSplits(window) removeObject:active];
+    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    if (overlay.openedTab) DPWatchNewTab(overlay);
     dispatch_async(dispatch_get_main_queue(), ^{ DPCloseLeftBlank(window); });
 }
 
