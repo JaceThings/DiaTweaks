@@ -23,6 +23,10 @@ struct DPPatch {
     __unsafe_unretained NSString *choice, *defaultChoice;
     NSMenu *(*choices)(void);
     NSArray<NSView *> *(*rows)(void);  // More rows for the Options on its Settings page, such as sliders. An option's sit under its switch.
+    // A shortcut people can change on its Settings page, saved under this key; `defaultShortcut` until they do.
+    // Settings warns when Dia's menus or another patch use the same keys, except a menu item whose action is `sharesShortcutWith`, such as @"undo:".
+    __unsafe_unretained NSString *shortcut, *sharesShortcutWith;
+    NSDictionary *(*defaultShortcut)(void);
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.
     void (*apply)(DPPatch *patch);  // Applies a toggle at once. Without it, `progress` eases toward `on` while every patch's `relayout` runs each frame.
@@ -90,10 +94,10 @@ void DPSetHint(NSView *view, NSString *text);
 NSString *DPHintOf(NSView *view);
 void DPShowHint(NSView *view);
 
-// Shortcut.m: a keyboard shortcut saved under `key` as @{keyCode, modifiers, key}, where key is what to show for the
-// key. Until one is recorded it's `fallback`; cleared, it's none. The field records one like Dia's Shortcuts settings.
-NSView *DPShortcutField(NSString *key, NSDictionary *fallback);
-BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback);  // NO while any field is recording.
+// Shortcut.m: a patch's shortcut, saved under its `shortcut` key as @{keyCode, modifiers, key}, where key is what to show
+// for the key. Until one is recorded it's `defaultShortcut`; cleared, it's none. The field records one like Dia's Shortcuts settings.
+NSView *DPShortcutRow(DPPatch *patch);  // "Shortcut" and its field, for a patch with a `shortcut`.
+BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch);  // NO while any field is recording.
 
 #pragma mark Values
 

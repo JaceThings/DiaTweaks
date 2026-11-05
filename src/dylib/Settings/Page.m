@@ -2,6 +2,11 @@
 
 static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an option's.
 
+static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
+    NSArray<NSView *> *rows = patch->rows ? patch->rows() : @[];
+    return patch->shortcut ? [@[ DPShortcutRow(patch) ] arrayByAddingObjectsFromArray:rows] : rows;
+}
+
 @implementation DPPageView {
     DPPatch *_patch;
     NSMutableArray<DPPatchSwitch *> *_switches;
@@ -59,7 +64,7 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
         // An option's own choice and rows sit under its switch, shown while it's on.
         NSMutableArray<NSView *> *under = [NSMutableArray new];
         if (option->choices) [under addObject:[self choiceRowFor:option]];
-        for (NSView *view in option->rows ? option->rows() : @[]) {
+        for (NSView *view in DPRowsOf(option)) {
             NSView *row = DPRow(view, [NSView new]);
             [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
             [under addObject:row];
@@ -70,7 +75,7 @@ static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an o
             [self->_optionChoices addObject:row];
         }
     });
-    _rows = patch->rows ? patch->rows() : @[];
+    _rows = DPRowsOf(patch);
     for (NSView *view in _rows) {
         NSView *row = DPRow(view, [NSView new]);
         [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
