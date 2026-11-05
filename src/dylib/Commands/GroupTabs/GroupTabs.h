@@ -1,5 +1,7 @@
-// Group Tabs by Domain is a one-shot command in the tab context menu and the Tabs menu, and on a keyboard shortcut, while its patch is on.
-// The hooks only remember live browsers and web contents so the command can read each tab's session ID; nothing is grouped until it's chosen.
+// Group Tabs by Domain, Expand All Tab Groups and Collapse All Tab Groups are one-shot commands in the tab context menu
+// and the Tabs menu, shown while the Group Tabs patch is on, and Group Tabs by Domain also has a keyboard shortcut. Expand
+// and Collapse use Dia's own tab-group update, so they change every group, not only groups that command created. The hooks
+// only remember live browsers and web contents; nothing changes until one is chosen.
 #import "StdPatch/StdPatch.h"
 
 void DPInstallGroupTabs(void);
@@ -28,7 +30,8 @@ NSString *DPRegistrableDomain(NSString *host);
 NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls);
 void DPRestorePlaces(id delegate, id browser, NSDictionary *places);
 
-void DPGroupTabsOnce(void);  // Grouping.m
+void DPGroupTabsOnce(void);                      // Grouping.m
+void DPSetAllGroupsCollapsed(BOOL collapsed);  // Fold.m
 // Grouping.m, also used by Tidy Tabs. An op is {op: create, title, ids} or {op: add, group, ids}; a create without a
 // title leaves the group for Dia's AI to name. Undo is Command-Z
 // right after, and ungroups `ids` and puts them back at `places`.
