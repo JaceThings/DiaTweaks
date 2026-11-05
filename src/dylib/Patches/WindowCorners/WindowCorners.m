@@ -2,13 +2,13 @@
 #import <objc/message.h>
 
 extern DPPatch DPWindowCorners;
-static const CGFloat DPCornerReach = 26;  // How near a window corner a view sits to round with it.
+static const CGFloat DPCornerReach = 26;  // How close to a window corner a view must sit to round with it.
 static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey;
 #define DPCornerBars (@[ @DPDiaTabStrip, @DPDiaSidebarHeader, @DPDiaSidebarFooter ])
 
 static CGFloat DPCornerRadius(NSWindow *window) { return ((CGFloat (*)(id, SEL))objc_msgSend)(window, @selector(_cornerRadius)); }
 static CGFloat DPRadius(void) { return DPChoice(&DPWindowCorners).doubleValue; }
-// AppKit takes a radius under 1 to mean its default, so a square window gets 1, too small to see.
+// AppKit takes a radius under 1 as its default.
 static CGFloat DPWindowRadius(void) { return MAX(1, DPRadius()); }
 
 static NSMenu *DPRadiusChoices(void) {
