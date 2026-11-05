@@ -12,15 +12,17 @@ struct DPPatch {
     BOOL defaultOn;
     int order;  // Places its section in Settings. In a section, the Hide patches go last, shortest title first.
     __unsafe_unretained NSString *title, *detail;
-    __unsafe_unretained NSString *symbol, *tint;  // SF Symbol and NSColor class property for the row's icon.
-    __unsafe_unretained NSString *section;  // Its group in Settings.
+    __unsafe_unretained NSString *hint;  // An optional tip shown under the detail on its Settings page.
+    __unsafe_unretained NSString *symbol, *tint;  // The row icon's SF Symbol, then space-separated fallbacks for older macOS, and NSColor class property.
+    __unsafe_unretained NSString *section;  // Its group in Settings. For an option, its heading on its patch's page, or Options.
     const char *const *classes;  // Dia classes it needs (DPClasses). If one is missing, it stays off and Settings says so.
+    const char *const *builtIn;  // Dia classes that mean Dia does this itself (DPClasses). If one exists, it stays off and Settings says so.
     __unsafe_unretained NSString *requires;    // Key of a patch that must be on. Settings lists this one as an option on that patch's page.
     __unsafe_unretained NSString *disabledBy;  // Key of a patch that, while on, hides what this one changes. Settings marks it.
     // A menu on the patch's Settings page, titled by the menu. Items' representedObjects are saved under `choice`.
     __unsafe_unretained NSString *choice, *defaultChoice;
     NSMenu *(*choices)(void);
-    NSArray<NSView *> *(*rows)(void);  // More rows for the Options on its Settings page, such as sliders.
+    NSArray<NSView *> *(*rows)(void);  // More rows for the Options on its Settings page, such as sliders. An option's sit under its switch.
     BOOL (*hides)(NSView *view);  // While on, hides every view this matches in Dia's toolbar, sidebar and tab strip.
     void (*install)(void);        // Runs once at launch whether or not the patch is on; install hooks here.
     void (*apply)(DPPatch *patch);  // Applies a toggle at once. Without it, `progress` eases toward `on` while every patch's `relayout` runs each frame.
@@ -28,7 +30,7 @@ struct DPPatch {
     // nil if Dia's views match `on`, otherwise a few words on what's wrong. `make test` runs it; hide patches get one.
     // Find views with DPFindViews rather than through your own hooks, so a hook that never ran shows up as a failure.
     NSString *(*verify)(DPPatch *patch);
-    BOOL on, unavailable;
+    BOOL on, unavailable, inDia;  // inDia: one of `builtIn` exists, which also makes it unavailable.
     CGFloat progress;
 };
 
@@ -75,7 +77,23 @@ NSView *DPSubview(NSView *parent, const char *className);       // First direct 
 BOOL DPIsKind(id object, const char *className);
 BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel);
 void DPRelayoutViews(NSHashTable<NSView *> *views);  // Lays each out again now.
+// Call before a patch changes a view's frame during layout. A change after Dia's layout dirties the layout again, and if
+// Dia then puts its own frame back, the two would take turns until AppKit aborts Dia. So after a few changes to one view
+// in a turn of the run loop this says no, and Dia's frame stands until the run loop next waits, when the view is laid
+// out again.
+BOOL DPMayAdjust(NSView *view);
 void *DPIvar(id object, const char *name);            // Address of an instance variable, or NULL.
+
+// In place of a tooltip, a glass bubble that points at the view while the pointer rests on it, like System Settings'.
+// nil takes it away. DPShowHint shows it at once, as for a click.
+void DPSetHint(NSView *view, NSString *text);
+NSString *DPHintOf(NSView *view);
+void DPShowHint(NSView *view);
+
+// Shortcut.m: a keyboard shortcut saved under `key` as @{keyCode, modifiers, key}, where key is what to show for the
+// key. Until one is recorded it's `fallback`; cleared, it's none. The field records one like Dia's Shortcuts settings.
+NSView *DPShortcutField(NSString *key, NSDictionary *fallback);
+BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback);  // NO while any field is recording.
 
 #pragma mark Values
 

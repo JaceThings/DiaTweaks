@@ -45,7 +45,7 @@ CGFloat DPBaseCornerRadius(NSView *container) {
 static void DPSetCornerRadius(NSView *container, CGFloat inset) {
     CGFloat *radius = DPIvar(container, "cornerRadius");
     if (!radius) return;
-    CGFloat base = DPBaseCornerRadius(container), target = base + inset + DPWindowCornerGrowth(container.window);
+    CGFloat base = DPBaseCornerRadius(container), target = MAX(0, base + inset + DPWindowCornerGrowth(container.window));
     DPOverride(container, &DPRadiusKey, @(base), @(target));
     if (*radius == target) return;
     *radius = target;
@@ -78,7 +78,7 @@ static void DPContainer_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     }
     DPSet(self, &DPRequestedFrameKey, @(frame));
     [DPContainers addObject:self];
-    NSRect adjusted = DPEdgeToEdgeFrame(self, frame);
+    NSRect adjusted = DPMayAdjust(self) ? DPEdgeToEdgeFrame(self, frame) : frame;
     DPSetCornerRadius(self, NSEqualRects(adjusted, frame) ? 0 : DPEdgeToEdge.progress * DPWindowPadding);
     DPCallOriginal(DPContainer_setFrame, self, adjusted);
 }
@@ -99,9 +99,8 @@ static NSString *DPVerifyEdgeToEdge(DPPatch *patch) {
         NSValue *requested = DPRequestedFrame(container);
         if (!requested) return @"never saw Dia place the web content";
         CALayer *layer = DPRoundedContent(container).layer;
-        CACornerMask screen = DPBesideSidebar(container) ? DPRightCorners : DPLeftCorners | DPRightCorners;
         BOOL square = patch->on && DPFullScreen(container);
-        if (layer && (layer.mask || (layer.maskedCorners & screen) != (square ? 0 : screen)))
+        if (layer && (DPCornersRound(layer, YES) == square || (!DPBesideSidebar(container) && DPCornersRound(layer, NO) == square)))
             return square ? @"corners stay round in full screen" : @"corners are square out of full screen";
         if (!patch->on || DPChatCard(container) || DPSteppedAside(container)) {
             if (!NSEqualRects(container.frame, requested.rectValue)) return @"web content isn't where Dia put it";
@@ -127,7 +126,7 @@ DP_PATCH(DPEdgeToEdge) {
     .order = 10,
     .title = @"Edge-to-Edge Web Pages",
     .detail = @"Remove the padding between web pages and the window edge. With the sidebar open, only while its square corners are on.",
-    .symbol = @"arrow.up.left.and.arrow.down.right.rectangle.fill",
+    .symbol = @"arrow.up.left.and.arrow.down.right.rectangle.fill arrow.up.left.and.arrow.down.right.square.fill",
     .tint = @"systemBlueColor",
     .section = @"Page",
     .classes = DPClasses(DPDiaContentContainer, DPDiaShadowView),

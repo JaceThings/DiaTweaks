@@ -464,6 +464,11 @@ static BOOL stageTweaks(void) {
 }
 
 static BOOL applyTweaks(void) {
+    // A release staged a while ago may since have been replaced, or overtaken by what's installed.
+    NSString *problem;
+    NSDictionary *latest = stagedRelease() ? latestTweaks(15, &problem) : nil;
+    if ([installedRelease()[@"digest"] isEqual:latest[@"digest"]]) removeTree(gStagedTweaks);
+    else if (tweaksAvailable(latest)) stageTweaks();  // if this fails, the staged release still installs
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
     NSDictionary<NSString *, NSString *> *targets = tweaksTargets();
@@ -479,6 +484,9 @@ static BOOL apply(void) {
     if (!exists(gStaged)) return YES;
     if (!stagedReady()) return unstage() && fail(@"deleted %@: a stopped run left it there; run `diapatch build` to stage Dia again", gStaged);
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch apply`");
+    // An official Dia that isn't the pristine copy was put there by hand, so the staged build is from an older Dia.
+    if (claimsOfficial(gApp) && ![buildOf(gApp) isEqual:buildOf(gPristine)])
+        return unstage() && say(@"kept the official Dia %@ at %@; run `diapatch install` to patch it", versionOf(gApp), gApp);
     return moveBundle(gStaged, gApp) && removeTree(gReady) && say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
 }
 

@@ -85,8 +85,8 @@
 
 - (void)syncWithQuery:(NSString *)query {
     [self.sectionEyes enumerateKeysAndObjectsUsingBlock:^(NSString *section, NSImageView *eye, BOOL *stop) {
-        eye.toolTip = DPWhyHiddenBy(DPPatchNamed(self.sectionHiders[section]));
-        eye.hidden = !eye.toolTip;
+        DPSetHint(eye, DPWhyHiddenBy(DPPatchNamed(self.sectionHiders[section])));
+        eye.hidden = !DPHintOf(eye);
     }];
     for (DPPatchSwitch *toggle in self.notes) {
         [toggle sync];

@@ -1,7 +1,7 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken;
-static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey;
+extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarKeepText;
+static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
@@ -14,7 +14,7 @@ static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey =
 @property(strong) NSArray<NSView *> *shownShadows;
 @property(strong) NSTimer *watch;
 @property(copy) NSString *startURL;
-@property CGFloat collapsedHeight;
+@property CGFloat collapsedHeight, collapsedWidth;
 @property CFTimeInterval sizedAt;
 @property BOOL picked, overBlank;
 @end
@@ -85,10 +85,20 @@ static NSString *DPPreviousTabID(NSWindow *window) {
     return recent.count > 1 ? recent.firstObject : nil;
 }
 
-static NSMutableSet<NSString *> *DPBlanks(NSWindow *window) {
-    NSMutableSet *blanks = DPGet(window, &DPBlankKey);
-    if (!blanks && window) DPSet(window, &DPBlankKey, blanks = [NSMutableSet set]);
-    return blanks;
+static NSMutableSet<NSString *> *DPWindowSet(NSWindow *window, const void *key) {
+    NSMutableSet *set = DPGet(window, key);
+    if (!set && window) DPSet(window, key, set = [NSMutableSet set]);
+    return set;
+}
+
+static NSMutableSet<NSString *> *DPBlanks(NSWindow *window) { return DPWindowSet(window, &DPBlankKey); }
+static NSMutableSet<NSString *> *DPSplits(NSWindow *window) { return DPWindowSet(window, &DPSplitKey); }
+
+static BOOL DPInSplit(NSView *view) {
+    NSView *pane = view;
+    while (pane && !DPIsKind(pane, DPDiaSplitPane)) pane = pane.superview;
+    for (NSView *other in pane.superview.subviews) if (other != pane && DPIsKind(other, DPDiaSplitPane)) return YES;
+    return NO;
 }
 
 #pragma mark Overlay
@@ -111,11 +121,17 @@ static CGFloat DPSuggestionsHeight(NSView *panel) {
     return height > 0 ? height + 8 : 0;
 }
 
-// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar.
+static NSView *DPCardIn(NSWindow *window);
+
+// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar. Centered on the page,
+// the bar moves as the sidebar opens and closes, so that's a position of its own.
 static NSRect DPBarFrame(NSView *view, NSSize size, CGFloat collapsedHeight) {
-    NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame;
-    NSPoint origin = NSMakePoint(NSMidX(bounds) - size.width / 2, NSMidY(bounds) - collapsedHeight / 2);
-    if ([DPChoice(&DPCommandBar) isEqual:@"macos"] && view.window.screen) {
+    NSString *position = DPChoice(&DPCommandBar);
+    NSView *card = [position isEqual:@"page"] ? DPCardIn(view.window) : nil;
+    if (NSIsEmptyRect(card.bounds)) card = nil;  // A new tab's page has no size until Dia lays it out.
+    NSRect bounds = view.bounds, screen = view.window.screen.visibleFrame, page = card ? [view convertRect:card.bounds fromView:card] : bounds;
+    NSPoint origin = NSMakePoint(NSMidX(page) - size.width / 2, NSMidY(page) - collapsedHeight / 2);
+    if ([position isEqual:@"macos"] && view.window.screen) {
         NSPoint topLeft = NSMakePoint(NSMidX(screen) - size.width / 2, NSMaxY(screen) - (NSHeight(screen) - collapsedHeight) * DPTuned(DPHeightKey));
         origin = [view convertPoint:[view.window convertPointFromScreen:topLeft] fromView:nil];
     }
@@ -204,8 +220,11 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 // ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
 - (NSRect)frameForPanelSize:(NSSize)size {
     if (!DPIsKind(self.page, DPDiaPopover)) {
-        if (!self.collapsedHeight) {  // From the bar, since a tweak may clip the panel.
-            NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
+        // From the bar, since a tweak may clip the panel. A bar restored at launch is first laid out a few points wide and
+        // too tall, so its height counts once it has its real width.
+        NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
+        if (!self.collapsedHeight || NSWidth(bar.frame) != self.collapsedWidth) {
+            self.collapsedWidth = NSWidth(bar.frame);
             self.collapsedHeight = NSHeight(bar.frame) - DPSuggestionsHeight(self.panel);
         }
         return DPBarFrame(self, size, self.collapsedHeight);
@@ -275,9 +294,13 @@ static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     NSView *page = overlay.page;
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
+    else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
+    BOOL nowhereToGo = !overlay.returnTab;
     id tab = DPDismissCommandBar(overlay);
-    if (overBlank) DPMakeBlank(page);
-    else if (tab) DPCloseTab(tab);
+    if (!tab) return;
+    // Closing a window's only tab would close the window, and Dia with it.
+    if (overBlank || nowhereToGo) DPMakeBlank(page);
+    else DPCloseTab(tab);
 }
 
 static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
@@ -411,14 +434,20 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
     if (![recent.lastObject isEqual:openedID]) returnID = recent.lastObject;
+    // Going back to a split while Dia is still switching tabs crashes it, so new tabs in or from one keep Dia's own page.
+    if (DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) return (void)DPSet(page, &DPOwnBarKey, @YES);
     DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, overBlank || !returnID ? nil : DPScriptTab(window, returnID)) : nil;
     if (!overlay) return;
     if (overBlank) {
         [DPBlanks(window) removeObject:openedID];
         DPSet(page, &DPBlankKey, nil);
-        NSTextView *text = DPBarText(overlay);
-        [text insertText:@"" replacementRange:NSMakeRange(0, text.string.length)];
     }
+    // What was typed before Escape comes back selected, like Arc, so it can be carried on or typed over.
+    NSTextView *text = DPBarText(overlay);
+    NSString *left = DPCommandBarKeepText.on ? DPGet(window, &DPLeftTextKey) : nil;
+    DPSet(window, &DPLeftTextKey, nil);
+    if (overBlank || left.length) [text insertText:left ?: @"" replacementRange:NSMakeRange(0, text.string.length)];
+    if (left.length) [text selectAll:nil];
     overlay.overBlank = overBlank;
     overlay.openedTab = openedTab;
     overlay.startURL = [openedTab valueForKey:@"URL"];
@@ -546,6 +575,9 @@ static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     __weak NSWindow *window = self.window;
     if (!window) return;
     DPNoteActiveTab(window);
+    NSString *active = DPActiveTabID(window);
+    if (active && DPInSplit(self)) [DPSplits(window) addObject:active];
+    else if (active) [DPSplits(window) removeObject:active];
     dispatch_async(dispatch_get_main_queue(), ^{ DPCloseLeftBlank(window); });
 }
 
@@ -613,7 +645,7 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
         DPCommandBarOverlay *overlay = DPGet(page, &DPOverlayKey);
         BOOL blank = DPGet(page, &DPBlankKey) != nil;
         if (blank && !page.hidden) return @"a blank tab shows its new tab page";
-        if (DPCommandBar.on && !overlay && !blank) return @"a new tab page shows without the bar over it";
+        if (DPCommandBar.on && !overlay && !blank && !DPGet(page, &DPOwnBarKey)) return @"a new tab page shows without the bar over it";
         if (overlay && overlay.panel.superview != overlay) return @"the bar isn't on the overlay";
     }
     for (NSWindow *window in NSApp.windows)
@@ -710,18 +742,18 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
     return row;
 }
 
+// Each sits under the heading of the option it tunes.
 static NSArray<NSView *> *DPCommandBarRows(void) {
-    return @[
-        DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"),
-        DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"),
-        DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
-        DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey),
-    ];
+    NSView *darkness = DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"), *radius = DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
+           *sidebar = DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey);
+    darkness.identifier = @"Darken";
+    radius.identifier = sidebar.identifier = @"Blur";
+    return @[ DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"), radius, sidebar, darkness ];
 }
 
 static NSMenu *DPCommandBarPositions(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Position"];
-    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ] ]) {
+    for (NSArray *item in @[ @[ @"Like Spotlight", @"macos" ], @[ @"Center of Window", @"window" ], @[ @"Center of Page", @"page" ] ]) {
         NSMenuItem *entry = [[NSMenuItem alloc] initWithTitle:item[0] action:nil keyEquivalent:@""];
         entry.representedObject = item[1];
         [menu addItem:entry];
@@ -755,8 +787,8 @@ DP_PATCH(DPCommandBarBlur) {
     .detail = @"Blur the page behind the command bar.",
     .symbol = @"aqi.medium",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
+    .section = @"Blur",
     .apply = DPApplyCommandBar,
 };
 
@@ -768,7 +800,18 @@ DP_PATCH(DPCommandBarDarken) {
     .detail = @"Darken the page behind the command bar.",
     .symbol = @"moon.fill",
     .tint = @"systemOrangeColor",
-    .section = @"Command Bar",
     .requires = @"commandBar",
+    .section = @"Darken",
     .apply = DPApplyCommandBar,
+};
+
+DP_PATCH(DPCommandBarKeepText) {
+    .key = @"commandBarKeepText",
+    .order = 90,
+    .title = @"Remember What You Typed",
+    .detail = @"Bring back what you typed when you open the bar again after Escape, selected so you can carry on or type over it.",
+    .symbol = @"text.cursor",
+    .tint = @"systemOrangeColor",
+    .requires = @"commandBar",
+    .section = @"Typing",
 };
