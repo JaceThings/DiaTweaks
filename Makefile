@@ -35,9 +35,14 @@ GROUP_TABS := $(addprefix src/dylib/Commands/GroupTabs/,Plan.m Title.m Registrab
 build/group-tabs: tests/group-tabs.m $(GROUP_TABS) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $^
 
-# Checks that need no Dia: the Group Tabs by Domain logic, and that Settings shows each tweak like its neighbours.
-check: build/group-tabs build/patches.json
+build/gitlab-merge-requests: tests/gitlab-merge-requests.m src/dylib/Patches/GitLabMergeRequests/Plan.m | build
+	clang $(CFLAGS) -Isrc/dylib -framework Foundation -o $@ $^
+
+# Checks that need no Dia: the Group Tabs by Domain logic, the GitLab merge requests refresh plan, and that Settings
+# shows each tweak like its neighbours.
+check: build/group-tabs build/gitlab-merge-requests build/patches.json
 	build/group-tabs
+	build/gitlab-merge-requests
 	scripts/check-patches
 
 test: build/DiaPatches.dylib
