@@ -1,6 +1,5 @@
 #import "Patches/Peek/Peek.h"
 
-// Peek.m's link handling reads this switch.
 DP_PATCH(DPPeekPinnedLinks) {
     .key = @"peekPinnedLinks",
     .order = 104,

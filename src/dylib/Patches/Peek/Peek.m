@@ -26,7 +26,7 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
     NSInteger disposition = [[action valueForKey:@"navigationDisposition"] integerValue];
     if (!DPPeekWanted(disposition)) {
         NSInteger policy = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
-        // A pinned tab keeps to its site: Dia sends a link that leaves it to a new tab, which this opens in Peek instead.
+        // Only a pinned tab turns a current-tab link into a new tab.
         if (!DPPeek.on || !DPPeekPinnedLinks.on || disposition != DPCurrentTab || policy != DPForegroundTab || !DPPeekCanOpen(webContents)) return policy;
         DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
         return DPIgnoreAction;
