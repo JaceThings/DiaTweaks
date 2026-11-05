@@ -60,7 +60,7 @@
 #define DPDiaCommandBarButton   "_TtC15BoostCommandBar13ToolbarButton"
 #define DPDiaTruncatingLabel    "_TtC5ARCUI24FeatheredTruncatingLabel"
 #define DPDiaFlippedView        "_TtC5ARCUI11FlippedView"
-#define DPDiaPopoverBackground  "_TtC5ARCUI20PopoverBackgroundView"
+#define DPDiaPopoverBackground  "ARCUI.PopoverBackgroundView"
 #define DPDiaCallbackMenuItem   "_TtC5ARCUI16CallbackMenuItem"
 #define DPDiaTabView            "_TtC5TabUI7TabView"
 #define DPDiaTabGroupCell       "_TtC5TabUI16TabGroupCellView"
