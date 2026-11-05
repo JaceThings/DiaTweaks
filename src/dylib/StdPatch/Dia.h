@@ -30,6 +30,7 @@
 #define DPDiaPopoverRoot        "_TtCC14DynamicPopover28DynamicPopoverViewControllerP33_AB0357A1429F4D6D7F128058B713C93F8RootView"
 #define DPDiaWindowFrame       "_TtC6Window24PlatformWindowThemeFrame"
 #define DPDiaWindowTint         "_TtC15WindowTreatment31WindowBackgroundOverlayTintView"
+#define DPDiaColorView          "_TtC5ARCUI19BackgroundColorView"
 #define DPDiaBrowser            "ArcBrowser"
 #define DPDiaBrowserDelegate    "_TtC3ADK15ChromiumBrowser"
 #define DPDiaWebContents        "ArcWebContents"  // A tab's page, declared in ArcCore's ArcWebContents.h.
