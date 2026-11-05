@@ -21,7 +21,22 @@ NSString *DPDomainKey(NSString *urlString) {
     return host.length ? host : nil;
 }
 
-// Loose tabs join an existing group whose title is exactly the domain. Tabs in any other group stay put.
+// Two keys that capitalise to the same name (apple.com and apple.org) keep the host, so the groups stay apart.
+static NSDictionary<NSString *, NSString *> *DPTitles(NSArray<NSDictionary *> *tabs) {
+    NSMutableDictionary<NSString *, NSString *> *friendly = [NSMutableDictionary dictionary];
+    for (NSDictionary *tab in tabs) {
+        NSString *domain = tab[@"domain"];
+        if (domain.length && !friendly[domain]) friendly[domain] = DPGroupTitle(domain);
+    }
+    NSCountedSet *counts = [NSCountedSet setWithArray:friendly.allValues];
+    NSMutableDictionary<NSString *, NSString *> *titles = [NSMutableDictionary dictionary];
+    for (NSString *domain in friendly)
+        titles[domain] = [counts countForObject:friendly[domain]] > 1 ? domain : friendly[domain];
+    return titles;
+}
+
+// Loose tabs join an existing group titled with the site name, or with the host from before that.
+// Tabs in any other group stay put.
 NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups) {
     NSMutableDictionary<NSNumber *, NSString *> *groupTitle = [NSMutableDictionary dictionary];
     NSMutableDictionary<NSString *, NSString *> *homeID = [NSMutableDictionary dictionary];
@@ -47,12 +62,14 @@ NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups) {
             }
         }
     }
+    NSDictionary<NSString *, NSString *> *titles = DPTitles(tabs);
     NSMutableDictionary<NSString *, NSMutableArray<NSDictionary *> *> *pools = [NSMutableDictionary dictionary];
     for (NSDictionary *tab in tabs) {
         NSNumber *sid = tab[@"session"];
         NSString *domain = tab[@"domain"];
+        NSString *want = titles[domain] ?: domain;
         NSString *title = groupTitle[sid];
-        if (title && ![title isEqualToString:domain]) continue;
+        if (title && ![title isEqualToString:domain] && ![title isEqualToString:want]) continue;
         NSMutableArray *pool = pools[domain] ?: (pools[domain] = [NSMutableArray array]);
         [pool addObject:tab];
     }
@@ -60,11 +77,16 @@ NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups) {
     for (NSString *domain in pools) {
         NSArray<NSDictionary *> *pool = pools[domain];
         if (pool.count < 2) continue;
+        NSString *want = titles[domain] ?: domain;
+        NSMutableSet<NSNumber *> *members = [NSMutableSet set];
+        if (homeMembers[want]) [members unionSet:homeMembers[want]];
+        if (homeMembers[domain] && ![want isEqualToString:domain]) [members unionSet:homeMembers[domain]];
         NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
-        for (NSDictionary *tab in pool) if (![homeMembers[domain] containsObject:tab[@"session"]]) [ids addObject:tab[@"session"]];
+        for (NSDictionary *tab in pool) if (![members containsObject:tab[@"session"]]) [ids addObject:tab[@"session"]];
         if (!ids.count) continue;
-        if (homeID[domain]) [ops addObject:@{@"op": @"add", @"group": homeID[domain], @"ids": ids}];
-        else if (ids.count >= 2) [ops addObject:@{@"op": @"create", @"title": domain, @"ids": ids}];
+        NSString *home = homeID[want] ?: homeID[domain];
+        if (home) [ops addObject:@{@"op": @"add", @"group": home, @"ids": ids}];
+        else if (ids.count >= 2) [ops addObject:@{@"op": @"create", @"title": want, @"ids": ids}];
     }
     return ops;
 }

@@ -18,6 +18,7 @@ NSString *DPText(id value);
 
 // Plan.m: which groups to create and which tabs to add to existing ones.
 NSString *DPDomainKey(NSString *urlString);
+NSString *DPGroupTitle(NSString *domain);  // Title.m. Shown on a new group; the host stays the grouping key.
 NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups);
 
 // Registrable.m: eTLD+1 for Merge Subdomains, from a host DPDomainKey returned. A short rule, not the Public Suffix List.
