@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Scaffold a website tab integration in src/dylib/Patches."""
+
+from __future__ import annotations
+
+import argparse
+import ctypes
+import errno
+import ipaddress
+import json
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+ROOT = Path(__file__).resolve().parent.parent
+TEMPLATES = Path(__file__).resolve().parent / "integration-templates"
+NAME_RE = re.compile(r"[A-Z][A-Za-z0-9]{0,63}\Z")
+HOST_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\Z")
+
+
+def validate_name(name: str) -> str:
+    if not NAME_RE.fullmatch(name):
+        raise ValueError("NAME must be a 1–64 character Objective-C identifier beginning with an uppercase letter")
+    return name
+
+
+def validate_origin(origin: str) -> str:
+    parsed = urlsplit(origin)
+    if (parsed.scheme != "https" or not parsed.hostname or "@" in parsed.netloc or parsed.username or parsed.password
+            or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.netloc.endswith(":")):
+        raise ValueError("origin must be a bare HTTPS origin, such as https://example.com")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("origin has an invalid port") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("origin has an invalid port")
+    hostname = parsed.hostname.encode("idna").decode("ascii").lower()
+    if ":" in hostname:
+        if "%" in hostname:
+            raise ValueError("origin has an invalid host")
+        try:
+            hostname = f"[{ipaddress.IPv6Address(hostname).compressed}]"
+        except ipaddress.AddressValueError as exc:
+            raise ValueError("origin has an invalid host") from exc
+    elif not HOST_RE.fullmatch(hostname):
+        raise ValueError("origin has an invalid host")
+    if port == 443:
+        return f"https://{hostname}"
+    return f"https://{hostname}{f':{port}' if port is not None else ''}"
+
+
+def template(filename: str, values: dict[str, str]) -> str:
+    result = (TEMPLATES / filename).read_text(encoding="utf-8")
+    for key, value in values.items():
+        result = result.replace(f"@@{key}@@", value)
+    if re.search(r"@@[A-Z_]+@@", result):
+        raise ValueError(f"unfilled placeholder in template {filename}")
+    return result
+
+
+def render(name: str, origin: str, custom: bool) -> dict[str, str]:
+    validate_name(name)
+    origin = validate_origin(origin)
+    values = {
+        "NAME": name,
+        "ORIGIN": origin,
+        "KEY": name[0].lower() + name[1:],
+        "DETAIL": "Customize this website preview." if custom else "Show a custom list for this website.",
+    }
+    body = template("custom-preview.m.tmpl" if custom else "list-preview.m.tmpl", values)
+    registration = template("registration.m.tmpl", values)
+    return {
+        f"{name}.m": body + "\n" + registration,
+        "Collector.js": template("Collector.js.tmpl", values),
+        "integration.json": json.dumps({"runtime": True, "scripts": ["Collector.js"]}, indent=2) + "\n",
+        "page.html": template("page.html.tmpl", values),
+        "test-collector.js": template("test-collector.js.tmpl", values),
+    }
+
+
+def rename_directory_exclusive(source: Path, target: Path) -> None:
+    """Atomically publish a directory only when the destination is still absent."""
+    source_b, target_b = os.fsencode(source), os.fsencode(target)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        rename = getattr(libc, "renamex_np", None)
+        if rename is None:
+            raise OSError("atomic no-replace directory rename is unavailable")
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(source_b, target_b, 0x00000004)  # RENAME_EXCL
+    elif sys.platform.startswith("linux"):
+        rename = getattr(libc, "renameat2", None)
+        if rename is None:
+            raise OSError("atomic no-replace directory rename is unavailable")
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(-100, source_b, -100, target_b, 1)  # AT_FDCWD, RENAME_NOREPLACE
+    else:
+        raise OSError("atomic no-replace directory rename is unsupported on this platform")
+    if result != 0:
+        error = ctypes.get_errno()
+        if error in (errno.EEXIST, errno.ENOTEMPTY):
+            raise FileExistsError(f"{target} already exists")
+        raise OSError(error, os.strerror(error), str(target))
+
+
+def generate(root: Path, name: str, origin: str, custom: bool = False) -> Path:
+    files = render(name, origin, custom)
+    target = root / "src/dylib/Patches" / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        raise FileExistsError(f"{target} already exists")
+    staging = Path(tempfile.mkdtemp(prefix=f".{name}.", dir=target.parent))
+    try:
+        for filename, contents in files.items():
+            (staging / filename).write_text(contents, encoding="utf-8")
+        rename_directory_exclusive(staging, target)
+    except BaseException:
+        for child in staging.iterdir():
+            child.unlink()
+        staging.rmdir()
+        raise
+    return target
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("name", help="Integration name, for example ExamplePreview")
+    parser.add_argument("--origin", default="https://example.com", help="Bare HTTPS origin")
+    parser.add_argument("--custom", action="store_true", help="Start with a fully custom AppKit preview")
+    parser.add_argument("--root", type=Path, default=ROOT, help="Repository root (default: this script's checkout)")
+    args = parser.parse_args()
+    try:
+        target = generate(args.root.resolve(), args.name, args.origin, args.custom)
+    except (ValueError, FileExistsError, OSError) as exc:
+        parser.error(str(exc))
+    print(f"created {target}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

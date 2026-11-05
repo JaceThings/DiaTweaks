@@ -1,0 +1,31 @@
+extern DPPatch DP@@NAME@@;
+
+static DPTabIntegrationPreview *makePreview(DPTabIntegration *site, id tab) {
+    return [[DP@@NAME@@Preview alloc] initWithIntegration:site tab:tab];
+}
+static void snapshotChanged(DPTabIntegrationPage *page) {
+    // Validate page.snapshot and identify the confirmed account/workspace scope before caching.
+    // Leave uncached until this provider has a reliable identity rule.
+}
+static DPTabIntegration site = {
+    .patch = &DP@@NAME@@,
+    .origins = DPIntegrationOrigins("@@ORIGIN@@"),
+    .scriptKey = @"@@NAME@@",
+    .scriptNamespace = @"Dia@@NAME@@",
+    .scriptVersion = 1,
+    .snapshotChanged = snapshotChanged,
+    .makePreview = makePreview,
+};
+static void install(void) { DPTabIntegrationInstall(&site); }
+static void apply(DPPatch *patch) { DPTabIntegrationApply(&site); }
+static NSString *verify(DPPatch *patch) { return DPTabIntegrationVerify(&site); }
+DP_PATCH(DP@@NAME@@) {
+    .key = @"@@KEY@@",
+    .title = @"@@NAME@@ Tab Integration",
+    .detail = @"@@DETAIL@@",
+    .symbol = @"globe",
+    .section = @"Websites",
+    .requires = @"extendedIntegrations",
+    .classes = DPTabIntegrationClasses,
+    .install = install, .apply = apply, .verify = verify,
+};

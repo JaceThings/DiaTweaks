@@ -1,0 +1,9 @@
+{
+  "scripts": [
+    "State.js",
+    "Pins.js",
+    "Sidebar.js",
+    "Lifecycle.js",
+    "Collector.js"
+  ]
+}

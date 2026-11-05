@@ -1,0 +1,5 @@
+{
+  "initial": {"kind":"mail-items","unread":2,"items":[{"id":"mail-1","subject":"Synthetic receipt","unread":true}]},
+  "afterCommand": {"kind":"mail-items","unread":1,"items":[{"id":"mail-1","subject":"Synthetic receipt","unread":false}]},
+  "command": "markRead"
+}

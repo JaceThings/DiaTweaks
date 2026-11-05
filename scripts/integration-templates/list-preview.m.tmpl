@@ -1,0 +1,30 @@
+#import "TabIntegrations/TabIntegrations.h"
+#import "TabIntegrations/ListPreview.h"
+
+@interface DP@@NAME@@Preview : DPTabIntegrationListPreview
+@end
+@implementation DP@@NAME@@Preview
+- (DPTabIntegrationListContent *)listContent {
+    NSDictionary *snapshot = self.context.snapshot;
+    id candidate = snapshot[@"title"];
+    NSString *title = [candidate isKindOfClass:NSString.class] && [candidate length] > 0 && [candidate length] <= 300
+        ? candidate : nil;
+    NSMutableArray<DPTabIntegrationItem *> *items = [NSMutableArray array];
+    if (title) {
+        DPTabIntegrationItem *item = [[DPTabIntegrationItem alloc] initWithTitle:title];
+        __weak DP@@NAME@@Preview *weakPreview = self;
+        item.primaryAction = [[DPTabIntegrationAction alloc] initWithTitle:@"Open page"
+            handler:^(DPTabIntegrationContext *context, DPTabIntegrationItem *selectedItem) {
+                NSString *url = context.URLString;
+                if (DPTabIntegrationMatchesURL(context.integration, url)) [weakPreview navigateToURL:url];
+            }];
+        [items addObject:item];
+    }
+    DPTabIntegrationListContent *content = [[DPTabIntegrationListContent alloc]
+        initWithTitle:@"@@NAME@@" items:items];
+    content.state = title ? @"live" : (snapshot ? @"empty" : @"loading");
+    content.emptyMessage = title ? nil : DPTabIntegrationDefaultEmptyMessage(content.state,
+        NSDate.timeIntervalSinceReferenceDate - self.startedAt);
+    return content;
+}
+@end

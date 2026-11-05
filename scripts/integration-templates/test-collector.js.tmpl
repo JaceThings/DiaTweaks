@@ -1,0 +1,28 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+const Runtime = require(process.argv[2] || path.resolve(__dirname, "../../TabIntegrations/AdapterRuntime.js"));
+
+const html = fs.readFileSync(path.join(__dirname, "page.html"), "utf8");
+const title = html.match(/<title>([^<]*)<\/title>/i)?.[1];
+assert.ok(title, "synthetic fixture page has a title");
+const document = { title };
+const window = { document };
+const context = vm.createContext({ window, document, DPTabIntegrationRuntime: Runtime });
+vm.runInContext(fs.readFileSync(path.join(__dirname, "Collector.js"), "utf8"), context);
+
+const adapter = window["Dia@@NAME@@"];
+assert.equal(adapter.version, 1);
+assert.deepEqual(JSON.parse(JSON.stringify(adapter.snapshot())), { title });
+document.title = "Updated synthetic fixture";
+assert.deepEqual(JSON.parse(JSON.stringify(adapter.refresh())), { title: document.title });
+assert.equal(adapter.refreshTitle(), document.title);
+assert.deepEqual(JSON.parse(JSON.stringify(adapter.snapshot())), { title: document.title });
+adapter.dispose();
+assert.equal(adapter.disposed, true);
+document.title = "Changed after disposal";
+assert.deepEqual(JSON.parse(JSON.stringify(adapter.snapshot())), { title: "Updated synthetic fixture" });
+console.log("collector fixture passed");

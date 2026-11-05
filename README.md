@@ -8,6 +8,8 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site.
 
+The optional tab previews show recent conversations and a separate preview pin for **ChatGPT, Claude, Gemini and T3 Chat**. Open Settings → Patches → Tabs → **Extended Integrations** for the master switch and individual website switches. The master pauses previews while remembering each website's selection. See [ChatGPT's behavior and testing notes](docs/chatgpt-preview.md) and the [other conversation previews and current limitations](docs/conversation-previews.md). Developers can scaffold other sites with `make integration NAME=ExamplePreview ORIGIN=https://example.com` and choose the shared list components or a custom AppKit view; see the [tab integration API](docs/tab-integrations.md).
+
 Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
 
 [See all tweaks →](https://github.com/JaceThings/DiaTweaks/wiki)
@@ -63,7 +65,7 @@ rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTw
 <details>
 <summary><strong>Is it safe?</strong></summary>
 
-Yes. It's built on your Mac from this code. It only changes how Dia looks, and never reads your pages, history or passwords.
+It's built on your Mac from this code. Most tweaks change Dia's interface. The optional conversation previews read titles, links and supported status indicators from their open website tabs. Gemini also uses the visible account label to separate cached metadata and pins by account. They do not collect message text or credentials, and are off by default.
 
 </details>
 
