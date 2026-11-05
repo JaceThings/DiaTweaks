@@ -65,7 +65,7 @@ DP_PATCH(DPCompactSidebar) {
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaWindowController, DPDiaFloatingSidebar, DPDiaSidebarRoot, DPDiaSidebarController, DPDiaSidebarHeader,
                          DPDiaTrafficLights, DPDiaContentContainer, DPDiaContentPane, DPDiaToolbar, DPDiaAddressField, DPDiaCallbackMenuItem, DPDiaTabListLayout,
-                         DPDiaHoverableControl, DPDiaShadowView, DPDiaPopoverBackground),
+                         DPDiaHoverableControl, DPDiaShadowView, DPDiaPopoverBackground, DPDiaLibraryCell),
     .install = DPInstallCompactSidebar,
     .apply = DPApplyCompactSidebar,
     .verify = DPVerifyCompactSidebar,
