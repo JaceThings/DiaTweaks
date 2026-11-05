@@ -305,11 +305,11 @@ static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
 
 static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
     NSWindow *window = overlay.host;
-    NSView *frame = window.contentView.superview;
+    NSView *content = window.contentView;
     if (!window) return (void)DPDismissCommandBar(overlay);
-    if (overlay.superview != frame) {  // Dia rebuilds the frame view as it restores a window at launch.
-        overlay.frame = frame.bounds;
-        [frame addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+    if (overlay.superview != content) {  // Dia rebuilds the window's views as it restores a window at launch.
+        overlay.frame = content.bounds;
+        [content addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
     }
     DPPlaceShade(overlay.shade, window);
     id tab = DPScriptTab(window, DPTabID(overlay.openedTab));
@@ -400,15 +400,16 @@ static CGFloat DPStyleAsNewTab(NSView *panel) {
 
 static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     NSWindow *window = page.window;
-    NSView *frame = window.contentView.superview, *panel = DPPanelIn(page);
-    if (!DPCommandBar.on || !panel || !frame || DPGet(page, &DPOverlayKey)) return nil;
-    DPCommandBarOverlay *overlay = [[DPCommandBarOverlay alloc] initWithFrame:frame.bounds];
+    // In the content view, where Dia's hover tracking looks for what's under the pointer, so suggestions highlight.
+    NSView *content = window.contentView, *panel = DPPanelIn(page);
+    if (!DPCommandBar.on || !panel || !content || DPGet(page, &DPOverlayKey)) return nil;
+    DPCommandBarOverlay *overlay = [[DPCommandBarOverlay alloc] initWithFrame:content.bounds];
     overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     overlay.page = page;
     overlay.panel = panel;
     overlay.host = window;
     overlay.returnTab = tabBehind;
-    [frame addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+    [content addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
     DPSet(page, &DPOverlayKey, overlay);
     DPSet(window, &DPOverlayKey, overlay);
     DPSet(panel, &DPHomeKey, panel.superview);
