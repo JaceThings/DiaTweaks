@@ -31,12 +31,16 @@ void DPLoadFavicon(NSString *domain, CGFloat points, void (^done)(NSImage *favic
 // Page.m: the front tab.
 id DPFrontContents(void);
 NSString *DPFrontDomain(void);
-// Each click on the page hands `picked` @{ selector, label }, as it came from the page, until Escape or DPStopPicking.
+void DPRunScript(id contents, NSString *script, void (^done)(NSString *result));  // On the main queue, nil if it can't run.
+// Picker.m: each click on the page hands `picked` @{ selector, label }, as it came from the page, until Escape or DPStopPicking.
 void DPPickElements(id contents, void (^picked)(NSDictionary *zap), void (^done)(void));
 void DPStopPicking(id contents);
 void DPPageSiteName(id contents, void (^done)(NSString *name));  // Only called if the page names itself.
 
-// Toolbar.m: the Boost button in each tab's address field.
+// Button.m and Toolbar.m: the Boost button in each tab's address field.
+@interface DPBoostButton : NSButton
+- (void)sync;  // Pink while the front tab's site has a Boost on.
+@end
 void DPInstallBoostButton(void);
 void DPSyncBoostButtons(void);
 NSView *DPBoostButtonIn(NSWindow *window);  // The visible one, or nil.
@@ -48,6 +52,8 @@ void DPImportBoost(NSWindow *window);  // Opens the imported boost in the editor
 
 // Sites.m: the Options on Boosts' Settings page.
 NSArray<NSView *> *DPBoostSettingsRows(void);
+
+// Labels.m
 NSImageView *DPBoostFavicon(NSString *domain, CGFloat points);  // A globe until the site's favicon loads.
 NSTextField *DPBoostLabel(NSString *text);  // One line, cut short with an ellipsis rather than wrapped.
 NSAttributedString *DPBoostTitle(NSString *name, NSString *domain, NSFontWeight weight);  // Wikipedia (en.wikipedia.org)
