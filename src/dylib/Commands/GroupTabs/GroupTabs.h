@@ -34,5 +34,4 @@ BOOL DPCanUndoGrouping(void);
 void DPForgetGroupingUndo(void);
 void DPInstallGroupMenus(void);  // Menu.m
 void DPInstallGroupTabsShortcut(void);  // Shortcut.m
-NSArray<NSView *> *DPGroupTabsShortcutRows(void);
-NSString *DPVerifyGroupTabsShortcut(DPPatch *patch);
+NSDictionary *DPDefaultGroupTabsShortcut(void);

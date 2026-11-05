@@ -112,6 +112,6 @@ DP_PATCH(DPGroupTabs) {
     .section = @"Tabs",
     .install = DPInstallGroupTabs,
     .apply = DPApplyGroupTabs,
-    .rows = DPGroupTabsShortcutRows,
-    .verify = DPVerifyGroupTabsShortcut,
+    .shortcut = @"groupTabsByDomainShortcut",
+    .defaultShortcut = DPDefaultGroupTabsShortcut,
 };
