@@ -62,6 +62,7 @@
 #define DPDiaChatUsage          "_TtC15BoostCommandBar13ChatUsageView"
 #define DPDiaStatusText         "_TtC10StatusText14StatusTextView"
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
+#define DPDiaReloadNudge        "_TtC13NavigationBar39AdBlockReloadNudgeContentViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"

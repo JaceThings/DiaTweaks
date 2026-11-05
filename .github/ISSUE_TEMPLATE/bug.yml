@@ -43,6 +43,7 @@ body:
         - Hide Group Background
         - Hide Recent Tabs Button
         - Don’t Open Downloads List
+        - Hide Site Not Working Prompt
         - Close Tabs from Tab Switcher
         - Unload Tabs
         - Save Page As
