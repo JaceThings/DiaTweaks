@@ -32,6 +32,8 @@ NSDictionary *DPTabPlaces(NSDictionary<NSNumber *, NSString *> *urls);
 void DPRestorePlaces(id delegate, id browser, NSDictionary *places);
 
 void DPGroupTabsOnce(void);                      // Grouping.m
+void DPGroupSelectedTabsOnce(void);              // Grouping.m. Only the front window's selected tabs.
+NSSet<NSNumber *> *DPSelectedSessions(id browser);  // Selection.m. Nil unless two or more selected tabs are found.
 void DPSetAllGroupsCollapsed(BOOL collapsed);  // Fold.m
 void DPUngroupDomain(void);                      // Ungroup.m
 void DPUngroupAllDomains(void);                  // Ungroup.m

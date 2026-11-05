@@ -6,7 +6,7 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 ## Tweaks
 
-Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site, **Expand All Tab Groups** and **Collapse All Tab Groups**, that open or close every group in the front window, and **Ungroup This Domain** and **Ungroup All Domains**, that take apart the current tab's site group or every one in the window.
+Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site, **Group Selected Tabs by Domain**, that does the same for only the selected tabs, **Expand All Tab Groups** and **Collapse All Tab Groups**, that open or close every group in the front window, and **Ungroup This Domain** and **Ungroup All Domains**, that take apart the current tab's site group or every one in the window.
 
 Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
 

@@ -1,11 +1,11 @@
 #import "GroupTabs.h"
 
 static const NSInteger DPGroupMenuTag = 0xD1A7001, DPExpandMenuTag = 0xD1A7004, DPCollapseMenuTag = 0xD1A7005, DPUngroupMenuTag = 0xD1A7002,
-                       DPUngroupAllMenuTag = 0xD1A7003;
+                       DPUngroupAllMenuTag = 0xD1A7003, DPGroupSelectedMenuTag = 0xD1A7006;
 static NSString *const DPGroupMenuTitle = @"Group Tabs by Domain";
 static NSString *const DPExpandMenuTitle = @"Expand All Tab Groups";
 static NSString *const DPCollapseMenuTitle = @"Collapse All Tab Groups";
-static const NSInteger DPFollowerTags[] = {DPExpandMenuTag, DPCollapseMenuTag, DPUngroupMenuTag, DPUngroupAllMenuTag};
+static const NSInteger DPFollowerTags[] = {DPGroupSelectedMenuTag, DPExpandMenuTag, DPCollapseMenuTag, DPUngroupMenuTag, DPUngroupAllMenuTag};
 static const NSInteger DPFollowerCount = sizeof(DPFollowerTags) / sizeof(DPFollowerTags[0]);
 static BOOL DPInserting;
 
@@ -41,6 +41,8 @@ static NSMenuItem *DPGroupMenuItem(void) {
 }
 
 static NSMenuItem *DPFollowerItem(NSInteger tag) {
+    if (tag == DPGroupSelectedMenuTag)
+        return DPCommandItem(@"Group Selected Tabs by Domain", tag, @"rectangle.3.group", ^{ DPGroupSelectedTabsOnce(); });
     if (tag == DPExpandMenuTag)
         return DPCommandItem(DPExpandMenuTitle, tag, @"rectangle.expand.vertical", ^{ DPSetAllGroupsCollapsed(NO); });
     if (tag == DPCollapseMenuTag)
