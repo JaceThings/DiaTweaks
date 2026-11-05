@@ -50,8 +50,8 @@ void DPInstallCompactPage(void);
 // Rows.m: the sidebar's rows, as icons centered in the strip.
 void DPInstallCompactRows(void);
 
-// Rows.m: how much the footer grows for Chats' row over recent tabs, in the strip.
-CGFloat DPChatsRoom(NSWindow *window);
+// Rows.m: how much the footer grows in the strip, for padding under it and Chats' row over recent tabs.
+CGFloat DPFooterRoom(NSWindow *window);
 
 // Folders.m: folders as their icon, with their tabs under them at the strip's width.
 void DPInstallCompactFolders(void);
