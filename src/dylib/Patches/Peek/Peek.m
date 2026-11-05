@@ -23,8 +23,14 @@ static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebC
 }
 
 static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id action) {
-    if (!DPPeekWanted([[action valueForKey:@"navigationDisposition"] integerValue]))
-        return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
+    NSInteger disposition = [[action valueForKey:@"navigationDisposition"] integerValue];
+    if (!DPPeekWanted(disposition)) {
+        NSInteger policy = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
+        // Only a pinned tab turns a current-tab link into a new tab.
+        if (!DPPeek.on || !DPPeekPinnedLinks.on || disposition != DPCurrentTab || policy != DPForegroundTab || !DPPeekCanOpen(webContents)) return policy;
+        DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
+        return DPIgnoreAction;
+    }
     if (DPPeekShows(webContents)) return DPCurrentTab;
     if (!DPPeekCanOpen(webContents)) return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
     DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);

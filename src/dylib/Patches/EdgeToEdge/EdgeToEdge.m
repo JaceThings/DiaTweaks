@@ -44,7 +44,7 @@ CGFloat DPBaseCornerRadius(NSView *container) {
 static void DPSetCornerRadius(NSView *container, CGFloat inset) {
     CGFloat *radius = DPIvar(container, "cornerRadius");
     if (!radius) return;
-    CGFloat base = DPBaseCornerRadius(container), target = base + inset + DPWindowCornerGrowth(container.window);
+    CGFloat base = DPBaseCornerRadius(container), target = MAX(0, base + inset + DPWindowCornerGrowth(container.window));
     DPOverride(container, &DPRadiusKey, @(base), @(target));
     if (*radius == target) return;
     *radius = target;
