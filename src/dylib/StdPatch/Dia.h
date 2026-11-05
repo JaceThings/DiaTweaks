@@ -3,6 +3,7 @@
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
+#define DPDiaFieldButton        "_TtC5ARCUI16HoverableControl"  // The address field's own buttons, such as Bookmark this page.
 #define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"  // The glow in the address field while a page loads.
 #define DPDiaReloadIcon         "_TtC13NavigationBar14ReloadIconView"  // Turns into a stop button while the page loads.
 #define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
@@ -73,6 +74,7 @@
 #define DPDiaSkillsSuggestions  "_TtC17SkillsSuggestions21SkillsSuggestionsView"
 #define DPDiaNewTabButton       "_TtC7TabList14NewTabCellView"
 #define DPDiaBrowserContext     "ArcBrowserContext"
+#define DPDiaBrowserContextEffects "ArcBrowserContextEffects"  // The engine Arc's Boosts ran on; Dia never calls it.
 #define DPDiaWebContents        "ArcWebContents"
 #define DPDiaWebContentsConfiguration "ArcWebContentsConfiguration"
 #define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // Dia's delegate for each page. A Swift class: look it up after launch.
