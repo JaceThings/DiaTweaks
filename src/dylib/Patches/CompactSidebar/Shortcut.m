@@ -37,6 +37,7 @@ static void DPSlideStrip(NSView *host, BOOL hide) {
     }
     [(NSTimer *)DPGet(window, &DPSlideTimerKey) invalidate];
     DPSet(window, &DPHiddenKey, @(hide));  // Hide toolbar follows this, so it starts now too.
+    DPMatchStripToolbar(hide);
     void (^step)(CGFloat) = ^(CGFloat visible) {
         DPSet(window, &DPSlideKey, @(visible));
         DPPlaceHost(host);
@@ -113,6 +114,7 @@ void DPMatchAutoHide(BOOL on) {
     NSView *host = DPHostIn(window);
     NSMenuItem *item = DPAutoHideItemIn(NSApp.mainMenu);
     if (window) DPSet(window, &DPHiddenKey, nil);
+    DPMatchStripToolbar(NO);
     if (!host || !item || DPDiaParked(host) == on) return;
     // Dia's command acts on the main window, which is Settings while its switch is flipped; the browser window is main
     // just for it, without coming forward.

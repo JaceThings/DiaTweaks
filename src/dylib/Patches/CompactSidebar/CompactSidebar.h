@@ -4,6 +4,7 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPCompactSidebar, DPCompactSidebarHover;  // Hover.m: whether pointing at the strip opens it.
+extern DPPatch DPCompactSidebarHidesToolbar;              // HideToolbarToo.m: whether ⌘S hides the toolbar too.
 static const CGFloat DPStripWidth = 64;       // Favorites stack in one column, with room round the selected tab.
 static const CGFloat DPLightsClearance = 10;  // Between the window buttons and the toolbar's first button.
 
@@ -59,7 +60,7 @@ BOOL DPToolbarHidden(NSWindow *window);     // Hide toolbar keeps it out of sigh
 void DPApplyChrome(NSView *pane);
 void DPInstallCompactChrome(void);
 
-// Shortcut.m: ⌘S slides the strip out of the window and back, staying in Auto-Hide Tabs.
+// Shortcut.m: ⌘S slides the strip out of the window and back, staying in Auto-Hide Tabs, and the toolbar with it if set.
 BOOL DPStripHiddenIn(NSWindow *window);
 BOOL DPStripSliding(NSWindow *window);
 BOOL DPStripPresent(NSWindow *window);         // Shown, or sliding in or out.
@@ -67,6 +68,7 @@ CGFloat DPStripVisible(NSWindow *window);      // 1 with the strip in place, 0 w
 CGFloat DPStripSlideDistance(NSWindow *window);  // How far off the window's edge it slides.
 void DPMatchAutoHide(BOOL on);                 // Auto-Hide Tabs on with the patch, off without it, in the front window.
 void DPInstallCompactShortcut(void);
+void DPMatchStripToolbar(BOOL stripHidden);    // HideToolbarToo.m: hides the toolbar with the strip, or gives it back.
 
 // Reveal.m: with the toolbar hidden, the window buttons show as the pointer reaches the strip's top.
 CGFloat DPLightsReveal(NSWindow *window);  // 0 hidden, 1 shown, in between while they fade.
