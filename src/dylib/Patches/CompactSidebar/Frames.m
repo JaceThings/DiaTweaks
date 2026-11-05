@@ -139,6 +139,23 @@ static void DPDiaAsked(NSView *host, NSRect frame) {
 DP_HOST_HOOKS(DPFloat)
 DP_HOST_HOOKS(DPRoot)
 
+// A window Dia restores in Auto-Hide Tabs builds the sidebar where it parks it, without moving it after, so the strip
+// takes it from where it is as it reaches the window. Next turn, once the rest of the window is in place.
+#define DP_WINDOW_HOOK(Name)                                                                  \
+    static void Name##_viewDidMoveToWindow(NSView *self, SEL _cmd) {                         \
+        DPCallOriginal(Name##_viewDidMoveToWindow, self);                                    \
+        if (!self.window) return;                                                             \
+        if (!DPGet(self, &DPDiaFrameKey)) DPDiaAsked(self, self.frame);                       \
+        __weak NSView *weakSelf = self;                                                       \
+        dispatch_async(dispatch_get_main_queue(), ^{                                          \
+            NSView *host = DPHostIn(weakSelf.window);                                         \
+            if (host) DPPlaceHost(host);                                                      \
+        });                                                                                   \
+    }
+
+DP_WINDOW_HOOK(DPFloat)
+DP_WINDOW_HOOK(DPRoot)
+
 // The page, the toolbar's buttons and the window buttons make room for the strip, or take it back.
 void DPRefreshWindow(NSWindow *window) {
     DPRelayoutCompactPanes(window);
@@ -167,4 +184,6 @@ void DPInstallCompactFrames(void) {
     DPHook(DPDiaSidebarRoot, @selector(setFrameOrigin:), (IMP)DPRoot_setFrameOrigin);
     DPHook(DPDiaSidebarRoot, @selector(setFrameSize:), (IMP)DPRoot_setFrameSize);
     DPHook(DPDiaSidebarRoot, @selector(setHidden:), (IMP)DPRoot_setHidden);
+    DPHook(DPDiaFloatingSidebar, @selector(viewDidMoveToWindow), (IMP)DPFloat_viewDidMoveToWindow);
+    DPHook(DPDiaSidebarRoot, @selector(viewDidMoveToWindow), (IMP)DPRoot_viewDidMoveToWindow);
 }
