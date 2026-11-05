@@ -1,13 +1,10 @@
 #import "StdPatch/StdPatch.h"
 #import <objc/message.h>
 
-// Dia keeps Chromium's Save Page As in the page's right-click menu only. This puts it in the File menu with a shortcut.
-
 extern DPPatch DPSavePageAs;
-typedef NS_ENUM(NSInteger, DPWebContentsVisibility) { DPWebContentsVisible = 2 };  // ArcWebContentsVisibility.h
+static const NSInteger DPWebContentsVisible = 2;
 static NSString *const DPSavePageShortcutKey = @"savePageAsShortcut";
-static NSString *const DPSavePageTitle = @"Save Page As…";
-static NSHashTable *DPPages;  // Every page Dia has shown or hidden.
+static NSHashTable *DPPages;
 static NSMenuItem *DPSaveItem;
 
 static NSDictionary *DPDefaultSaveShortcut(void) {
@@ -19,7 +16,6 @@ static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
     DPCallOriginal(DPPage_setVisibility, self, visibility);
 }
 
-// The page on screen in the front window, the focused one if a split shows several.
 static id DPFrontPage(void) {
     id found = nil;
     for (id page in DPPages.allObjects) {
@@ -32,7 +28,6 @@ static id DPFrontPage(void) {
 
 static void DPSaveFrontPage(void) { [DPFrontPage() performSelector:@selector(save)]; }
 
-// Next to Print, where Chrome has it.
 static void DPAddSaveItem(void) {
     NSMenu *file = [NSApp.mainMenu itemWithTitle:@"File"].submenu;
     if (!file || [file indexOfItem:DPSaveItem] >= 0) return;
@@ -43,10 +38,9 @@ static void DPAddSaveItem(void) {
 static void DPInstallSavePageAs(void) {
     DPPages = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaWebContents, @selector(setVisibility:), (IMP)DPPage_setVisibility);
-    DPSaveItem = DPMenuItem(DPSavePageTitle, ^{ DPSaveFrontPage(); });
+    DPSaveItem = DPMenuItem(@"Save Page As…", ^{ DPSaveFrontPage(); });
     DPSaveItem.hidden = !DPSavePageAs.on;
     DPOnLaunch(^{ DPAddSaveItem(); });
-    // Before the page, which would take the keys otherwise.
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         if (!DPSavePageAs.on || !DPShortcutMatches(event, DPSavePageShortcutKey, DPDefaultSaveShortcut()) || !DPFrontPage()) return event;
         if (!event.isARepeat) DPSaveFrontPage();
