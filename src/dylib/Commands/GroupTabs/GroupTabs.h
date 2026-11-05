@@ -30,4 +30,6 @@ void DPGroupTabsOnce(void);  // Grouping.m
 // right after, and ungroups `ids` and puts them back at `places`.
 void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger index, void (^done)(void));
 void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places);
+BOOL DPCanUndoGrouping(void);
+void DPForgetGroupingUndo(void);
 void DPInstallGroupMenus(void);  // Menu.m

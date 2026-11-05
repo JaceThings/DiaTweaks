@@ -39,6 +39,9 @@ static id DPGroupProperties(NSString *title) {
 // Cleared by the next key press, so Command-Z only undoes a grouping right after it.
 static void (^DPUndoGrouping)(void);
 
+BOOL DPCanUndoGrouping(void) { return DPUndoGrouping != nil; }
+void DPForgetGroupingUndo(void) { DPUndoGrouping = nil; }
+
 void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
