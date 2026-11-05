@@ -1,7 +1,8 @@
 #import "GroupTabs.h"
 
-static const NSInteger DPGroupMenuTag = 0xD1A7001;
+static const NSInteger DPGroupMenuTag = 0xD1A7001, DPCollapseMenuTag = 0xD1A7005;
 static NSString *const DPGroupMenuTitle = @"Group Tabs by Domain";
+static NSString *const DPCollapseMenuTitle = @"Collapse All Tab Groups";
 static BOOL DPInserting;
 
 static BOOL DPIsNewGroupTitle(NSString *title) {
@@ -11,12 +12,50 @@ static BOOL DPIsNewGroupTitle(NSString *title) {
 
 extern DPPatch DPGroupTabs;
 
-static NSMenuItem *DPGroupMenuItem(void) {
-    NSMenuItem *item = DPMenuItem(DPGroupMenuTitle, ^{ DPGroupTabsOnce(); });
-    item.tag = DPGroupMenuTag;
-    item.image = [NSImage imageWithSystemSymbolName:@"rectangle.3.group" accessibilityDescription:nil];
+static NSMenuItem *DPCommandItem(NSString *title, NSInteger tag, NSString *symbol, void (^action)(void)) {
+    NSMenuItem *item = DPMenuItem(title, action);
+    item.tag = tag;
+    item.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
     item.hidden = !DPGroupTabs.on;
     return item;
+}
+
+static NSMenuItem *DPGroupMenuItem(void) {
+    return DPCommandItem(DPGroupMenuTitle, DPGroupMenuTag, @"rectangle.3.group", ^{ DPGroupTabsOnce(); });
+}
+
+static NSMenuItem *DPCollapseMenuItem(void) {
+    return DPCommandItem(DPCollapseMenuTitle, DPCollapseMenuTag, @"rectangle.compress.vertical", ^{ DPCollapseAllGroups(); });
+}
+
+// Sits on the line under Group Tabs by Domain. Context menus are built each time they open.
+static void DPPlaceCollapseItem(NSMenu *menu) {
+    if (DPInserting || !menu) return;
+    NSInteger group = NSNotFound, existing = NSNotFound;
+    for (NSInteger i = 0; i < menu.numberOfItems; i++) {
+        NSInteger tag = [menu itemAtIndex:i].tag;
+        if (tag == DPGroupMenuTag && group == NSNotFound) group = i;
+        else if (tag == DPCollapseMenuTag && existing == NSNotFound) existing = i;
+    }
+    if (group == NSNotFound) return;
+    DPInserting = YES;
+    for (NSInteger i = menu.numberOfItems - 1; i >= 0; i--)
+        if ([menu itemAtIndex:i].tag == DPCollapseMenuTag && i != existing) {
+            [menu removeItemAtIndex:i];
+            if (i < existing) existing--;
+            if (i < group) group--;
+        }
+    if (existing == group + 1) {
+        DPInserting = NO;
+        return;
+    }
+    NSMenuItem *item = existing != NSNotFound ? [menu itemAtIndex:existing] : DPCollapseMenuItem();
+    if (existing != NSNotFound) {
+        [menu removeItemAtIndex:existing];
+        if (existing < group) group--;
+    }
+    [menu insertItem:item atIndex:group + 1];
+    DPInserting = NO;
 }
 
 static void DPPlaceGroupItem(NSMenu *menu) {
@@ -43,7 +82,9 @@ static void DPPlaceGroupItem(NSMenu *menu) {
     NSInteger end = menu.numberOfItems;
     for (NSInteger i = anchor + 1; i < menu.numberOfItems; i++)
         if ([menu itemAtIndex:i].isSeparatorItem) { end = i; break; }
-    if (existing == end - 1) return;
+    BOOL paired = existing != NSNotFound && existing + 1 < menu.numberOfItems && existing == end - 2
+        && [menu itemAtIndex:existing + 1].tag == DPCollapseMenuTag;
+    if (existing == end - 1 || paired) return DPPlaceCollapseItem(menu);
     DPInserting = YES;
     NSMenuItem *item = existing != NSNotFound ? [menu itemAtIndex:existing] : DPGroupMenuItem();
     if (existing != NSNotFound) {
@@ -52,6 +93,7 @@ static void DPPlaceGroupItem(NSMenu *menu) {
     }
     [menu insertItem:item atIndex:end];
     DPInserting = NO;
+    DPPlaceCollapseItem(menu);
 }
 
 static void DPInstallMenuBarItem(void) {
@@ -67,7 +109,8 @@ static void DPInstallMenuBarItem(void) {
                 commandMenu = top.submenu;
     }
     NSMenu *menu = tabMenu ?: commandMenu ?: windowMenu ?: fileMenu;
-    if (!menu || [menu itemWithTag:DPGroupMenuTag]) return;
+    if (!menu) return;
+    if ([menu itemWithTag:DPGroupMenuTag]) return DPPlaceCollapseItem(menu);
     for (NSMenuItem *item in menu.itemArray)
         if (DPIsNewGroupTitle(item.title)) return DPPlaceGroupItem(menu);
     NSInteger index = menu.numberOfItems;
@@ -78,16 +121,19 @@ static void DPInstallMenuBarItem(void) {
     DPInserting = YES;
     [menu insertItem:DPGroupMenuItem() atIndex:MIN(index, menu.numberOfItems)];
     DPInserting = NO;
+    DPPlaceCollapseItem(menu);
 }
 
 static void DPMenu_addItem(NSMenu *self, SEL _cmd, NSMenuItem *item) {
     DPCallOriginal(DPMenu_addItem, self, item);
-    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [self itemWithTag:DPGroupMenuTag])) DPPlaceGroupItem(self);
+    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [self itemWithTag:DPGroupMenuTag] || [self itemWithTag:DPCollapseMenuTag]))
+        DPPlaceGroupItem(self);
 }
 
 static void DPMenu_insertItem(NSMenu *self, SEL _cmd, NSMenuItem *item, NSInteger index) {
     DPCallOriginal(DPMenu_insertItem, self, item, index);
-    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [self itemWithTag:DPGroupMenuTag])) DPPlaceGroupItem(self);
+    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [self itemWithTag:DPGroupMenuTag] || [self itemWithTag:DPCollapseMenuTag]))
+        DPPlaceGroupItem(self);
 }
 
 void DPInstallGroupMenus(void) {
@@ -98,7 +144,10 @@ void DPInstallGroupMenus(void) {
 
 // Tab context menus are built each time they open, so only the Tabs menu keeps an item to hide.
 static void DPApplyGroupTabs(DPPatch *patch) {
-    for (NSMenuItem *top in NSApp.mainMenu.itemArray) [top.submenu itemWithTag:DPGroupMenuTag].hidden = !patch->on;
+    for (NSMenuItem *top in NSApp.mainMenu.itemArray) {
+        [top.submenu itemWithTag:DPGroupMenuTag].hidden = !patch->on;
+        [top.submenu itemWithTag:DPCollapseMenuTag].hidden = !patch->on;
+    }
 }
 
 DP_PATCH(DPGroupTabs) {
@@ -106,7 +155,7 @@ DP_PATCH(DPGroupTabs) {
     .order = 86,
     .defaultOn = YES,
     .title = @"Group Tabs by Domain",
-    .detail = @"Adds Group Tabs by Domain to the tab right-click menu and the Tabs menu. It groups a window’s tabs by site each time you choose it.",
+    .detail = @"Adds Group Tabs by Domain and Collapse All Tab Groups to the tab right-click menu and the Tabs menu. Grouping puts a window’s tabs together by site. Collapse All collapses every expanded group in the front window.",
     .symbol = @"rectangle.3.group.fill",
     .tint = @"systemPinkColor",
     .section = @"Tabs",
