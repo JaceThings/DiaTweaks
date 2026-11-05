@@ -1,5 +1,5 @@
-// Group Tabs by Domain is a one-shot command in the tab context menu and the Tabs menu, shown while its patch is on. The hooks only remember
-// live browsers and web contents so the command can read each tab's session ID; nothing is grouped until it's chosen.
+// Group Tabs by Domain is a one-shot command in the tab context menu and the Tabs menu, and on a keyboard shortcut, while its patch is on.
+// The hooks only remember live browsers and web contents so the command can read each tab's session ID; nothing is grouped until it's chosen.
 #import "StdPatch/StdPatch.h"
 
 void DPInstallGroupTabs(void);
@@ -33,3 +33,6 @@ void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places);
 BOOL DPCanUndoGrouping(void);
 void DPForgetGroupingUndo(void);
 void DPInstallGroupMenus(void);  // Menu.m
+void DPInstallGroupTabsShortcut(void);  // Shortcut.m
+NSArray<NSView *> *DPGroupTabsShortcutRows(void);
+NSString *DPVerifyGroupTabsShortcut(DPPatch *patch);

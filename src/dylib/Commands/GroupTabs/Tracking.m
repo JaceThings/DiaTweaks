@@ -99,4 +99,5 @@ void DPInstallGroupTabs(void) {
     DPHook(DPDiaBrowserDelegate, @selector(browser:didRestoreWebContents:withSessionId:), (IMP)DPBrowser_didRestore);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
     DPInstallGroupMenus();
+    DPInstallGroupTabsShortcut();
 }
