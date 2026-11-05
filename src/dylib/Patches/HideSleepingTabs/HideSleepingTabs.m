@@ -166,7 +166,7 @@ static void DPInstallHideSleepingTabs(void) {
 DP_PATCH(DPHideSleepingTabs) {
     .key = @"hideSleepingTabs",
     .order = 86,
-    .title = @"Hide Sleeping Tabs in Tab Switcher",
+    .title = @"Hide Sleeping Tabs",
     .detail = @"Leave tabs with nothing loaded, like a pinned tab you closed, out of the tab switcher (⌃⇥) instead of showing them as empty pictures.",
     .symbol = @"moon.zzz.fill",
     .tint = @"systemPinkColor",
