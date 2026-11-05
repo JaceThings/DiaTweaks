@@ -22,12 +22,30 @@ static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebC
     DPPeekOpenLater(self, webContents, url);
 }
 
+// The same link, as if it opened in its own tab.
+@interface DPStayingAction : NSProxy
+@property (nonatomic, strong) id action;
+@end
+
+@implementation DPStayingAction
+- (NSInteger)navigationDisposition { return DPCurrentTab; }
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector { return [self.action methodSignatureForSelector:selector]; }
+- (void)forwardInvocation:(NSInvocation *)invocation { [invocation invokeWithTarget:self.action]; }
+@end
+
 static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id action) {
     NSInteger disposition = [[action valueForKey:@"navigationDisposition"] integerValue];
     if (!DPPeekWanted(disposition)) {
         NSInteger policy = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
-        // Only a pinned tab turns a current-tab link into a new tab.
-        if (!DPPeek.on || !DPPeekPinnedLinks.on || disposition != DPCurrentTab || policy != DPForegroundTab || !DPPeekCanOpen(webContents)) return policy;
+        if (!DPPeek.on || !DPPeekPinnedLinks.on || policy != DPForegroundTab) return policy;
+        // Only a pinned tab turns a current-tab link into a new tab. A plain click on a new-tab link asks as if it stayed.
+        BOOL leaves = disposition == DPCurrentTab;
+        if (disposition == DPForegroundTab && !(NSEvent.modifierFlags & NSEventModifierFlagCommand)) {
+            DPStayingAction *staying = [DPStayingAction alloc];
+            staying.action = action;
+            leaves = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, staying) == DPForegroundTab;
+        }
+        if (!leaves || !DPPeekCanOpen(webContents)) return policy;
         DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
         return DPIgnoreAction;
     }
