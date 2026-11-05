@@ -1,7 +1,7 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarKeepText;
-static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPLeftTextKey;
+static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
@@ -85,10 +85,20 @@ static NSString *DPPreviousTabID(NSWindow *window) {
     return recent.count > 1 ? recent.firstObject : nil;
 }
 
-static NSMutableSet<NSString *> *DPBlanks(NSWindow *window) {
-    NSMutableSet *blanks = DPGet(window, &DPBlankKey);
-    if (!blanks && window) DPSet(window, &DPBlankKey, blanks = [NSMutableSet set]);
-    return blanks;
+static NSMutableSet<NSString *> *DPWindowSet(NSWindow *window, const void *key) {
+    NSMutableSet *set = DPGet(window, key);
+    if (!set && window) DPSet(window, key, set = [NSMutableSet set]);
+    return set;
+}
+
+static NSMutableSet<NSString *> *DPBlanks(NSWindow *window) { return DPWindowSet(window, &DPBlankKey); }
+static NSMutableSet<NSString *> *DPSplits(NSWindow *window) { return DPWindowSet(window, &DPSplitKey); }
+
+static BOOL DPInSplit(NSView *view) {
+    NSView *pane = view;
+    while (pane && !DPIsKind(pane, DPDiaSplitPane)) pane = pane.superview;
+    for (NSView *other in pane.superview.subviews) if (other != pane && DPIsKind(other, DPDiaSplitPane)) return YES;
+    return NO;
 }
 
 #pragma mark Overlay
@@ -424,6 +434,8 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
     if (![recent.lastObject isEqual:openedID]) returnID = recent.lastObject;
+    // Going back to a split while Dia is still switching tabs crashes it, so new tabs in or from one keep Dia's own page.
+    if (DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) return (void)DPSet(page, &DPOwnBarKey, @YES);
     DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, overBlank || !returnID ? nil : DPScriptTab(window, returnID)) : nil;
     if (!overlay) return;
     if (overBlank) {
@@ -563,6 +575,9 @@ static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     __weak NSWindow *window = self.window;
     if (!window) return;
     DPNoteActiveTab(window);
+    NSString *active = DPActiveTabID(window);
+    if (active && DPInSplit(self)) [DPSplits(window) addObject:active];
+    else if (active) [DPSplits(window) removeObject:active];
     dispatch_async(dispatch_get_main_queue(), ^{ DPCloseLeftBlank(window); });
 }
 
@@ -630,7 +645,7 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
         DPCommandBarOverlay *overlay = DPGet(page, &DPOverlayKey);
         BOOL blank = DPGet(page, &DPBlankKey) != nil;
         if (blank && !page.hidden) return @"a blank tab shows its new tab page";
-        if (DPCommandBar.on && !overlay && !blank) return @"a new tab page shows without the bar over it";
+        if (DPCommandBar.on && !overlay && !blank && !DPGet(page, &DPOwnBarKey)) return @"a new tab page shows without the bar over it";
         if (overlay && overlay.panel.superview != overlay) return @"the bar isn't on the overlay";
     }
     for (NSWindow *window in NSApp.windows)
