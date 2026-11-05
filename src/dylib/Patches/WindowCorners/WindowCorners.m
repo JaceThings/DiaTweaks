@@ -7,16 +7,23 @@ static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey;
 #define DPCornerBars (@[ @DPDiaTabStrip, @DPDiaSidebarHeader, @DPDiaSidebarFooter ])
 
 static CGFloat DPCornerRadius(NSWindow *window) { return ((CGFloat (*)(id, SEL))objc_msgSend)(window, @selector(_cornerRadius)); }
-static CGFloat DPRadius(void) { return DPChoice(&DPWindowCorners).doubleValue; }
+static const CGFloat DPMaxRadius = 26;
+static NSString *const DPRadiusSetting = @"windowCornerRadius";
+
+static NSUserDefaults *DPSettings(void) {
+    static NSUserDefaults *settings;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ settings = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; });
+    return settings;
+}
+
+static CGFloat DPRadius(void) {
+    id saved = [DPSettings() objectForKey:DPRadiusSetting];
+    return saved ? MIN(MAX([saved doubleValue], 0), DPMaxRadius) : DPMaxRadius;
+}
+
 // AppKit takes a radius under 1 as its default.
 static CGFloat DPWindowRadius(void) { return MAX(1, DPRadius()); }
-
-static NSMenu *DPRadiusChoices(void) {
-    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Radius"];
-    for (NSArray *radius in @[ @[ @"26 pt, like macOS 26", @"26" ], @[ @"20 pt", @"20" ], @[ @"12 pt", @"12" ], @[ @"8 pt", @"8" ], @[ @"Square", @"0" ] ])
-        [menu addItemWithTitle:radius[0] action:nil keyEquivalent:@""].representedObject = radius[1];
-    return menu;
-}
 
 CGFloat DPWindowCornerGrowth(NSWindow *window) {
     if (!DPWindowCorners.on || !DPIsKind(window, DPDiaWindow)) return 0;
@@ -177,6 +184,44 @@ static NSString *DPVerifyWindowCorners(DPPatch *patch) {
     return nil;
 }
 
+@interface DPRadiusRow : NSStackView
+@property NSSlider *slider;
+@property NSTextField *field;
+@end
+
+@implementation DPRadiusRow
+- (void)tune:(NSControl *)control {
+    double radius = round(MIN(MAX(control.doubleValue, 0), DPMaxRadius));
+    self.slider.doubleValue = self.field.doubleValue = radius;
+    [DPSettings() setDouble:radius forKey:DPRadiusSetting];
+    if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners);
+}
+@end
+
+static NSArray<NSView *> *DPWindowCornersRows(void) {
+    DPRadiusRow *row = [DPRadiusRow new];
+    row.slider = [NSSlider sliderWithValue:DPRadius() minValue:0 maxValue:DPMaxRadius target:row action:@selector(tune:)];
+    row.field = [NSTextField textFieldWithString:@""];
+    NSNumberFormatter *whole = [NSNumberFormatter new];
+    whole.maximumFractionDigits = 0;
+    row.field.formatter = whole;
+    row.field.doubleValue = DPRadius();
+    row.field.alignment = NSTextAlignmentRight;
+    row.field.target = row;
+    row.field.action = @selector(tune:);
+    [row.field.widthAnchor constraintEqualToConstant:44].active = YES;
+    [row.slider setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSTextField *hint = [NSTextField wrappingLabelWithString:@"26 pt is macOS 26, 10 pt is macOS 11 to 15, and 0 is square."];
+    hint.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+    hint.textColor = NSColor.secondaryLabelColor;
+    NSStackView *controls = [NSStackView stackViewWithViews:@[ row.slider, row.field, [NSTextField labelWithString:@"pt"] ]];
+    [row setViews:@[ [NSTextField labelWithString:@"Radius"], controls, hint ] inGravity:NSStackViewGravityTop];
+    row.orientation = NSUserInterfaceLayoutOrientationVertical;
+    row.alignment = NSLayoutAttributeLeading;
+    [controls.widthAnchor constraintEqualToAnchor:row.widthAnchor].active = YES;
+    return @[ row ];
+}
+
 static void DPInstallWindowCorners(void) {
     DPCornerWatch = [DPFloatingCornerWatch new];
     DPHook(DPDiaWindow, @selector(becomeKeyWindow), (IMP)DPWindow_becomeKey);
@@ -193,15 +238,13 @@ static void DPInstallWindowCorners(void) {
 DP_PATCH(DPWindowCorners) {
     .key = @"windowCorners",
     .order = 97,
-    .title = @"macOS 26 Window Corners",
-    .detail = @"Round Dia’s windows like other apps on macOS 26, or pick another radius down to square, with the page’s corners to match.",
+    .title = @"Window Corners",
+    .detail = @"Round Dia’s windows like other apps on macOS 26, or pick a smaller radius down to square, with the page’s corners to match.",
     .symbol = @"app.fill",
     .tint = @"systemBrownColor",
     .section = @"Window",
     .classes = DPClasses(DPDiaWindow, DPDiaNavigationBar, DPDiaFloatingSidebar, DPDiaWindowBackgroundTile, DPDiaWindowBackground, DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter),
-    .choice = @"windowCornerRadius",
-    .defaultChoice = @"26",
-    .choices = DPRadiusChoices,
+    .rows = DPWindowCornersRows,
     .install = DPInstallWindowCorners,
     .apply = DPApplyWindowCorners,
     .verify = DPVerifyWindowCorners,
