@@ -38,13 +38,13 @@ static id DPGroupProperties(NSString *title) {
     return props;
 }
 
-// Cleared by the next key press, so Command-Z only undoes a grouping right after it.
+// Cleared by the next key press, so Command-Z only undoes a grouping or ungrouping right after it.
 static void (^DPUndoGrouping)(void);
 
 BOOL DPCanUndoGrouping(void) { return DPUndoGrouping != nil; }
 void DPForgetGroupingUndo(void) { DPUndoGrouping = nil; }
 
-void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places) {
+static void DPArmUndo(void (^undo)(void)) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
@@ -56,14 +56,26 @@ void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places) {
             return nil;
         }];
     });
+    DPUndoGrouping = undo;
+}
+
+void DPOfferUndo(id delegate, id browser, NSArray *ids, NSDictionary *places) {
     __weak id weakDelegate = delegate, weakBrowser = browser;
-    DPUndoGrouping = ^{
+    DPArmUndo(^{
         id delegate = weakDelegate, browser = weakBrowser;
         void (*ungroup)(id, SEL, id, NSArray *, void (^)(id)) = (void *)objc_msgSend;
         ungroup(delegate, @selector(browser:removeTabsFromGroupWithSessionIds:completion:), browser, ids, ^(id _) {
             if (places) dispatch_async(dispatch_get_main_queue(), ^{ DPRestorePlaces(delegate, browser, places); });
         });
-    };
+    });
+}
+
+void DPOfferRegroup(id delegate, id browser, NSArray<NSDictionary *> *ops) {
+    __weak id weakDelegate = delegate, weakBrowser = browser;
+    DPArmUndo(^{
+        id delegate = weakDelegate, browser = weakBrowser;
+        if (delegate && browser) DPRunOps(delegate, browser, ops, 0, ^{});
+    });
 }
 
 void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger index, void (^done)(void)) {
