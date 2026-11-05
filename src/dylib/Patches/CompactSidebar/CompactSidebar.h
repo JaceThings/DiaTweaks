@@ -39,7 +39,6 @@ void DPInstallCompactFrames(void);
 // Header.m: the window buttons and Dia's downloads button stay over the toolbar, and only they take clicks there.
 CGFloat DPLightsRight(NSWindow *window);  // The window buttons' right edge from the window's left, or 0.
 CGFloat DPLightsLeft(NSWindow *window);   // And their left edge.
-CGFloat DPHeaderButtonsRight(NSWindow *window);  // The downloads button's right edge after them, while it shows, or theirs.
 CGFloat DPToolbarAlpha(NSWindow *window);
 void DPInstallCompactHeader(void);
 
@@ -81,6 +80,14 @@ void DPInstallCompactReveal(void);
 NSView *DPListIn(NSWindow *window);
 void DPPlaceListIn(NSWindow *window);  // Moves them as the toolbar or the window buttons show.
 void DPInstallCompactList(void);
+
+// Downloads.m: Dia's downloads button follows the window buttons over the toolbar, looking like the toolbar's buttons.
+NSView *DPDownloadsIn(NSView *root);
+CGFloat DPDownloadsMid(NSWindow *window);        // Its icon's middle from the window's left while it shows over the toolbar, or NAN.
+CGFloat DPHeaderButtonsRight(NSWindow *window);  // Its right edge while it shows, or the window buttons', or 0.
+void DPMatchDownloads(NSWindow *window);         // Fades it with the toolbar, or shows it as Dia does once the sidebar opens.
+void DPPlaceDownloadsHover(NSView *bar);         // The toolbar's hover behind it, at the toolbar's buttons' size.
+BOOL DPIsDownloadsHover(NSView *view);
 
 // Backdrop.m: the strip blurs with the page while the command bar is open.
 void DPInstallCompactBackdrop(void);
