@@ -75,9 +75,17 @@ static void DPPeekDetach(id page, NSView *host) {
     [host removeFromSuperview];
 }
 
+// Some extensions crash Dia when a page closes while still showing a site, so it goes blank first.
+static void DPPeekCloseWhenBlank(id page, int checks) {
+    if (checks && ![[[(NSObject *)page valueForKey:@"url"] absoluteString] isEqual:@"about:blank"])
+        return (void)dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPPeekCloseWhenBlank(page, checks - 1); });
+    [page performSelector:@selector(close)];
+}
+
 static void DPPeekDiscard(id page, NSView *host) {
     DPPeekDetach(page, host);
-    [page performSelector:@selector(close)];
+    DPPeekLoad(page, [NSURL URLWithString:@"about:blank"]);
+    DPPeekCloseWhenBlank(page, 40);
 }
 
 // The on-screen box of the link under `origin`, or of the clicked line of one that wraps.
@@ -194,7 +202,7 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
         return;
     }
     [self handOver];
-    [page performSelector:@selector(close)];
+    DPPeekDiscard(page, nil);
 }
 
 @end
