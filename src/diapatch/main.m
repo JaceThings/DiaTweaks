@@ -69,11 +69,35 @@ static BOOL removeTree(NSString *path) {
         || fail(@"cannot remove %@: %@", path, error.localizedDescription);
 }
 
+static BOOL removeQuietly(NSString *path) {
+    NSError *error;
+    if ([NSFileManager.defaultManager removeItemAtPath:path error:&error] || error.code == NSFileNoSuchFileError) return YES;
+    // A locked file, like the Icon\r a locked custom Finder icon leaves in a bundle, can be unlocked and removed.
+    for (NSString *item in [NSFileManager.defaultManager enumeratorAtPath:path])
+        [NSFileManager.defaultManager setAttributes:@{ NSFileImmutable : @NO } ofItemAtPath:[path stringByAppendingPathComponent:item] error:nil];
+    return [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+}
+
+// Something left in .trash that can't be removed, like files that root owns, would stop every install and update after
+// it. It's set aside instead, and each run tries again.
+static BOOL emptyTrash(void) {
+    NSString *trash = inHome(@".trash"), *aside = [trash stringByAppendingFormat:@"-%@", NSUUID.UUID.UUIDString];
+    if (removeQuietly(trash)) return YES;
+    if (rename(trash.fileSystemRepresentation, aside.fileSystemRepresentation) != 0) return fail(@"cannot remove %@: %s", trash, strerror(errno));
+    note(@"cannot remove everything in %@, so it's set aside as %@", trash, aside.lastPathComponent);
+    return YES;
+}
+
+static void removeSetAside(void) {
+    for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:nil])
+        if ([name hasPrefix:@".trash-"]) removeQuietly(inHome(name));
+}
+
 // A delete cut short leaves part of a bundle; in .trash it can't pass for a whole one.
 static BOOL discard(NSString *path) {
     NSString *trash = inHome(@".trash");
-    if (!removeTree(trash)) return NO;
-    if (rename(path.fileSystemRepresentation, trash.fileSystemRepresentation) == 0) return removeTree(trash);
+    if (!emptyTrash()) return NO;
+    if (rename(path.fileSystemRepresentation, trash.fileSystemRepresentation) == 0) return emptyTrash();
     if (errno == ENOENT) return YES;
     // Only update's download can be on another volume, and only update reads it.
     return errno == EXDEV ? removeTree(path) : fail(@"cannot remove %@: %s", path, strerror(errno));
@@ -663,6 +687,7 @@ static BOOL purge(void) {
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
         if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
+    removeSetAside();
     if (!removeTree([gCache stringByAppendingPathComponent:@"download"]) || !removeTree([gCache stringByAppendingPathComponent:@"release"])) return NO;
     rmdir(gCache.fileSystemRepresentation);
     if (rmdir(gHome.fileSystemRepresentation) == 0) return say(@"deleted %@", gHome);
@@ -810,7 +835,7 @@ int main(int argc, const char *argv[]) {
             say(@"waiting for another diapatch run to finish");
             flock(fileno(gLog), LOCK_EX);
         }
-        removeTree(inHome(@".trash"));  // what a run stopped mid-delete left
+        removeSetAside(), emptyTrash();  // what a run stopped mid-delete left
         BOOL ok = [command isEqualToString:@"install"] ? install([flags containsObject:@"--relaunch"])
             : [command isEqualToString:@"set-icon"]    ? switchIcon()
             : [command isEqualToString:@"build"]       ? build(gPristine) && say(@"staged patched Dia %@", versionOf(gStaged))
