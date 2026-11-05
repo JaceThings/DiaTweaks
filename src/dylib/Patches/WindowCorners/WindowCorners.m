@@ -184,7 +184,7 @@ static NSString *DPVerifyWindowCorners(DPPatch *patch) {
     return nil;
 }
 
-@interface DPRadiusRow : NSStackView
+@interface DPRadiusRow : NSStackView <NSTextFieldDelegate>
 @property NSSlider *slider;
 @property NSTextField *field;
 @end
@@ -195,6 +195,15 @@ static NSString *DPVerifyWindowCorners(DPPatch *patch) {
     self.slider.doubleValue = self.field.doubleValue = radius;
     [DPSettings() setDouble:radius forKey:DPRadiusSetting];
     if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners);
+}
+
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+    NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
+    if (!step) return NO;
+    self.field.doubleValue = textView.string.doubleValue + step.doubleValue;
+    [self tune:self.field];
+    [textView selectAll:nil];
+    return YES;
 }
 @end
 
@@ -207,7 +216,7 @@ static NSArray<NSView *> *DPWindowCornersRows(void) {
     row.field.formatter = whole;
     row.field.doubleValue = DPRadius();
     row.field.alignment = NSTextAlignmentRight;
-    row.field.target = row;
+    row.field.target = row.field.delegate = row;
     row.field.action = @selector(tune:);
     [row.field.widthAnchor constraintEqualToConstant:44].active = YES;
     [row.slider setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
