@@ -1,4 +1,3 @@
-#import "StdPatch/StdPatch.h"
 #import "StdPatch/Hide.h"
 
 extern DPPatch DPHideTrafficLights;

@@ -44,15 +44,6 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
     return row;
 }
 
-static NSSwitch *DPSwitchIn(NSView *view) {
-    if ([view isKindOfClass:NSSwitch.class]) return (NSSwitch *)view;
-    for (NSView *subview in view.subviews) {
-        NSSwitch *found = DPSwitchIn(subview);
-        if (found) return found;
-    }
-    return nil;
-}
-
 @interface DPLinkRowView : NSView
 @property (nonatomic, copy) void (^open)(void);
 @end
@@ -67,9 +58,9 @@ static NSSwitch *DPSwitchIn(NSView *view) {
 - (void)mouseUp:(NSEvent *)event {
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     if (!NSPointInRect(point, self.bounds)) return;
-    NSSwitch *toggle = DPSwitchIn(self);
+    NSSwitch *toggle = (NSSwitch *)DPFindView(self, ^BOOL(NSView *v) { return [v isKindOfClass:NSSwitch.class]; });
     NSRect frame = [self convertRect:toggle.bounds fromView:toggle];
-    if (toggle.enabled && NSPointInRect(point, frame)) return;  // The switch flipped itself, then passed the click on.
+    if (toggle.enabled && NSPointInRect(point, frame)) return;  // The switch already flipped itself.
     if (toggle.enabled && NSPointInRect(point, NSInsetRect(frame, -10, -10))) [toggle performClick:nil];
     else self.open();
 }
@@ -100,8 +91,7 @@ NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
 + (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description;
 @end
 
-// The first of `symbols` this macOS has, public or private, like the emoji face Messages uses. NSImageView throws on a
-// missing one, which crashed Settings.
+// NSImageView throws on a missing symbol, which crashed Settings.
 NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color) {
     NSImage *image;
     for (NSString *symbol in [symbols componentsSeparatedByString:@" "]) {
@@ -122,7 +112,7 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views) {
     for (NSView *view in views) {
         [stack addArrangedSubview:view];
         [view.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
-        // Room after each group, so a section's title sits with the rows under it.
+        // So a section's title sits with the rows under it.
         if ([view isMemberOfClass:DPFillView.class]) [stack setCustomSpacing:20 afterView:view];
     }
 }

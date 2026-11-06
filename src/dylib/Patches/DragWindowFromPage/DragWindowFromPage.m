@@ -2,10 +2,9 @@
 
 extern DPPatch DPDragWindowFromPage;
 static const CGFloat DPDragBand = 56, DPDragSlop = 3;
-static NSEvent *DPPressed;  // Held back until it turns into a drag or a click.
+static NSEvent *DPPressed;
 
-// The page under `event`, if the press is near its top on a spot the page shows the plain arrow over:
-// links and buttons show a hand and text an I-beam, so those stay the page's.
+// Links and buttons show a hand and text an I-beam, so only the plain arrow drags.
 static NSView *DPPageTopUnder(NSEvent *event) {
     NSWindow *window = event.window;
     if (!window || (window.styleMask & NSWindowStyleMaskFullScreen) || NSCursor.currentCursor != NSCursor.arrowCursor) return nil;

@@ -2,9 +2,6 @@
 
 static const NSInteger DPGroupMenuTag = 0xD1A7001, DPExpandMenuTag = 0xD1A7004, DPCollapseMenuTag = 0xD1A7005, DPUngroupMenuTag = 0xD1A7002,
                        DPUngroupAllMenuTag = 0xD1A7003, DPGroupSelectedMenuTag = 0xD1A7006;
-static NSString *const DPGroupMenuTitle = @"Group Tabs by Domain";
-static NSString *const DPExpandMenuTitle = @"Expand All Tab Groups";
-static NSString *const DPCollapseMenuTitle = @"Collapse All Tab Groups";
 static const NSInteger DPFollowerTags[] = {DPGroupSelectedMenuTag, DPExpandMenuTag, DPCollapseMenuTag, DPUngroupMenuTag, DPUngroupAllMenuTag};
 static const NSInteger DPFollowerCount = sizeof(DPFollowerTags) / sizeof(DPFollowerTags[0]);
 static BOOL DPInserting;
@@ -37,30 +34,28 @@ static NSMenuItem *DPCommandItem(NSString *title, NSInteger tag, NSString *symbo
 }
 
 static NSMenuItem *DPGroupMenuItem(void) {
-    return DPCommandItem(DPGroupMenuTitle, DPGroupMenuTag, @"rectangle.3.group", ^{ DPGroupTabsOnce(); });
+    return DPCommandItem(@"Group Tabs by Domain", DPGroupMenuTag, @"rectangle.3.group", ^{ DPGroupTabsOnce(); });
 }
 
 static NSMenuItem *DPFollowerItem(NSInteger tag) {
     if (tag == DPGroupSelectedMenuTag)
         return DPCommandItem(@"Group Selected Tabs by Domain", tag, @"rectangle.3.group", ^{ DPGroupSelectedTabsOnce(); });
     if (tag == DPExpandMenuTag)
-        return DPCommandItem(DPExpandMenuTitle, tag, @"rectangle.expand.vertical", ^{ DPSetAllGroupsCollapsed(NO); });
+        return DPCommandItem(@"Expand All Tab Groups", tag, @"rectangle.expand.vertical", ^{ DPSetAllGroupsCollapsed(NO); });
     if (tag == DPCollapseMenuTag)
-        return DPCommandItem(DPCollapseMenuTitle, tag, @"rectangle.compress.vertical", ^{ DPSetAllGroupsCollapsed(YES); });
+        return DPCommandItem(@"Collapse All Tab Groups", tag, @"rectangle.compress.vertical", ^{ DPSetAllGroupsCollapsed(YES); });
     if (tag == DPUngroupMenuTag) return DPCommandItem(@"Ungroup This Domain", tag, @"rectangle.stack.badge.minus", ^{ DPUngroupDomain(); });
     return DPCommandItem(@"Ungroup All Domains", tag, @"square.stack.3d.down.right", ^{ DPUngroupAllDomains(); });
 }
 
-// How many of the followers already sit, in order, on the lines right after `index`.
 static NSInteger DPFollowersInPlace(NSMenu *menu, NSInteger index) {
     NSInteger n = 0;
     while (n < DPFollowerCount && index + 1 + n < menu.numberOfItems && [menu itemAtIndex:index + 1 + n].tag == DPFollowerTags[n]) n++;
     return n;
 }
 
-// Expand, Collapse, Ungroup This Domain, then Ungroup All Domains, sit on the lines under Group Tabs by Domain. Context menus are built each time they open.
-// Dia rebuilds the Tabs menu by adding copies of the items in it, tags and all, and later removes those copies itself, so
-// the last item with a tag is the one to keep. Dropping Dia's copy instead crashes Dia when it goes to remove it.
+// Dia rebuilds the Tabs menu by adding tagged copies and later removes them itself, so keep the last item with a tag:
+// dropping Dia's copy crashes Dia when it removes it.
 static void DPPlaceFollowerItems(NSMenu *menu) {
     if (DPInserting || !menu) return;
     NSInteger group = NSNotFound, count = 0;
@@ -148,16 +143,18 @@ static void DPInstallMenuBarItem(void) {
     DPPlaceFollowerItems(menu);
 }
 
+static void DPMenuAdded(NSMenu *menu, NSMenuItem *item) {
+    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [menu itemWithTag:DPGroupMenuTag] || DPHasFollower(menu))) DPPlaceGroupItem(menu);
+}
+
 static void DPMenu_addItem(NSMenu *self, SEL _cmd, NSMenuItem *item) {
     DPCallOriginal(DPMenu_addItem, self, item);
-    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [self itemWithTag:DPGroupMenuTag] || DPHasFollower(self)))
-        DPPlaceGroupItem(self);
+    DPMenuAdded(self, item);
 }
 
 static void DPMenu_insertItem(NSMenu *self, SEL _cmd, NSMenuItem *item, NSInteger index) {
     DPCallOriginal(DPMenu_insertItem, self, item, index);
-    if (!DPInserting && (DPIsNewGroupTitle(item.title) || [self itemWithTag:DPGroupMenuTag] || DPHasFollower(self)))
-        DPPlaceGroupItem(self);
+    DPMenuAdded(self, item);
 }
 
 void DPInstallGroupMenus(void) {
@@ -166,7 +163,6 @@ void DPInstallGroupMenus(void) {
     DPOnLaunch(^{ DPInstallMenuBarItem(); });
 }
 
-// Tab context menus are built each time they open, so only the Tabs menu keeps an item to hide.
 static void DPApplyGroupTabs(DPPatch *patch) {
     for (NSMenuItem *top in NSApp.mainMenu.itemArray) {
         [top.submenu itemWithTag:DPGroupMenuTag].hidden = !patch->on;

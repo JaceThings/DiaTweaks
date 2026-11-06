@@ -1,6 +1,5 @@
 #import "HideToolbar.h"
 
-// Stays on while Hide toolbar is off, so the shortcut can bring it back.
 extern DPPatch DPToggleToolbarVisibility;
 static id DPKeyMonitor;
 static NSDictionary *DPDefaultToggleToolbarShortcut(void) { return @{ @"keyCode" : @2, @"modifiers" : @(NSEventModifierFlagControl), @"key" : @"D" }; }
@@ -15,6 +14,7 @@ static void DPInstallToggleToolbar(void) {
     }];
 }
 
+// Without an apply, toggling eases and relayouts every patch.
 static void DPApplyToggleToolbar(DPPatch *patch) {}
 
 static NSString *DPVerifyToggleToolbar(DPPatch *patch) { return DPKeyMonitor ? nil : @"nothing listens for the shortcut"; }

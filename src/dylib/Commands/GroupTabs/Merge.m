@@ -1,6 +1,6 @@
 #import "GroupTabs.h"
 
-// Nothing to redraw: Group Tabs reads the switch the next time it runs.
+// Without an apply, toggling eases and relayouts every patch. Group Tabs reads the switch when it runs.
 static void DPApplyMergeSubdomains(DPPatch *patch) {}
 
 DP_PATCH(DPGroupTabsMergeSubdomains) {

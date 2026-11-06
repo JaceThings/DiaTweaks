@@ -15,7 +15,7 @@ DPPatch *DPHider(NSView *view) {
     return NULL;
 }
 
-// Dia shows and hides these views itself, so a patch keeps saying no while it's on.
+// Dia shows these views again itself, so refuse while the patch is on.
 static void DPHidden_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     DPPatch *patch = DPHider(self);
     BOOL suppress = !hidden && patch && patch->on;
@@ -24,8 +24,7 @@ static void DPHidden_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     DPCallOriginal(DPHidden_setHidden, self, hidden || suppress);
 }
 
-// As its window appears, Dia hides some views, but only ones that say they're showing. Until then, a view the patch hid
-// tells Dia it's showing, as Dia left it. Dia's layout afterwards and AppKit get the truth, or they'd leave its space.
+// Before the window shows, Dia only hides views that report visible, so lie to Dia's code then; AppKit needs the truth.
 static BOOL DPHidden_isHidden(NSView *self, SEL _cmd) {
     Dl_info caller;
     if (!self.window.isVisible && [DPSuppressed containsObject:self] && dladdr(__builtin_return_address(0), &caller)
@@ -40,7 +39,7 @@ static void DPEnforce(NSView *view) {
     DPHookClass(view.class, @selector(setHidden:), (IMP)DPHidden_setHidden);
     DPHookClass(view.class, @selector(isHidden), (IMP)DPHidden_isHidden);
     if (!patch->on || view.hidden) return;
-    // As if Dia showed it again: the hook hides it and remembers to restore it.
+    // Goes through the hook so the view is remembered in DPSuppressed.
     DPHidden_setHidden(view, @selector(setHidden:), NO);
 }
 
@@ -78,7 +77,7 @@ static NSString *DPProblem(NSView *view, DPPatch *patch) {
     return nil;
 }
 
-// A view that isn't there passes: not every layout has every button.
+// A missing view passes: not every layout has every button.
 NSString *DPVerifyHides(DPPatch *patch) {
     NSHashTable<NSView *> *hosts = [DPHideHosts copy];
     for (const char *const *name = DPHideHostClasses; *name; name++) for (NSView *host in DPFindViews(*name)) [hosts addObject:host];

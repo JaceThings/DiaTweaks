@@ -1,10 +1,16 @@
 #import "Settings.h"
 
-static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an option's.
+static char DPChoicePatchKey;
 
 static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
     NSArray<NSView *> *rows = patch->rows ? patch->rows() : @[];
     return patch->shortcut ? [@[ DPShortcutRow(patch) ] arrayByAddingObjectsFromArray:rows] : rows;
+}
+
+static NSView *DPWideRow(NSView *view) {
+    NSView *row = DPRow(view, [NSView new]);
+    [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
+    return row;
 }
 
 @implementation DPPageView {
@@ -12,7 +18,7 @@ static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
     NSMutableArray<DPPatchSwitch *> *_switches;
     NSTextField *_note;
     NSArray<NSView *> *_rows;
-    NSMutableArray<NSView *> *_optionChoices;  // An option's choice and rows, shown only while it's on.
+    NSMutableArray<NSView *> *_optionChoices;  // Shown only while their option is on.
 }
 
 - (instancetype)initWithPatch:(DPPatch *)patch {
@@ -29,7 +35,7 @@ static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
         DPLabel(patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
     ] mutableCopy];
     if (patch->hint) {
-        NSView *gap = [NSView new];  // A little space between the detail and the tip.
+        NSView *gap = [NSView new];
         [gap.heightAnchor constraintEqualToConstant:5].active = YES;
         [headingText addObjectsFromArray:@[gap, DPLabel(patch->hint, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]];
     }
@@ -42,8 +48,6 @@ static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
     heading.alignment = NSLayoutAttributeTop;
     NSMutableArray<NSView *> *views = [NSMutableArray arrayWithObjects:preview, DPGroup(@[DPRow(heading, [self switchFor:patch])]), nil];
 
-    // Options sit under their own section's heading, like the tweaks on the main page, and ones this Dia can't use go last.
-    // A patch's own rows name theirs with `identifier`.
     NSString *const unavailable = @"Not Available in This Version";
     NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithObject:@"Options"];
     NSMutableDictionary<NSString *, NSMutableArray<NSView *> *> *groups = [NSMutableDictionary dictionaryWithObject:[NSMutableArray new] forKey:@"Options"];
@@ -61,14 +65,9 @@ static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
                                            DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), nil];
         if (option->unavailable) [lines addObject:DPLabel(DPWhyDisabled(option), 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
         add(title, DPRow(DPColumn(lines, 2), [self switchFor:option]));
-        // An option's own choice and rows sit under its switch, shown while it's on.
         NSMutableArray<NSView *> *under = [NSMutableArray new];
         if (option->choices) [under addObject:[self choiceRowFor:option]];
-        for (NSView *view in DPRowsOf(option)) {
-            NSView *row = DPRow(view, [NSView new]);
-            [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
-            [under addObject:row];
-        }
+        for (NSView *view in DPRowsOf(option)) [under addObject:DPWideRow(view)];
         for (NSView *row in under) {
             DPSet(row, &DPChoicePatchKey, [NSValue valueWithPointer:option]);
             add(title, row);
@@ -76,11 +75,7 @@ static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
         }
     });
     _rows = DPRowsOf(patch);
-    for (NSView *view in _rows) {
-        NSView *row = DPRow(view, [NSView new]);
-        [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
-        add(view.identifier ?: @"Options", row);
-    }
+    for (NSView *view in _rows) add(view.identifier ?: @"Options", DPWideRow(view));
     if ([titles containsObject:unavailable]) {
         [titles removeObject:unavailable];
         [titles addObject:unavailable];
@@ -133,8 +128,7 @@ static NSArray<NSView *> *DPRowsOf(DPPatch *patch) {
             if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on;
             return NO;
         });
-    // The rows around one that comes or goes slide. One that comes stays clear until there's room for it, then fades in;
-    // its group grows from the bottom, so it would otherwise ride down over the row above.
+    // An appearing row fades in once there's room: its group grows from the bottom, so it would ride over the row above.
     NSMutableArray<NSView *> *appeared = [NSMutableArray new];
     for (NSView *row in _optionChoices) {
         BOOL shown = ((DPPatch *)[DPGet(row, &DPChoicePatchKey) pointerValue])->on;

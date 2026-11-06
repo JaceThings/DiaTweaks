@@ -1,7 +1,6 @@
 import Foundation
 
-// Tab ids come back from Dia as Identifier values, UUIDs, or the box ObjC puts a Swift value in. The same reader is used
-// for the selection and for each tab, and a UUID inside the description is the key, so the two still match.
+// The selection and each tab use this reader, and a UUID inside the description is the key, so the two match.
 private func DPIDText(_ value: Any?, _ depth: Int = 0) -> String? {
     guard let value, depth < 5 else { return nil }
     if let text = value as? String { return DPIDNormalized(text) }
@@ -89,7 +88,5 @@ public func DPSelectionIDKeys(_ selection: AnyObject?) -> NSArray {
 @_cdecl("DPEachValue")
 public func DPEachValue(_ collection: AnyObject?, _ visit: @escaping @convention(block) (AnyObject) -> Void) {
     let values = DPDictionaryValues(collection)
-    for value in values.isEmpty ? DPElements(collection) : values {
-        if let object = value as? AnyObject { visit(object) }
-    }
+    for value in values.isEmpty ? DPElements(collection) : values { visit(value as AnyObject) }
 }

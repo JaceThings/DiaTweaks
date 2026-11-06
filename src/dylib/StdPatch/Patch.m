@@ -71,7 +71,6 @@ static int DPCompareOrder(const void *a, const void *b) {
     return (*(DPPatch *const *)a)->order - (*(DPPatch *const *)b)->order;
 }
 
-// The DP_PATCH entries, in Settings order: sections where their first patch's order puts them, and in each, the Hide ones last, shortest title first.
 static void DPReadPatches(void) {
     unsigned long size = 0;
     DPPatch **entries = (DPPatch **)getsectiondata(&__dso_handle, "__DATA", "__dppatches", &size);
@@ -110,7 +109,6 @@ void DPLoadPatches(void) {
     }
 }
 
-// diatweaks saves settings, then posts com.diapatches.changed. They apply like switches flipped in Settings, without saving them again.
 static void DPApplySavedSettings(void) {
     CFPreferencesAppSynchronize(CFSTR("com.diapatches"));
     for (NSUInteger i = 0; i < DPPatchCount; i++) DPSetPatch(DPPatches[i], DPSavedOn(DPPatches[i]), NO);

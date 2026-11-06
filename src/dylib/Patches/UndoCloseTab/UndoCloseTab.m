@@ -2,7 +2,7 @@
 #import "Commands/GroupTabs/GroupTabs.h"
 
 extern DPPatch DPUndoCloseTab;
-static BOOL DPJustClosed;  // A tab closed, and nothing was typed or clicked since.
+static BOOL DPJustClosed;
 
 static NSMenuItem *DPReopenItem(void) {
     for (NSMenuItem *top in NSApp.mainMenu.itemArray)

@@ -33,12 +33,11 @@ static BOOL DPPinned(long long sid, NSString *url, NSSet<NSNumber *> *sessions, 
 static id DPGroupProperties(NSString *title) {
     Class cls = objc_getClass(DPDiaTabGroupProperties);
     id props = cls ? [cls new] : nil;
-    // No title leaves the group for Dia to name, as Tidy Tabs does.
     if (title.length && [props respondsToSelector:@selector(setTitle:)]) [props setTitle:title];
     return props;
 }
 
-// Cleared by the next key press, so Command-Z only undoes a grouping or ungrouping right after it.
+// Cleared by the next key press, so Command-Z only undoes right after.
 static void (^DPUndoGrouping)(void);
 
 BOOL DPCanUndoGrouping(void) { return DPUndoGrouping != nil; }
@@ -95,7 +94,6 @@ void DPRunOps(id delegate, id browser, NSArray<NSDictionary *> *ops, NSUInteger 
     }
 }
 
-// only: session IDs to consider, or nil for every tab in the window. Pinned tabs and internal pages are still left out.
 static void DPGroupBrowser(id browser, NSSet<NSNumber *> *only) {
     if (!browser) return;
     id delegate = DPGroupingDelegate(browser);
@@ -107,7 +105,6 @@ static void DPGroupBrowser(id browser, NSSet<NSNumber *> *only) {
     for (id contents in DPTrackedContents(browser)) {
         long long sid = DPSessionOf(contents);
         NSString *url = DPText(DPMsg(contents, @selector(url)));
-        // Merge Subdomains uses the registrable site. Off, the full host stays the group.
         NSString *domain = DPDomainKey(url);
         if (domain && DPGroupTabsMergeSubdomains.on) domain = DPRegistrableDomain(domain);
         if (sid <= 0 || !domain || (only && ![only containsObject:@(sid)]) || DPPinned(sid, url, pinnedSessions, pinnedURLs, openURLs)) continue;

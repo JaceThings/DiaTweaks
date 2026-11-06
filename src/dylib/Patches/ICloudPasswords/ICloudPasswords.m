@@ -1,8 +1,7 @@
 #import "StdPatch/StdPatch.h"
 #include <libproc.h>
 
-// Apple's iCloud Passwords extension asks for this host by name, and Chromium prefers a user's copy of a host over the
-// system's, so registering it here sends the extension to diapatch, which has the original Dia start Apple's helper.
+// The extension asks for Apple's host by name, and Chromium prefers a user's copy of a host over the system's.
 
 extern DPPatch DPICloudPasswords;
 
@@ -38,9 +37,7 @@ static void DPRegisterHost(BOOL on) {
     [[NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted error:nil] writeToFile:DPHostManifestPath() atomically:YES];
 }
 
-// The relay quits the original Dia a few seconds after this one quits, and a copy that starts Apple's helper or answers
-// a passkey can be cut short. Opened again while one runs, Dia would refuse to start ("Dia is already open"), so it's
-// stopped first; this runs before Dia checks.
+// The relay's original Dia outlives this one by seconds, and Dia refuses to start while it runs. This runs before Dia checks.
 static void DPStopOriginalDia(void) {
     char path[PROC_PIDPATHINFO_MAXSIZE];
     NSString *pristine = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject

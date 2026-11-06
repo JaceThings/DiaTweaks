@@ -1,8 +1,6 @@
 #import "Patches/Peek/Peek.h"
 
-// A small take on the cards Dia shows when you drag a tab into the page to split it: the same card, stroke and springs,
-// measured from Dia's own, sized for a link.
-
+// Card, stroke and springs measured from Dia's split-view drop cards.
 extern DPPatch DPPeekDragLinks;
 
 static const CGSize DPZoneCard = {120, 84};
@@ -180,7 +178,6 @@ static void DPHideZone(void) {
     });
 }
 
-// Above the link, or below it when the window's top is too close.
 static void DPShowZone(NSWindow *window, NSPoint pointer) {
     DPHideZone();
     CGFloat above = pointer.y + DPZoneGap + DPZoneCard.height / 2, below = pointer.y - DPZoneGap - DPZoneCard.height / 2;

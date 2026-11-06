@@ -103,10 +103,6 @@ static BOOL DPInSplit(NSView *view) {
 
 #pragma mark Overlay
 
-static NSView *DPPanelIn(NSView *page) {
-    return DPFindView(page, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaAssistantPanel); });
-}
-
 static NSTextView *DPBarText(DPCommandBarOverlay *overlay) {
     return (NSTextView *)DPFindView(overlay.panel, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
 }
@@ -121,10 +117,14 @@ static CGFloat DPSuggestionsHeight(NSView *panel) {
     return height > 0 ? height + 8 : 0;
 }
 
-static NSView *DPCardIn(NSWindow *window);
+static NSView *DPCardIn(NSWindow *window) {
+    NSView *pane = DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaContentPane) && !view.isHiddenOrHasHiddenAncestor; });
+    for (NSView *view = pane; view && view != window.contentView; view = view.superview)
+        if (view.layer.cornerRadius > 0 && view.layer.maskedCorners && view.layer.masksToBounds) return view;
+    return pane;
+}
 
-// Like NSWindow.center(), macOS center leaves a share of the screen's spare height above the bar. Centered on the page,
-// the bar moves as the sidebar opens and closes, so that's a position of its own.
+// Like Spotlight, "macos" leaves a share of the screen's spare height above the bar.
 static NSRect DPBarFrame(NSView *view, NSSize size, CGFloat collapsedHeight) {
     NSString *position = DPChoice(&DPCommandBar);
     NSView *card = [position isEqual:@"page"] ? DPCardIn(view.window) : nil;
@@ -152,13 +152,6 @@ static CALayer *DPBlurLayer(void) {
     [blur setValue:@YES forKey:@"inputNormalizeEdges"];
     backdrop.filters = @[ blur ];
     return backdrop;
-}
-
-static NSView *DPCardIn(NSWindow *window) {
-    NSView *pane = DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaContentPane) && !view.isHiddenOrHasHiddenAncestor; });
-    for (NSView *view = pane; view && view != window.contentView; view = view.superview)
-        if (view.layer.cornerRadius > 0 && view.layer.maskedCorners && view.layer.masksToBounds) return view;
-    return pane;
 }
 
 static NSView *DPLayerView(NSRect frame, NSArray<CALayer *> *layers) {
@@ -220,8 +213,7 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 // ⌘L's popover resizes its bar through heights that come and go as it opens, so its collapsed height can't be kept.
 - (NSRect)frameForPanelSize:(NSSize)size {
     if (!DPIsKind(self.page, DPDiaPopover)) {
-        // From the bar, since a tweak may clip the panel. A bar restored at launch is first laid out a few points wide and
-        // too tall, so its height counts once it has its real width.
+        // From the bar, since a tweak may clip the panel. A bar restored at launch is first laid out narrow and too tall.
         NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
         if (!self.collapsedHeight || NSWidth(bar.frame) != self.collapsedWidth) {
             self.collapsedWidth = NSWidth(bar.frame);
@@ -314,7 +306,7 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
     DPPlaceShade(overlay.shade, window);
     id tab = DPScriptTab(window, DPTabID(overlay.openedTab));
     if (!tab) return (void)DPDismissCommandBar(overlay);
-    // Another tab came to the front, such as a link opened from another app, so the new tab went unused.
+    // Another tab came to the front, such as a link from another app, so the new tab went unused.
     NSString *active = DPActiveTabID(window);
     if (active && ![active isEqual:DPTabID(tab)] && ![active isEqual:DPTabID(overlay.returnTab)]) {
         DPDismissCommandBar(overlay);
@@ -407,7 +399,7 @@ static CGFloat DPStyleAsNewTab(NSView *panel) {
 static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     NSWindow *window = page.window;
     // In the content view, where Dia's hover tracking looks for what's under the pointer, so suggestions highlight.
-    NSView *content = window.contentView, *panel = DPPanelIn(page);
+    NSView *content = window.contentView, *panel = DPFindView(page, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaAssistantPanel); });
     if (!DPCommandBar.on || !panel || !content || DPGet(page, &DPOverlayKey)) return nil;
     DPCommandBarOverlay *overlay = [[DPCommandBarOverlay alloc] initWithFrame:content.bounds];
     overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -449,7 +441,6 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
         [DPBlanks(window) removeObject:openedID];
         DPSet(page, &DPBlankKey, nil);
     }
-    // What was typed before Escape comes back selected, like Arc, so it can be carried on or typed over.
     NSTextView *text = DPBarText(overlay);
     NSString *left = DPCommandBarKeepText.on ? DPGet(window, &DPLeftTextKey) : nil;
     DPSet(window, &DPLeftTextKey, nil);
@@ -567,7 +558,7 @@ static void DPShowWhenBuilt(DPCommandBarOverlay *overlay) {
     [NSRunLoop.mainRunLoop addTimer:check forMode:NSRunLoopCommonModes];
 }
 
-// ⌘L's bar is the same panel, in a popover under the address field. With no toolbar showing, it's lifted like a new tab's.
+// ⌘L's bar is the same panel in a popover under the address field.
 static void DPPopover_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPPopover_viewDidMoveToWindow, self);
     DPCommandBarOverlay *overlay = DPGet(self, &DPOverlayKey);

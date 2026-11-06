@@ -1,20 +1,8 @@
-// Group Selected Tabs by Domain. allSelectedTabIDs is the selection; with none, the active tab alone counts as one.
-// Empty or a single tab does nothing, the same as the full-window command and Tidy Tabs, which never group one tab.
 #import "GroupTabs.h"
-
-@interface NSObject (DPSelectionFields)
-- (id)safeSwiftValueForKey:(NSString *)key;
-@end
 
 NSArray<NSString *> *DPSelectionIDKeys(id selection);
 NSString *DPIDKey(id value);
 void DPEachValue(id collection, void (^visit)(id value));
-
-// Dia's Swift classes show demangled names, like Window.PlatformWindow, and its KVO subclasses don't match "_Tt" either.
-static id DPField(id obj, NSString *key) {
-    if (![obj respondsToSelector:@selector(safeSwiftValueForKey:)]) return nil;
-    return [obj safeSwiftValueForKey:key];
-}
 
 static NSArray<NSString *> *DPWalkKeys(void) {
     static NSArray<NSString *> *keys;
@@ -32,7 +20,7 @@ static BOOL DPIsTabList(id obj) {
     return name && (strstr(name, "TabListController") || strstr(name, "TabStripController"));
 }
 
-// Only the window, sidebar and tab objects. A key such as delegate can point at the rest of the app.
+// Keys such as delegate can lead to the rest of the app.
 static BOOL DPMayHoldTabs(id obj) {
     const char *name = object_getClassName(obj);
     return name && (strstr(name, "Tab") || strstr(name, "Window") || strstr(name, "Sidebar") || strstr(name, "Strip"));
@@ -54,58 +42,51 @@ static void DPWalk(id obj, NSMutableArray *found, NSMutableSet *seen, NSInteger 
     if ([obj isKindOfClass:NSViewController.class] && [obj respondsToSelector:@selector(childViewControllers)])
         DPWalk([(NSViewController *)obj childViewControllers], found, seen, depth + 1);
     if (!DPMayHoldTabs(obj)) return;
-    for (NSString *key in DPWalkKeys()) DPWalk(DPField(obj, key), found, seen, depth + 1);
+    for (NSString *key in DPWalkKeys()) DPWalk(DPSwiftValue(obj, key), found, seen, depth + 1);
 }
 
-static void DPAddURL(NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *urls, NSString *key, NSString *url) {
-    if (!key.length || !url.length) return;
-    NSMutableArray *list = urls[key] ?: [NSMutableArray array];
-    if (![list containsObject:url]) [list addObject:url];
-    urls[key] = list;
-}
-
-static void DPAddSession(NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *sessions, NSString *key, NSNumber *sid) {
-    if (!key.length || !sid) return;
-    NSMutableArray *list = sessions[key] ?: [NSMutableArray array];
-    if (![list containsObject:sid]) [list addObject:sid];
-    sessions[key] = list;
+static void DPAddUnique(NSMutableDictionary *lists, NSString *key, id value) {
+    NSMutableArray *list = lists[key] ?: [NSMutableArray array];
+    if (![list containsObject:value]) [list addObject:value];
+    lists[key] = list;
 }
 
 static void DPReadObject(id obj, NSString *key, NSSet<NSNumber *> *tracked,
                          NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *sessions,
                          NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *urls) {
     if (!obj || obj == NSNull.null || !key.length) return;
-    long long sid = DPLongID(DPField(obj, @"tabSessionID"));
-    if (sid <= 0) sid = DPLongID(DPField(obj, @"sessionId"));
-    if (sid > 0 && [tracked containsObject:@(sid)]) DPAddSession(sessions, key, @(sid));
-    DPAddURL(urls, key, DPText(DPField(obj, @"webContentURL")) ?: DPText(DPField(obj, @"url")));
+    long long sid = DPLongID(DPSwiftValue(obj, @"tabSessionID"));
+    if (sid <= 0) sid = DPLongID(DPSwiftValue(obj, @"sessionId"));
+    if (sid > 0 && [tracked containsObject:@(sid)]) DPAddUnique(sessions, key, @(sid));
+    NSString *url = DPText(DPSwiftValue(obj, @"webContentURL")) ?: DPText(DPSwiftValue(obj, @"url"));
+    if (url.length) DPAddUnique(urls, key, url);
 }
 
 static void DPReadContent(id content, NSString *key, NSSet<NSNumber *> *tracked,
                           NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *sessions,
                           NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *urls) {
-    id model = DPField(content, @"viewModel");
-    for (id obj in @[ content ?: NSNull.null, DPField(content, @"delegate") ?: NSNull.null, DPField(content, @"webContent") ?: NSNull.null,
-                      model ?: NSNull.null, DPField(model, @"delegate") ?: NSNull.null ])
+    id model = DPSwiftValue(content, @"viewModel");
+    for (id obj in @[ content ?: NSNull.null, DPSwiftValue(content, @"delegate") ?: NSNull.null, DPSwiftValue(content, @"webContent") ?: NSNull.null,
+                      model ?: NSNull.null, DPSwiftValue(model, @"delegate") ?: NSNull.null ])
         DPReadObject(obj, key, tracked, sessions, urls);
 }
 
 static void DPReadTab(id tab, NSSet<NSNumber *> *tracked, NSMutableDictionary<NSString *, NSMutableArray<NSNumber *> *> *sessions,
                       NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *urls) {
-    NSString *key = DPIDKey(DPField(tab, @"tabID") ?: DPField(DPField(tab, @"viewModel"), @"tabID"));
+    NSString *key = DPIDKey(DPSwiftValue(tab, @"tabID") ?: DPSwiftValue(DPSwiftValue(tab, @"viewModel"), @"tabID"));
     if (!key.length) return;
     DPReadContent(tab, key, tracked, sessions, urls);
-    DPEachValue(DPField(tab, @"contentControllers") ?: DPField(tab, @"contentViews"), ^(id content) {
+    DPEachValue(DPSwiftValue(tab, @"contentControllers") ?: DPSwiftValue(tab, @"contentViews"), ^(id content) {
         DPReadContent(content, key, tracked, sessions, urls);
     });
 }
 
 static id DPSelection(NSWindow *window, NSArray *controllers) {
-    id state = DPField(DPField(DPField(window, @"viewModel"), @"stateSubject"), @"currentValue");
-    id selection = DPField(state, @"tabSelectionState");
+    id state = DPSwiftValue(DPSwiftValue(DPSwiftValue(window, @"viewModel"), @"stateSubject"), @"currentValue");
+    id selection = DPSwiftValue(state, @"tabSelectionState");
     if (selection) return selection;
     for (id controller in controllers) {
-        selection = DPField(controller, @"selectionState") ?: DPField(controller, @"tabSelectionState") ?: DPField(controller, @"sidebarSelectionState");
+        selection = DPSwiftValue(controller, @"selectionState") ?: DPSwiftValue(controller, @"tabSelectionState") ?: DPSwiftValue(controller, @"sidebarSelectionState");
         if (selection) return selection;
     }
     return nil;
@@ -118,7 +99,7 @@ NSSet<NSNumber *> *DPSelectedSessions(id browser) {
     NSMutableSet *seen = [NSMutableSet set];
     DPWalk(window, controllers, seen, 0);
     for (NSView *view in [DPFindViews(DPDiaTabList) arrayByAddingObjectsFromArray:DPFindViews(DPDiaTabStrip)])
-        if (view.window == window) DPWalk(DPField(DPField(view, @"viewModel"), @"presenter"), controllers, seen, 0);
+        if (view.window == window) DPWalk(DPSwiftValue(DPSwiftValue(view, @"viewModel"), @"presenter"), controllers, seen, 0);
     NSArray<NSString *> *keys = DPSelectionIDKeys(DPSelection(window, controllers));
     if (keys.count < 2) return nil;
 
@@ -135,7 +116,7 @@ NSSet<NSNumber *> *DPSelectedSessions(id browser) {
         byURL[url] = list;
     }
     NSMutableDictionary *sessions = [NSMutableDictionary dictionary], *urls = [NSMutableDictionary dictionary];
-    for (id controller in controllers) DPEachValue(DPField(controller, @"tabControllers"), ^(id tab) { DPReadTab(tab, tracked, sessions, urls); });
+    for (id controller in controllers) DPEachValue(DPSwiftValue(controller, @"tabControllers"), ^(id tab) { DPReadTab(tab, tracked, sessions, urls); });
     for (NSView *tab in [DPFindViews(DPDiaTabView) arrayByAddingObjectsFromArray:DPFindViews(DPDiaPinnedTab)])
         if (tab.window == window) DPReadTab(tab, tracked, sessions, urls);
 

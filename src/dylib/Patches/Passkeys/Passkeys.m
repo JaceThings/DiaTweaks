@@ -3,8 +3,7 @@
 #import <mach-o/getsect.h>
 #import <mach-o/ldsyms.h>
 
-// Patching costs Dia the entitlement Apple Passwords requires of browsers, so an extension hands each passkey request to
-// diapatch, which runs it in the unpatched Dia.
+// Patching costs Dia the entitlement Apple Passwords requires of browsers, so diapatch runs requests in the unpatched Dia.
 
 extern DPPatch DPPasskeys;
 

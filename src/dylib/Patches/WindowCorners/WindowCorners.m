@@ -2,7 +2,7 @@
 #import <objc/message.h>
 
 extern DPPatch DPWindowCorners;
-static const CGFloat DPCornerReach = 26;  // How close to a window corner a view must sit to round with it.
+static const CGFloat DPCornerReach = 26;
 static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey;
 #define DPCornerBars (@[ @DPDiaTabStrip, @DPDiaSidebarHeader, @DPDiaSidebarFooter ])
 
@@ -239,7 +239,7 @@ static void DPInstallWindowCorners(void) {
     DPHook(DPDiaWindow, @selector(becomeKeyWindow), (IMP)DPWindow_becomeKey);
     DPHook(DPDiaFloatingSidebar, @selector(layout), (IMP)DPFloatingSidebar_layout);
     DPHook(DPDiaWindowBackgroundTile, @selector(setFrame:), (IMP)DPBackgroundTile_setFrame);
-    DPHook(DPDiaNavigationBar, @selector(layout), (IMP)DPNavigationBar_layout);
+    DPHook(DPDiaToolbar, @selector(layout), (IMP)DPNavigationBar_layout);
     DPHookClass(CALayer.class, @selector(addAnimation:forKey:), (IMP)DPLayer_addAnimation);
     DPHookClass(CALayer.class, @selector(setShadowPath:), (IMP)DPLayer_setShadowPath);
     DPHookClass(CAShapeLayer.class, @selector(setPath:), (IMP)DPShapeLayer_setPath);
@@ -255,7 +255,7 @@ DP_PATCH(DPWindowCorners) {
     .symbol = @"app.fill",
     .tint = @"systemBrownColor",
     .section = @"Window",
-    .classes = DPClasses(DPDiaWindow, DPDiaNavigationBar, DPDiaFloatingSidebar, DPDiaWindowBackgroundTile, DPDiaWindowBackground, DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter),
+    .classes = DPClasses(DPDiaWindow, DPDiaToolbar, DPDiaFloatingSidebar, DPDiaWindowBackgroundTile, DPDiaWindowBackground, DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter),
     .rows = DPWindowCornersRows,
     .install = DPInstallWindowCorners,
     .apply = DPApplyWindowCorners,

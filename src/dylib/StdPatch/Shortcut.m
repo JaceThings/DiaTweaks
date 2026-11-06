@@ -11,11 +11,6 @@ static NSUserDefaults *DPShortcutDefaults(void) {
     return defaults;
 }
 
-static NSDictionary *DPShortcutFor(NSString *key, NSDictionary *fallback) {
-    id saved = [DPShortcutDefaults() objectForKey:key];
-    return [saved isKindOfClass:NSDictionary.class] ? saved : fallback;
-}
-
 static NSString *DPShortcutText(NSDictionary *shortcut) {
     if (![shortcut[@"key"] length]) return nil;
     NSEventModifierFlags flags = [shortcut[@"modifiers"] unsignedIntegerValue];
@@ -23,7 +18,6 @@ static NSString *DPShortcutText(NSDictionary *shortcut) {
                                       flags & NSEventModifierFlagShift ? @"⇧" : @"", flags & NSEventModifierFlagCommand ? @"⌘" : @"", shortcut[@"key"]];
 }
 
-// What to show for the key, or nil for one a shortcut can't use.
 static NSString *DPKeyName(NSEvent *event) {
     NSDictionary *named = @{ @(kVK_Return) : @"↩", @(kVK_Tab) : @"⇥", @(kVK_Space) : @"Space", @(kVK_Delete) : @"⌫", @(kVK_ForwardDelete) : @"⌦",
                              @(kVK_LeftArrow) : @"←", @(kVK_RightArrow) : @"→", @(kVK_UpArrow) : @"↑", @(kVK_DownArrow) : @"↓",
@@ -35,7 +29,10 @@ static NSString *DPKeyName(NSEvent *event) {
     return typed.length == 1 && [typed rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound ? typed : nil;
 }
 
-static NSDictionary *DPPatchShortcut(DPPatch *patch) { return DPShortcutFor(patch->shortcut, patch->defaultShortcut ? patch->defaultShortcut() : nil); }
+static NSDictionary *DPPatchShortcut(DPPatch *patch) {
+    id saved = [DPShortcutDefaults() objectForKey:patch->shortcut];
+    return [saved isKindOfClass:NSDictionary.class] ? saved : patch->defaultShortcut ? patch->defaultShortcut() : nil;
+}
 
 BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
     NSDictionary *shortcut = DPPatchShortcut(patch);
@@ -43,7 +40,6 @@ BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
            [shortcut[@"modifiers"] unsignedIntegerValue] == (event.modifierFlags & DPShortcutModifiers);
 }
 
-// A menu item's shortcut in the form a field saves, or nil. An uppercase letter means Shift, as it does to AppKit.
 static NSDictionary *DPMenuShortcut(NSMenuItem *item) {
     NSString *equivalent = item.keyEquivalent;
     if (equivalent.length != 1) return nil;
@@ -67,7 +63,6 @@ static void DPMenuClashes(NSMenu *menu, NSDictionary *shortcut, NSString *shared
     }
 }
 
-// What else answers to `patch`'s shortcut: Dia's menu items and other patches' shortcuts.
 static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
     NSDictionary *shortcut = DPPatchShortcut(patch);
     NSMutableArray<NSString *> *names = [NSMutableArray new];
@@ -120,7 +115,7 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
     _label.stringValue = text ?: @"Add new…";
     _label.textColor = text ? NSColor.labelColor : NSColor.secondaryLabelColor;
     _clear.hidden = !text || !_hovered;
-    // Worded like Dia's Shortcuts settings, which also keeps a clashing shortcut.
+    // Worded like Dia's Shortcuts settings.
     NSArray<NSString *> *clashes = DPShortcutClashes(_patch);
     NSFont *font = [NSFont systemFontOfSize:11];
     NSMutableAttributedString *warning = [[NSMutableAttributedString alloc] initWithString:@"This shortcut conflicts with another shortcut:\n"
@@ -174,7 +169,7 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
     if ((event.keyCode == kVK_Delete || event.keyCode == kVK_ForwardDelete) && !flags) return [self clearShortcut];
     NSString *name = DPKeyName(event);
     BOOL functionKey = name.length > 1 && [name hasPrefix:@"F"];
-    // A shortcut needs a modifier other than Shift, so typing letters isn't taken.
+    // Needs a modifier other than Shift, so plain typing isn't taken.
     if (!name || (!(flags & ~NSEventModifierFlagShift) && !functionKey)) return NSBeep();
     [DPShortcutDefaults() setObject:@{ @"keyCode" : @(event.keyCode), @"modifiers" : @(flags), @"key" : name } forKey:_patch->shortcut];
     [self.window makeFirstResponder:nil];

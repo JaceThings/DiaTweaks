@@ -6,7 +6,6 @@ static NSString *DPDecodeLabel(NSString *label) {
     return decoded.length && ![decoded isEqualToString:label] ? decoded.lowercaseString : label;
 }
 
-// nil for the new tab page, dia://, chrome://, file and other internal pages.
 NSString *DPDomainKey(NSString *urlString) {
     NSURL *url = [NSURL URLWithString:urlString ?: @""];
     NSString *scheme = url.scheme.lowercaseString;
@@ -21,7 +20,7 @@ NSString *DPDomainKey(NSString *urlString) {
     return host.length ? host : nil;
 }
 
-// Two keys that capitalise to the same name (apple.com and apple.org) keep the host, so the groups stay apart.
+// Keys that capitalise alike (apple.com, apple.org) keep the host so the groups stay apart.
 static NSDictionary<NSString *, NSString *> *DPTitles(NSArray<NSDictionary *> *tabs) {
     NSMutableDictionary<NSString *, NSString *> *friendly = [NSMutableDictionary dictionary];
     for (NSDictionary *tab in tabs) {
@@ -35,8 +34,7 @@ static NSDictionary<NSString *, NSString *> *DPTitles(NSArray<NSDictionary *> *t
     return titles;
 }
 
-// Loose tabs join an existing group titled with the site name, or with the host from before that.
-// Tabs in any other group stay put.
+// Older versions titled groups with the host, so those count as home too.
 NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups) {
     NSMutableDictionary<NSNumber *, NSString *> *groupTitle = [NSMutableDictionary dictionary];
     NSMutableDictionary<NSString *, NSString *> *homeID = [NSMutableDictionary dictionary];
@@ -47,19 +45,15 @@ NSArray<NSDictionary *> *DPOps(NSArray<NSDictionary *> *tabs, NSArray *groups) {
         NSString *title = [info respondsToSelector:@selector(title)] ? DPText(DPMsg(info, @selector(title))) ?: @"" : @"";
         if (!groupID.length) continue;
         NSArray *rawIDs = [info respondsToSelector:@selector(tabSessionIds)] ? DPMsg(info, @selector(tabSessionIds)) : nil;
-        if ([rawIDs isKindOfClass:NSArray.class]) for (id raw in rawIDs) {
-            long long sid = DPLongID(raw);
-            if (sid > 0) groupTitle[@(sid)] = title;
-        }
         if (title.length && !homeID[title]) {
             homeID[title] = groupID;
             homeMembers[title] = [NSMutableSet set];
         }
-        if (homeMembers[title]) {
-            if ([rawIDs isKindOfClass:NSArray.class]) for (id raw in rawIDs) {
-                long long sid = DPLongID(raw);
-                if (sid > 0) [homeMembers[title] addObject:@(sid)];
-            }
+        if ([rawIDs isKindOfClass:NSArray.class]) for (id raw in rawIDs) {
+            long long sid = DPLongID(raw);
+            if (sid <= 0) continue;
+            groupTitle[@(sid)] = title;
+            [homeMembers[title] addObject:@(sid)];
         }
     }
     NSDictionary<NSString *, NSString *> *titles = DPTitles(tabs);

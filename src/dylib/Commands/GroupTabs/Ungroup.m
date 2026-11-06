@@ -1,6 +1,3 @@
-// Ungroup This Domain takes apart the site group the current tab is in, and Ungroup All Domains every site group in the
-// window. Dia's ungroup leaves the tabs open; Close this Group would close them, and the browser delegate has no call for
-// that. Command-Z groups them again.
 #import "GroupTabs.h"
 #import <objc/message.h>
 
@@ -26,8 +23,6 @@ static id DPScriptWindow(NSWindow *window) {
     return nil;
 }
 
-// The visible page, or the front window's active tab when a split shows more than one page. Nothing when that tab's
-// address is open in another tab too, since then it can't be told apart.
 static long long DPActiveSession(id browser) {
     long long sid = DPVisibleSession(browser);
     if (sid > 0) return sid;
@@ -45,8 +40,6 @@ static long long DPActiveSession(id browser) {
     return found;
 }
 
-// A site group is one Group Tabs by Domain could have made: its title is the host or site of one of its tabs here, or
-// that site's name. A create op for each, so undo can make them again.
 static NSArray<NSDictionary *> *DPSiteGroups(NSArray *groups, id browser) {
     NSMutableDictionary<NSNumber *, NSString *> *hosts = [NSMutableDictionary dictionary];
     for (id contents in DPTrackedContents(browser)) {
@@ -74,7 +67,6 @@ static NSArray<NSDictionary *> *DPSiteGroups(NSArray *groups, id browser) {
     return ops;
 }
 
-// Ungroups every tab in the chosen site groups, then offers Command-Z to make those groups again.
 static void DPUngroupSiteGroups(NSArray<NSDictionary *> *(^choose)(NSArray<NSDictionary *> *sites)) {
     id browser = DPCommandBrowser();
     id delegate = browser ? DPGroupingDelegate(browser) : nil;
@@ -107,7 +99,6 @@ void DPUngroupDomain(void) {
     });
 }
 
-// Ungroup All Domains takes apart every site group in the front window. Groups with other names stay.
 void DPUngroupAllDomains(void) {
     DPUngroupSiteGroups(^NSArray<NSDictionary *> *(NSArray<NSDictionary *> *sites) { return sites; });
 }

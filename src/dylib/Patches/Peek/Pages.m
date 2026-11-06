@@ -88,7 +88,6 @@ static void DPPeekDiscard(id page, NSView *host) {
     DPPeekCloseWhenBlank(page, 40);
 }
 
-// The on-screen box of the link under `origin`, or of the clicked line of one that wraps.
 static void DPPeekFindLink(NSWindow *window, id source, NSPoint origin, NSView *warmHost, void (^found)(NSRect link)) {
     NSRect fallback = NSMakeRect(origin.x - 40, origin.y - 10, 80, 20);
     NSPoint inWindow = [window convertPointFromScreen:origin];

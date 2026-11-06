@@ -1,6 +1,5 @@
 #import "GroupTabs.h"
 
-// Spellings a capital gets wrong. Ordinary names (Reddit, Google) need nothing here.
 static NSString *DPBrandSpelling(NSString *label) {
     static NSDictionary<NSString *, NSString *> *brands;
     static dispatch_once_t once;
@@ -20,7 +19,6 @@ static NSString *DPCapitalise(NSString *label) {
     return [first stringByAppendingString:[label substringFromIndex:1]];
 }
 
-// The site's name: reddit.com and old.reddit.com are Reddit, and bbc.co.uk is BBC. An address keeps the host.
 NSString *DPGroupTitle(NSString *domain) {
     NSArray<NSString *> *labels = [DPRegistrableDomain(domain) componentsSeparatedByString:@"."];
     if (labels.count < 2 || [labels.lastObject rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet].location == NSNotFound) return domain;

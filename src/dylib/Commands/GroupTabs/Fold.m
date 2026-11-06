@@ -1,6 +1,4 @@
-// Expands or collapses every tab group in the front window. Dia's update takes ArcTabGroupProperties, and its collapsed
-// property is an NSNumber: @NO expands, @YES collapses, and nil would leave the group alone. ArcTabGroupInfo.collapsed
-// is the BOOL. This is Dia's own group API, so it changes any group, not only ones Group Tabs by Domain created.
+// ArcTabGroupProperties.collapsed is an NSNumber (nil leaves the group alone); ArcTabGroupInfo.collapsed is a BOOL.
 #import "GroupTabs.h"
 #import <objc/message.h>
 

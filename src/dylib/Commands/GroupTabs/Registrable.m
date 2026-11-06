@@ -1,10 +1,6 @@
 #import "GroupTabs.h"
 
-// The registrable domain (eTLD+1): gist.github.com and github.com are both github.com, and news.bbc.co.uk is bbc.co.uk.
-// A short rule, not the Public Suffix List. Under a two-letter country code, these second labels count as part of the
-// suffix: ac, co, com, edu, go, gob, gov, mil, ne, net, or, org. Hosts where each subdomain is someone else's site, like
-// github.io, count as suffixes too. Everything else keeps the last two labels. An IP address is left as it is.
-
+// eTLD+1 by a short rule, not the Public Suffix List.
 static BOOL DPCountryCode(NSString *label) {
     if (label.length != 2) return NO;
     unichar a = [label characterAtIndex:0], b = [label characterAtIndex:1];

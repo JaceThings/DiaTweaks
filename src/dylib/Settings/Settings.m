@@ -3,7 +3,7 @@
 static NSUserInterfaceItemIdentifier const DPPatchesCellIdentifier = @"DiaPatchesCell";
 static char DPSettingsKey, DPSearchItemKey;
 
-// Patches is the extra last row of Dia's Settings sidebar. Dia never sees its index: Dia's cell lookup traps past the end of its items.
+// Dia never sees the Patches row's index: its cell lookup traps past the end of its items.
 static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
     return row >= 0 && row == table.numberOfRows - 1;
 }
@@ -102,7 +102,7 @@ static __weak DPPaneView *DPShownPane;
         self.fixedHeight = window.frame.size.height;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
-        // Resizable turns on the green button, but Settings should only grow taller, not zoom or go full screen.
+        // Resizable enables zoom and full screen; Settings should only grow taller.
         window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) | NSWindowCollectionBehaviorFullScreenNone;
         [window standardWindowButton:NSWindowZoomButton].enabled = NO;
         window.contentMinSize = NSMakeSize(width, 400);
