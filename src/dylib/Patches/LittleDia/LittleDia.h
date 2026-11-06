@@ -39,6 +39,8 @@ void DPRestoreStack(NSWindow *little);
 void DPFinishStack(void);
 pid_t DPLinkSource(void);            // The app the last link came from, or 0.
 void DPReturnToSource(pid_t pid);
+void DPBringBackPutAway(NSWindow *little);  // Dia's windows put away because it was hidden when the link came.
+BOOL DPHideAgain(void);                     // Hides Dia again once its last small window closes, if it was hidden.
 
 // Bar.m: close, back, forward and reload before the address, Open in Dia after it, and no Downloads button.
 void DPInstallLittleDiaBar(void);

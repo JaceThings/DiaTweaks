@@ -5,7 +5,8 @@
 // window opens, every Dia window that was behind the app the link came from goes back behind it.
 
 static NSArray<NSDictionary *> *DPBeforeActivating, *DPForLink;
-static NSDate *DPNotedAt;
+static NSDate *DPNotedAt, *DPUnhiddenAt;
+static NSMutableArray<NSWindow *> *DPPutAway;  // Dia's other windows, while a link opened with Dia hidden is open.
 static pid_t DPSource;  // The app the link was clicked in, if Dia wasn't in front.
 
 // Normal windows on screen, front to back, with the app each belongs to. Needs no screen recording permission.
@@ -40,7 +41,39 @@ void DPReturnToSource(pid_t pid) {
     else [app activateWithOptions:0];
 }
 
+// Dia was hidden, so bringing it forward for the link showed every window: the others go away again, until Open in
+// Dia, or Dia is hidden again when its last small window closes and comes back the usual way.
+static BOOL DPPutAwayIfHidden(NSWindow *little) {
+    if (!DPUnhiddenAt || DPUnhiddenAt.timeIntervalSinceNow < -2) return NO;
+    for (NSWindow *window in NSApp.orderedWindows) {
+        if (DPIsLittleDiaWindow(window) || !window.visible || window.level != NSNormalWindowLevel) continue;
+        if (![DPPutAway containsObject:window]) [DPPutAway addObject:window];
+        [window orderOut:nil];
+    }
+    return YES;
+}
+
+void DPBringBackPutAway(NSWindow *little) {
+    for (NSWindow *window in DPPutAway) {
+        if (little.visible) [window orderWindow:NSWindowBelow relativeTo:little.windowNumber];
+        else [window orderFront:nil];
+    }
+    [DPPutAway removeAllObjects];
+}
+
+BOOL DPHideAgain(void) {
+    if (!DPPutAway.count) return NO;
+    for (NSWindow *window in NSApp.windows)
+        if (DPIsLittleDiaWindow(window) && window.visible) return NO;
+    // Hiding notes which windows are showing, so they're shown first, behind everything, for unhiding to bring back.
+    for (NSWindow *window in DPPutAway) [window orderBack:nil];
+    [DPPutAway removeAllObjects];
+    [NSApp hide:nil];
+    return YES;
+}
+
 void DPRestoreStack(NSWindow *little) {
+    if (DPPutAwayIfHidden(little)) return;
     NSArray<NSDictionary *> *stack = DPForLink;
     NSNumber *me = @(getpid());
     NSUInteger front = [stack indexOfObjectPassingTest:^BOOL(NSDictionary *window, NSUInteger i, BOOL *stop) { return ![window[@"pid"] isEqual:me]; }];
@@ -59,6 +92,9 @@ void DPRestoreStack(NSWindow *little) {
 void DPFinishStack(void) { DPForLink = nil; }
 
 void DPInstallLittleDiaStack(void) {
+    DPPutAway = [NSMutableArray array];
+    [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidUnhideNotification object:nil queue:nil
+                                                usingBlock:^(NSNotification *note) { DPUnhiddenAt = [NSDate date]; }];
     [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillBecomeActiveNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) {
                                                     DPBeforeActivating = DPWindowStack();

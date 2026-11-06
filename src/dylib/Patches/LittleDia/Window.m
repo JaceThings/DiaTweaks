@@ -121,10 +121,15 @@ void DPInstallLittleDiaWindows(void) {
                                                     NSWindow *window = note.object;
                                                     if (!DPLittleDia.on || !DPIsLittleDiaWindow(window)) return;
                                                     pid_t source = [DPGet(window, &DPSourceKey) intValue];
+                                                    BOOL key = window.isKeyWindow;
                                                     if ([DPGet(window, &DPPromotedKey) boolValue])
-                                                        dispatch_async(dispatch_get_main_queue(), ^{ DPShowMainWindow(); });
-                                                    else if (window.isKeyWindow && source)
-                                                        dispatch_async(dispatch_get_main_queue(), ^{ DPReturnToSource(source); });
+                                                        dispatch_async(dispatch_get_main_queue(), ^{
+                                                            DPBringBackPutAway(nil);
+                                                            DPShowMainWindow();
+                                                        });
+                                                    else dispatch_async(dispatch_get_main_queue(), ^{
+                                                        if (!DPHideAgain() && key && source) DPReturnToSource(source);
+                                                    });
                                                 }];
     DPInstallLittleDiaBar();
     DPInstallLittleDiaStack();
