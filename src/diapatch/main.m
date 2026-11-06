@@ -1,5 +1,6 @@
 #import <CommonCrypto/CommonDigest.h>
 #import <Foundation/Foundation.h>
+#import <sys/xattr.h>
 #import "Passkeys.h"
 #import "Passwords.h"
 #include <libproc.h>
@@ -562,10 +563,13 @@ static BOOL installAgent(void) {
     removeAgent();
     return makeDir(agentPlist().stringByDeletingLastPathComponent)
         && ([agent() writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
+        && (removexattr(agentPlist().fileSystemRepresentation, "com.apple.quarantine", 0), YES)  // launchd refuses a quarantined agent
         && check(@[ @"/bin/launchctl", @"bootstrap", [NSString stringWithFormat:@"gui/%d", getuid()], agentPlist() ]);
 }
 
-static BOOL agentCurrent(void) { return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()]; }
+static BOOL agentCurrent(void) {
+    return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()] && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0;
+}
 
 // The diapatch that applies a self-update is the old one, so the new one's first host updates the agent.
 static void refreshAgent(void) {

@@ -30,6 +30,9 @@ struct DPPatch {
     void (*relayout)(void);
     // nil if Dia's views match `on`, else what's wrong. Use DPFindViews, not your hooks, so a hook that never ran fails.
     NSString *(*verify)(DPPatch *patch);
+    // For patches that set things up outside Dia: nil if all of it is in place, else what's wrong. While it fails, turning the
+    // patch on runs apply again, up to three tries, then turns the patch back off and tells the user why.
+    NSString *(*ready)(DPPatch *patch);
     BOOL on, unavailable, inDia;
     CGFloat progress;
 };
@@ -53,6 +56,9 @@ void DPSetChoice(DPPatch *patch, NSString *value);
 void DPLoadPatches(void);
 void DPInstallPatches(void);
 BOOL DPWriteManifest(NSString *path);  // Reads no settings.
+NSString *DPAppSupport(NSString *path);
+NSString *DPRelayProblem(void);  // nil if diapatch and the original Dia it starts are in place.
+NSString *DPHostProblem(NSString *manifest, NSString *name);  // nil if the native host manifest at that path sends `name` to diapatch.
 extern NSNotificationName const DPPatchesDidChangeNotification;
 
 #pragma mark Hooks

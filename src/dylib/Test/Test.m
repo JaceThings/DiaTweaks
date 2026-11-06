@@ -28,6 +28,8 @@ static void DPRunScenario(NSArray<NSArray<NSString *> *> *scenarios, NSUInteger 
             DPPatch *patch = DPPatches[i];
             states[patch->key] = @(patch->on);
             NSString *problem = patch->verify && !patch->unavailable ? patch->verify(patch) : nil;
+            if (!problem && patch->on && patch->ready) problem = patch->ready(patch);
+            if (!problem && !patch->on && !patch->unavailable && [bits characterAtIndex:i] == '1') problem = @"couldn't turn on";
             if (problem) failures[patch->key] = problem;
         }
         [results addObject:@{@"name": scenarios[index][0], @"states": states, @"failures": failures}];
