@@ -1,7 +1,7 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarKeepText;
-static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey;
+static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
@@ -429,9 +429,6 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
 
 static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
-    // Moving the panel out of a page that is being hidden, or back into one, moves the window's views while Dia is
-    // still swapping tabs, which crashes it. Dia presents the bar again once the tab is in place.
-    if (page.hiddenOrHasHiddenAncestor) return;
     id openedTab = [DPScriptWindow(window) valueForKey:@"activeTab"];
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
@@ -527,7 +524,9 @@ static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
 
 static NSEvent *DPCommandBarKey(NSEvent *event) {
     NSWindow *window = event.window;
-    if (!DPCommandBar.on || !window || !(DPIsShortcut(event, @"New Tab") || DPIsShortcut(event, @"Open Command Bar"))) return event;
+    if (!DPCommandBar.on || !window) return event;
+    if (DPIsShortcut(event, @"Close Tab")) DPSet(window, &DPClosedAtKey, @(event.timestamp));
+    if (!(DPIsShortcut(event, @"New Tab") || DPIsShortcut(event, @"Open Command Bar"))) return event;
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
     if (overlay) DPFocusBar(overlay);
     return overlay || DPOpenOverBlank(window) ? nil : event;
@@ -598,8 +597,12 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
         return;
     }
     // Dia opens the tab replacing a closing last tab before closing it, so only the shortcut, or later the old tab
-    // being gone, tells a close.
-    BOOL closing = DPIsShortcut(NSApp.currentEvent, @"Close Tab") || (previous && !DPScriptTab(window, previous));
+    // being gone, tells a close. A pinned tab stays listed once closed, and Dia closes it after ⌘W is let go, so a
+    // ⌘W just before counts too. Going back to it instead, while Dia is still closing it, crashes Dia.
+    NSNumber *closedAt = DPGet(window, &DPClosedAtKey);
+    DPSet(window, &DPClosedAtKey, nil);
+    BOOL justClosed = closedAt && NSProcessInfo.processInfo.systemUptime - closedAt.doubleValue < 1;
+    BOOL closing = DPIsShortcut(NSApp.currentEvent, @"Close Tab") || justClosed || (previous && !DPScriptTab(window, previous));
     if (active && ([blanks containsObject:active] || closing)) {
         DPMakeBlank(self);
         if (overlay.returnTab && !DPScriptTab(window, DPTabID(overlay.returnTab))) DPCancelCommandBar(overlay);
@@ -611,8 +614,6 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
         [blanks removeObject:previous];
         DPCloseTab(blank);
     }
-    // The page came back into the window after the bar was left without one, so it is presented again below.
-    if (DPGet(self, &DPOwnBarKey)) DPSet(self, &DPOwnBarKey, nil);
     // The bar takes its size from the page, which has none until its pane lays it out.
     NSView *pane = self.superview;
     while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
