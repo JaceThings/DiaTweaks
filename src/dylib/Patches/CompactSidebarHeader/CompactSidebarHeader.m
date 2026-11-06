@@ -4,7 +4,7 @@ extern DPPatch DPCompactSidebarHeader;
 static const CGFloat DPHeaderTrim = 10;
 static const CGFloat DPTopTabsButtonInset = 14;  // Where Dia puts the window buttons, from the window's corner, with tabs at the top.
 static NSHashTable<NSView *> *DPSidebars;
-static char DPHeaderFrameKey, DPButtonsFrameKey;
+static char DPHeaderFrameKey, DPButtonsKey;
 
 static NSRect DPLaidOutHeader(NSView *header) {
     return [DPDiaValue(header, &DPHeaderFrameKey, @(header.frame)) rectValue];
@@ -19,39 +19,55 @@ static NSRect DPCloseButtonInWindow(NSView *lights) {
     return r;
 }
 
-// With tabs at the top Dia moves the window buttons into the corner; the compact header puts them in the same spot. A
-// sidebar floating over the page has them elsewhere, so only buttons already near the corner move. In full screen macOS
-// slides the buttons in with the menu bar, laying the header out each frame, so they stay where Dia puts them.
-static void DPHeader_layout(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPHeader_layout, self);
-    NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
-    if (!lights || row == self || !DPMayAdjust(row)) return;
-    NSRect laidOut = [DPDiaValue(row, &DPButtonsFrameKey, @(row.frame)) rectValue], frame = laidOut;
-    row.frame = laidOut;
-    NSRect close = DPCloseButtonInWindow(lights);
-    CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
-    BOOL fullScreen = (self.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
-    if (DPCompactSidebarHeader.on && !fullScreen && !NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
-        frame.origin.x += dx;
-        frame.origin.y += self.isFlipped ? dy : -dy;
+// Move the buttons as Dia sets their row, not after the header's layout. Moving them afterwards makes Dia lay the
+// header out again, which puts them back, and the two take turns until the layout guard gives up: that is the jitter
+// while the sidebar is resized. Rewriting the frame inside the setter leaves the value Dia ends the pass with, so
+// there is nothing left for it to lay out again. The frame arriving is Dia's; the close button still sits where the
+// last one put it, so the extra move of this frame is added before measuring.
+static void DPButtonsRow_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    NSView *lights = DPGet(self, &DPButtonsKey);
+    NSWindow *window = self.window;
+    if (DPCompactSidebarHeader.on && lights && window && !(window.styleMask & NSWindowStyleMaskFullScreen)) {
+        NSRect old = self.frame, close = DPCloseButtonInWindow(lights);
+        BOOL flipped = self.superview.isFlipped;
+        close.origin.x += frame.origin.x - NSMinX(old);
+        close.origin.y += flipped ? frame.origin.y - NSMinY(old) : NSMinY(old) - frame.origin.y;
+        CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
+        if (!NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
+            frame.origin.x += dx;
+            frame.origin.y += flipped ? dy : -dy;
+        }
     }
-    DPOverride(row, &DPButtonsFrameKey, @(laidOut), @(frame));
-    row.frame = frame;
+    DPCallOriginal(DPButtonsRow_setFrame, self, frame);
+}
+
+// With tabs at the top Dia moves the window buttons into the corner; the compact header puts them in the same spot. A
+// sidebar floating over the page has them elsewhere, so only buttons already near the corner move. This only notes
+// which row holds them, so the setter above knows which of Dia's stacks to move.
+static void DPHeader_layout(NSView *self, SEL _cmd) {
+    NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
+    if (lights && row != self) DPSet(row, &DPButtonsKey, lights);
+    DPCallOriginal(DPHeader_layout, self);
 }
 
 static void DPCompactHeader(NSView *sidebar) {
     NSView *header = DPSubview(sidebar, DPDiaSidebarHeader);
-    if (!header || !DPMayAdjust(header)) return;
+    if (!header) return;
     NSRect laidOut = DPLaidOutHeader(header), frame = laidOut;
     if (DPCompactSidebarHeader.on) frame.size.height = MAX(0, NSHeight(laidOut) - DPHeaderTrim);
-    DPOverride(header, &DPHeaderFrameKey, @(laidOut), @(frame));
-    header.frame = frame;
+    if (!NSEqualRects(frame, header.frame)) {
+        if (!DPMayAdjust(header)) return;
+        DPOverride(header, &DPHeaderFrameKey, @(laidOut), @(frame));
+        header.frame = frame;
+    }
     // The view under the header keeps its bottom edge, so whatever follows it stays put.
     for (NSView *sub in sidebar.subviews) {
         if (sub == header) continue;
         CGFloat top = NSMinY(sub.frame);
         if (fabs(top - NSMaxY(laidOut)) > 0.5 && fabs(top - NSMaxY(laidOut) + DPHeaderTrim) > 0.5) continue;
-        sub.frame = NSMakeRect(NSMinX(sub.frame), NSMaxY(frame), NSWidth(sub.frame), NSMaxY(sub.frame) - NSMaxY(frame));
+        NSRect moved = NSMakeRect(NSMinX(sub.frame), NSMaxY(frame), NSWidth(sub.frame), NSMaxY(sub.frame) - NSMaxY(frame));
+        if (NSEqualRects(moved, sub.frame) || !DPMayAdjust(sub)) continue;
+        sub.frame = moved;
     }
 }
 
@@ -65,6 +81,7 @@ static void DPInstallCompactSidebarHeader(void) {
     DPSidebars = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaSidebarController, @selector(viewDidLayout), (IMP)DPSidebar_viewDidLayout);
     DPHook(DPDiaSidebarHeader, @selector(layout), (IMP)DPHeader_layout);
+    DPHookClass(NSStackView.class, @selector(setFrame:), (IMP)DPButtonsRow_setFrame);
 }
 
 static void DPApplyCompactSidebarHeader(DPPatch *patch) { DPRelayoutViews(DPSidebars); }
