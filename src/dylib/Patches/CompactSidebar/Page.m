@@ -1,13 +1,27 @@
 #import "CompactSidebar.h"
 
+extern DPPatch DPHideToolbar;
+
 static NSHashTable<NSView *> *DPPanes;
 static char DPPaneFrameKey, DPItemFrameKey, DPBarPlaceKey;
 
 // The pane at the window's left starts where the strip ends. Its own left edge only ever moves right, to that point, so
-// laying it out again changes nothing.
+// laying it out again changes nothing. While the toolbar shows, a pane at the top also reaches up over the margin Dia
+// leaves above it, to the window's top: Dia lays the toolbar out at the pane's top and the page grows into the room, so
+// the toolbar's buttons sit as far from the window's top as from the page. With Hide Toolbar on, the page keeps it.
 static NSRect DPPaneFrame(NSView *pane, NSRect frame) {
     NSView *superview = pane.superview;
     if (!superview || DPStripVisible(pane.window) == 0) return frame;
+    if (!DPHideToolbar.on) {
+        NSView *frameView = pane.window.contentView.superview;
+        CGFloat windowTop = NSMaxY([frameView convertRect:frameView.bounds toView:nil]);
+        CGFloat top = [superview convertPoint:NSMakePoint(0, windowTop) fromView:nil].y;
+        if (superview.isFlipped && NSMinY(frame) <= 0.5 && top < NSMinY(frame)) {
+            frame.size.height += NSMinY(frame) - top;
+            frame.origin.y = top;
+        } else if (!superview.isFlipped && NSMaxY(frame) >= NSHeight(superview.bounds) - 0.5 && top > NSMaxY(frame))
+            frame.size.height = top - NSMinY(frame);
+    }
     CGFloat edge = [superview convertPoint:NSMakePoint(DPStripRight(pane.window), 0) fromView:nil].x;
     if (NSMinX(frame) >= edge) return frame;
     frame.size.width = MAX(0, NSMaxX(frame) - edge);
@@ -53,17 +67,20 @@ static void DPPane_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     DPPaneAsked(self, (NSRect){DPDiaPaneFrame(self).origin, size});
 }
 
-// Dia centers the toolbar's buttons in the toolbar, which starts a margin below the window's top: over the chrome that
-// leaves more room above them than below, before the page. They rise by half the margin, through the bounds of the view
-// that holds them, so the room is the same; the window buttons follow them.
+static const CGFloat DPWindowOutline = 1;  // The window's outline along its top, over the toolbar's room.
+
+// Dia centers the toolbar's buttons in the toolbar. Over the chrome, they center between the window's outline and the
+// page instead: where the pane starts below the window's top, as with Hide Toolbar on, they rise by half the margin,
+// and the outline takes a little off the top. They move through the bounds of the view that holds them, to whole
+// pixels; the window buttons follow them.
 static void DPCenterBarItems(NSView *bar, NSView *items) {
-    NSView *card = bar;
-    while (card && !DPIsKind(card, DPDiaContentContainer)) card = card.superview;
+    NSView *pane = bar.superview;
     CGFloat lift = 0;
-    if (card && items != bar && DPStripPresent(bar.window)) {
+    if (pane && items != bar && DPStripPresent(bar.window)) {
         NSView *frameView = bar.window.contentView.superview;
-        CGFloat margin = NSMaxY([frameView convertRect:frameView.bounds toView:nil]) - NSMaxY([card convertRect:card.bounds toView:nil]);
-        lift = round(MAX(0, margin) / 2);
+        CGFloat margin = NSMaxY([frameView convertRect:frameView.bounds toView:nil]) - NSMaxY([pane convertRect:pane.bounds toView:nil]);
+        CGFloat scale = bar.window.backingScaleFactor ?: 1;
+        lift = round((MAX(0, margin) - DPWindowOutline) / 2 * scale) / scale;
     }
     CGFloat y = items.isFlipped ? lift : -lift;
     if (items.bounds.origin.y == y) return;
