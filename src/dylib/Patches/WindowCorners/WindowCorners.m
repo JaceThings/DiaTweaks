@@ -37,7 +37,9 @@ static void DPRoundWindow(NSWindow *window) {
     DPOverride(window, &DPRadiusKey, @(dia), @(target));
     if (current == target) return;
     ((void (*)(id, SEL, CGFloat))objc_msgSend)(window, @selector(_setCornerRadius:), target);
-    ((void (*)(id, SEL))objc_msgSend)(window, @selector(_updateWindowCornerMask));
+    // macOS 26.7 has no _updateWindowCornerMask, so its older _cornerMaskChanged redraws the mask there.
+    SEL update = [window respondsToSelector:@selector(_updateWindowCornerMask)] ? @selector(_updateWindowCornerMask) : @selector(_cornerMaskChanged);
+    if ([window respondsToSelector:update]) ((void (*)(id, SEL))objc_msgSend)(window, update);
     [window invalidateShadow];
 }
 
