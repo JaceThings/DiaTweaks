@@ -54,7 +54,9 @@ static void DPMatchPage(NSView *row, id page) {
 
 @interface DPBarButton : NSButton
 @property (nonatomic, copy) void (^handler)(void);
-@property (nonatomic) BOOL hovered, pill;  // pill: a filled capsule with an icon and a word, like Dia's Chat button
+@property (nonatomic) BOOL hovered, pill;  // pill: a filled button with an icon and a word, laid out like Dia's Chat button
+@property (nonatomic) NSImageView *pillIcon;
+@property (nonatomic) NSTextField *pillLabel;
 @property (nonatomic) CGFloat outerCorner;  // The top-left corner's radius, for a button tucked into the window's corner.
 @end
 
@@ -78,14 +80,18 @@ static void DPMatchPage(NSView *row, id page) {
 
 - (void)run:(id)sender { if (self.handler) self.handler(); }
 
+// Dia's Chat button: a 16pt icon 10pt in, the word 4pt after it, 9pt after that.
 - (NSSize)intrinsicContentSize {
-    return self.pill ? NSMakeSize(ceil(super.intrinsicContentSize.width) + 20, 28) : NSMakeSize(28, 28);
+    return self.pill ? NSMakeSize(30 + ceil(self.pillLabel.intrinsicContentSize.width) + 9, 28) : NSMakeSize(28, 28);
 }
+
+- (NSView *)hitTest:(NSPoint)point { return [super hitTest:point] ? self : nil; }
 
 - (BOOL)mouseDownCanMoveWindow { return NO; }
 
 - (void)updateTint {
     self.contentTintColor = !self.enabled ? NSColor.tertiaryLabelColor : self.hovered || self.pill ? NSColor.labelColor : NSColor.secondaryLabelColor;
+    self.pillIcon.contentTintColor = self.pillLabel.textColor = self.hovered ? NSColor.labelColor : [NSColor.labelColor colorWithAlphaComponent:0.85];
     self.needsDisplay = YES;
 }
 
@@ -133,7 +139,7 @@ static void DPMatchPage(NSView *row, id page) {
 }
 
 - (void)drawRect:(NSRect)rect {
-    CGFloat fill = self.pill ? (self.hovered ? 0.16 : 0.1) : (self.hovered && self.enabled ? 0.08 : 0);
+    CGFloat fill = self.pill ? (self.hovered ? 0.12 : 0.08) : (self.hovered && self.enabled ? 0.08 : 0);
     self.layer.backgroundColor = fill ? [NSColor.labelColor colorWithAlphaComponent:fill].CGColor : nil;
     [super drawRect:rect];
 }
@@ -151,12 +157,16 @@ static NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *ke
 }
 
 static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
-    DPBarButton *button = [[DPBarButton alloc] initWithSymbol:@"arrow.up.forward" size:10 label:@"Open in Dia"];
+    DPBarButton *button = [[DPBarButton alloc] initWithSymbol:@"arrow.up.forward" size:12 label:@"Open in Dia"];
     button.pill = YES;
-    button.title = @"Open in Dia";
-    button.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
-    button.imagePosition = NSImageTrailing;
-    button.imageHugsTitle = YES;
+    button.pillIcon = [NSImageView imageViewWithImage:button.image];
+    button.image = nil;
+    button.pillIcon.frame = NSMakeRect(10, 6, 16, 16);
+    button.pillLabel = [NSTextField labelWithString:@"Open in Dia"];
+    button.pillLabel.font = [NSFont systemFontOfSize:13];
+    button.pillLabel.frame = NSMakeRect(30, 6, ceil(button.pillLabel.intrinsicContentSize.width), 16);
+    [button addSubview:button.pillIcon];
+    [button addSubview:button.pillLabel];
     button.toolTip = @"Open this page in a tab (⌘O)";
     button.keyEquivalent = @"o";
     button.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -217,11 +227,10 @@ static void DPPlaceBar(DPLittleBar *bar) {
     }];
     NSSize open = bar.open.intrinsicContentSize;
     if (bar.open.superview != row) [row addSubview:bar.open];
-    // The same gap above it as beside it, and corners that follow the window's.
+    // The same gap above it as beside it.
     CGFloat top = round(mid - open.height / 2), gap = NSHeight(row.bounds) - NSMaxY(NSMakeRect(0, top, 0, open.height));
     bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - open.width, top, open.width, open.height);
     CGFloat corner = [row.window respondsToSelector:@selector(_cornerRadius)] ? ((CGFloat (*)(id, SEL))objc_msgSend)(row.window, @selector(_cornerRadius)) : 16;
-    bar.open.layer.cornerRadius = MIN(open.height / 2, MAX(4, corner - gap));
     // Close sits in the window's top-left corner, so that corner of it follows the window's too.
     DPBarButton *close = (DPBarButton *)bar.leading.firstObject;
     NSRect inWindow = [row convertRect:close.frame toView:nil];
