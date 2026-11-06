@@ -190,7 +190,7 @@ DP_PATCH(DPTurnOffAI) {
     .order = 95,
     .section = @"AI",
     .title = @"Turn Off AI",
-    .detail = @"Hide every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Chat With This Tab, chat in the command bar, Morning Brief, and Settings' Apps and Skills. After a relaunch, Dia can't reach its AI servers either. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
+    .detail = @"Turn off every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Morning Brief, and Settings' Apps and Skills. After a relaunch, Dia can't reach its AI servers either. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
     .symbol = @"bubble.left.and.exclamationmark.bubble.right.fill bubble.left.fill",
     .tint = @"systemPurpleColor",
     .hides = DPIsAIView,
