@@ -26,12 +26,11 @@ static CGFloat DPPageTop(NSWindow *window) {
     return NAN;
 }
 
-// Where the toolbar's bottom edge is once it shows, from the window's bottom: the card's top less its height.
+// Where the toolbar's bottom edge is once it shows, from the window's bottom: its pane's top less its height.
 CGFloat DPToolbarBottom(NSWindow *window) {
     for (NSView *bar in DPFindViews(DPDiaToolbar)) {
-        NSView *card = bar;
-        while (card && !DPIsKind(card, DPDiaContentContainer)) card = card.superview;
-        if (bar.window == window && card) return NSMaxY([card convertRect:card.bounds toView:nil]) - NSHeight(bar.bounds);
+        NSView *pane = bar.superview;
+        if (bar.window == window && pane) return NSMaxY([pane convertRect:pane.bounds toView:nil]) - NSHeight(bar.bounds);
     }
     return DPPageTop(window);
 }
@@ -92,6 +91,7 @@ static void DPBar_setAppearance(NSView *self, SEL _cmd, NSAppearance *appearance
 static void DPPane_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPPane_layout, self);
     DPApplyChrome(self);
+    DPRelayoutCompactPanes(self.window);  // Hide Toolbar lays the panes out as it turns on and off; they reach up only without it.
 }
 
 void DPInstallCompactChrome(void) {

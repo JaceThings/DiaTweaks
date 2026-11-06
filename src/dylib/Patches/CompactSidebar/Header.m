@@ -27,7 +27,7 @@ CGFloat DPLightsLeft(NSWindow *window) {
 
 static NSView *DPHostOf(NSView *header) { return DPHostIn(header.window) ?: header.superview; }
 
-// Where the middle of the toolbar's buttons is once the toolbar is in place, from the window's bottom: the card's top
+// Where the middle of the toolbar's buttons is once the toolbar is in place, from the window's bottom: its pane's top
 // less the buttons' fixed depth in it. Hide toolbar moves the toolbar meanwhile, which the window buttons don't follow.
 static CGFloat DPToolbarButtonsMiddle(NSWindow *window) {
     for (NSView *bar in DPFindViews(DPDiaToolbar)) {
@@ -35,12 +35,11 @@ static CGFloat DPToolbarButtonsMiddle(NSWindow *window) {
         NSView *field = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); }), *button = nil;
         for (NSView *item in field.superview.subviews)
             if (!item.hidden && NSWidth(item.frame) > 0 && item != field) { button = item; break; }
-        NSView *card = bar;
-        while (card && !DPIsKind(card, DPDiaContentContainer)) card = card.superview;
-        if (!button || !card) return NAN;
+        NSView *pane = bar.superview;
+        if (!button || !pane) return NAN;
         NSRect inBar = [button convertRect:button.bounds toView:bar];
         CGFloat depth = bar.isFlipped ? NSMidY(inBar) : NSHeight(bar.bounds) - NSMidY(inBar);
-        return NSMaxY([card convertRect:card.bounds toView:nil]) - depth;
+        return NSMaxY([pane convertRect:pane.bounds toView:nil]) - depth;
     }
     return NAN;
 }
