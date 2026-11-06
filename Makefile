@@ -30,6 +30,16 @@ build/patches.json: build/DiaPatches.dylib build/diapatch
 build:
 	mkdir -p $@
 
+GROUP_TABS := $(addprefix src/dylib/Commands/GroupTabs/,Plan.m Title.m Registrable.m Messages.m)
+
+build/group-tabs: tests/group-tabs.m $(GROUP_TABS) | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $^
+
+# Checks that need no Dia: the Group Tabs by Domain logic, and that Settings shows each tweak like its neighbours.
+check: build/group-tabs build/patches.json
+	build/group-tabs
+	scripts/check-patches
+
 test: build/DiaPatches.dylib
 	./test.sh
 
@@ -40,4 +50,4 @@ patch:
 clean:
 	rm -rf build
 
-.PHONY: all clean test patch
+.PHONY: all check clean test patch
