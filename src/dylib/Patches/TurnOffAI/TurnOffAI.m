@@ -6,6 +6,7 @@
 #define DPDiaTabCardActions      "_TtC5TabUI21TabPopoverActionsView"
 #define DPDiaSettingsHeader      "_TtC11Preferences25SettingsSectionHeaderView"
 #define DPDiaPlaceholderText     "_TtC5ARCUI23TextViewWithPlaceholder"
+#define DPDiaChatSidebar         "_TtC6Window30AssistantSidebarViewController"
 
 BOOL DPIsAITitle(NSString *title) {
     if (![title isKindOfClass:NSString.class] || [title hasPrefix:@"Chat with Support"]) return NO;
@@ -40,6 +41,24 @@ static void DPSettingsHeader_layout(NSView *self, SEL _cmd) {
     if (![title.stringValue isEqual:@"Morning Brief"] || !self.superview) return;
     [DPMorningBriefs addObject:self.superview];
     self.superview.hidden = DPTurnOffAI.on;
+}
+
+#pragma mark Chat sidebar
+
+static NSHashTable<NSViewController *> *DPChatSidebars;
+
+// Chat beside the page, open when AI is turned off or opened some way still left, is closed with Dia's own Hide Chat
+// button, which also gives the page its width back.
+static void DPCloseChat(NSViewController *sidebar) {
+    if (!DPTurnOffAI.on) return;
+    NSView *hide = DPFindView(sidebar.view, ^BOOL(NSView *view) { return DPHasLabel(view, @"Hide chat"); });
+    if (!hide.isHiddenOrHasHiddenAncestor) [hide accessibilityPerformPress];
+}
+
+static void DPChatSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
+    DPCallOriginal(DPChatSidebar_viewWillLayout, self);
+    [DPChatSidebars addObject:self];
+    dispatch_async(dispatch_get_main_queue(), ^{ DPCloseChat(self); });
 }
 
 #pragma mark Placeholder
@@ -140,6 +159,7 @@ static void DPInstallTurnOffAI(void) {
     DPAIItems = [NSHashTable weakObjectsHashTable];
     DPPlaceholderViews = [NSHashTable weakObjectsHashTable];
     DPMorningBriefs = [NSHashTable weakObjectsHashTable];
+    DPChatSidebars = [NSHashTable weakObjectsHashTable];
     DPHookClass(NSMenu.class, @selector(addItem:), (IMP)DPMenu_addItem);
     DPHookClass(NSMenu.class, @selector(insertItem:atIndex:), (IMP)DPMenu_insertItem);
     DPHookClass(NSMenuItem.class, @selector(setHidden:), (IMP)DPItem_setHidden);
@@ -147,6 +167,7 @@ static void DPInstallTurnOffAI(void) {
     DPHook(DPDiaTabCardActions, @selector(layout), (IMP)DPHost_layout);
     DPHook(DPDiaSettingsHeader, @selector(layout), (IMP)DPSettingsHeader_layout);
     DPHook(DPDiaPlaceholderText, @selector(placeholderAttributedString), (IMP)DPPlaceholder_get);
+    DPHook(DPDiaChatSidebar, @selector(viewWillLayout), (IMP)DPChatSidebar_viewWillLayout);
     DPInstallAIRows();
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         return DPTurnOffAI.on && DPIsAIShortcut(event) ? nil : event;
@@ -159,6 +180,7 @@ static void DPApplyTurnOffAI(DPPatch *patch) {
     for (NSMenuItem *item in DPAIItems.allObjects) DPTrack(item);
     for (NSTextView *view in DPPlaceholderViews.allObjects) view.needsDisplay = YES;
     for (NSView *section in DPMorningBriefs.allObjects) section.hidden = patch->on;
+    for (NSViewController *sidebar in DPChatSidebars.allObjects) DPCloseChat(sidebar);
     DPApplyAIRows();
     DPOfferRelaunch(patch);
 }
