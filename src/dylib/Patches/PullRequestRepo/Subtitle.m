@@ -2,12 +2,13 @@
 
 // GitHub live folders show "author • review status" under each pull request's title, and in Created by Me the author is
 // always you. This shows "hello-world #42 · Open" there instead, and moves the review status to a line of its own.
+// Only the sidebar's list can make a row taller, so with tabs at the top the status stays on the repository line.
 
 @interface NSObject (DPSwiftFields)
 - (id)safeSwiftValueForKey:(NSString *)key;
 @end
 
-static char DPDiaTextKey, DPCheckedKey;
+static char DPDiaTextKey, DPCheckedKey, DPInListKey;
 
 static id DPField(id object, NSString *key) {
     return [object respondsToSelector:@selector(safeSwiftValueForKey:)] ? [object safeSwiftValueForKey:key] : nil;
@@ -21,6 +22,12 @@ static NSString *DPMatch(NSString *pattern, NSString *text) {
 
 BOOL DPIsPRSubtitle(NSView *label) {
     return DPIsKind(label, DPDiaFeatheredLabel) && DPIsKind(label.superview, DPDiaTransitioningLabel);
+}
+
+// In the sidebar's list, as opposed to the tab strip at the top or a row that isn't in either yet.
+static BOOL DPInTabList(NSView *view) {
+    while (view && !DPIsKind(view, DPDiaTabListCollection)) view = view.superview;
+    return view != nil;
 }
 
 // From the row's live item, on its TabContentController.
@@ -53,6 +60,7 @@ static NSString *DPSplit(NSView *label, NSString *text, NSString **status, NSStr
     NSString *repo = pr[@"repo"], *state = pr[@"state"], *from = [rest substringFromIndex:[rest rangeOfString:review].location];
     if (state.length && [words caseInsensitiveCompare:state] == NSOrderedSame)
         return [[repo substringToIndex:repo.length - state.length] stringByAppendingString:from];
+    if (!DPInTabList(label)) return [repo stringByAppendingString:rest];
     *status = from;
     return repo;
 }
@@ -69,15 +77,18 @@ static void DPLabel_setStringValue(NSTextField *self, SEL _cmd, NSString *value)
     NSString *status = nil, *tab = nil, *shown = DPPullRequestRepo.on && value ? DPSplit(self, value, &status, &tab) : nil;
     if (shown) DPOverride(self, &DPDiaTextKey, value, shown);
     DPSet(self, &DPCheckedKey, shown ?: value);
+    DPSet(self, &DPInListKey, @(DPInTabList(self)));
     DPSetPRStatus(self, tab, status);
     DPCallOriginal(DPLabel_setStringValue, self, shown ?: value);
 }
 
-// Catches a label Dia filled in before putting it in the row.
+// Catches a label Dia filled in before putting it in the row, and one that moved in or out of the sidebar's list since.
 static void DPLabel_layout(NSTextField *self, SEL _cmd) {
     DPCallOriginal(DPLabel_layout, self);
-    if (!DPPullRequestRepo.on || !DPIsPRSubtitle(self) || [self.stringValue isEqual:DPGet(self, &DPCheckedKey)]) return;
-    self.stringValue = self.stringValue;
+    if (!DPPullRequestRepo.on || !DPIsPRSubtitle(self)) return;
+    BOOL moved = [DPGet(self, &DPInListKey) boolValue] != DPInTabList(self);
+    if (!moved && [self.stringValue isEqual:DPGet(self, &DPCheckedKey)]) return;
+    self.stringValue = DPDiaValue(self, &DPDiaTextKey, self.stringValue);
     DPRelayoutRow(self);
 }
 
