@@ -13,8 +13,8 @@ static NSString *const kFiles[] = { @"manifest.json", @"page.js", @"bridge.js", 
 
 static NSString *DPExtensionFolder(void) { return DPAppSupport(@"DiaPatches/passkeys-extension"); }
 
-// Dia's Chromium looks for native messaging hosts in Chrome's folder.
-static NSString *DPHostManifestPath(void) { return DPAppSupport(@"Google/Chrome/NativeMessagingHosts/com.diapatches.passkeys.json"); }
+// Chromium looks for a user's native messaging hosts in its user data folder, which Dia calls "User Data".
+static NSString *DPHostManifestPath(void) { return DPAppSupport(@"Dia/User Data/NativeMessagingHosts/com.diapatches.passkeys.json"); }
 
 static NSError *gWriteError;
 
@@ -27,14 +27,17 @@ static BOOL DPWrite(NSData *data, NSString *path) {
     return NO;
 }
 
-static BOOL DPSetUpPasskeys(void) {
-    gWriteError = nil;
+static BOOL DPWriteExtension(void) {
     for (int i = 0; i < 4; i++) {
         NSString *section = [@"__pk_" stringByAppendingString:kFiles[i].stringByDeletingPathExtension];
         unsigned long size = 0;
         uint8_t *bytes = getsectiondata(&_mh_dylib_header, "__TEXT", section.UTF8String, &size);
         if (!bytes || !DPWrite([NSData dataWithBytes:bytes length:size], [DPExtensionFolder() stringByAppendingPathComponent:kFiles[i]])) return NO;
     }
+    return YES;
+}
+
+static BOOL DPRegisterHost(void) {
     NSDictionary *manifest = @{
         @"name" : @"com.diapatches.passkeys",
         @"description" : @"DiaTweaks passkeys",
@@ -43,6 +46,11 @@ static BOOL DPSetUpPasskeys(void) {
         @"allowed_origins" : @[ [NSString stringWithFormat:@"chrome-extension://%@/", kExtensionID] ],
     };
     return DPWrite([NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted error:nil], DPHostManifestPath());
+}
+
+static BOOL DPSetUpPasskeys(void) {
+    gWriteError = nil;
+    return DPWriteExtension() && DPRegisterHost();
 }
 
 static NSString *DPPasskeysProblem(DPPatch *patch) {
@@ -81,7 +89,9 @@ static void DPInstallPasskeys(void) {
         [NSFileManager.defaultManager removeItemAtPath:DPHostManifestPath() error:nil];
         return;
     }
-    if (!DPSetUpPasskeys()) return;
+    gWriteError = nil;
+    if (!DPWriteExtension()) return;  // the extension can't load without its files
+    DPRegisterHost();                 // a failed host write shows in .ready, but the hook still installs
     DPHook("ArcBrowserApplicationConfiguration", @selector(init:argv:profilePath:applicationID:isProduction:sessionRestorationPolicy:shouldLoadAllProfilesAtStartup:quitRunLoopOnTermination:userDefaultsSuiteName:),
            (IMP)DPConfiguration_init);
     gExtensionLoaded = YES;
