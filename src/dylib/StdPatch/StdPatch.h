@@ -112,6 +112,7 @@ id DPDiaValue(id object, const void *key, id current);
 // Loads the unpacked Chromium extension in `folder` into every profile. Chromium reads it once as Dia starts, so call
 // it from an `install`.
 void DPLoadExtension(NSString *folder);
+void DPAddLaunchFlag(NSString *flag);  // A Chromium command-line flag, also read once as Dia starts.
 
 #pragma mark App
 

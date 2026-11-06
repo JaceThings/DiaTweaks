@@ -1,4 +1,5 @@
 #import "TurnOffAI.h"
+#import "Updates/Updates.h"
 
 #define DPDiaCapabilitiesToolbar "_TtC23AssistantCapabilitiesUI32AssistantCapabilitiesToolbarView"
 #define DPDiaCapabilitiesItem    "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
@@ -107,9 +108,35 @@ static BOOL DPIsAIShortcut(NSEvent *event) {
     return inBar && (event.keyCode == 36 || event.keyCode == 76) && mods == (NSEventModifierFlagCommand | NSEventModifierFlagControl);
 }
 
+#pragma mark Servers
+
+static BOOL gCutOff;  // Chromium reads its host rules only as Dia starts.
+
+// Dia sends chat and fetches AI apps and skills from inside Chromium, so names that resolve nowhere stop them at once,
+// as if offline.
+static void DPCutOffAIServers(void) {
+    gCutOff = DPTurnOffAI.on;
+    if (!gCutOff) return;
+    NSMutableArray<NSString *> *rules = [NSMutableArray array];
+    for (NSString *host in @[ @"ai-service", @"aiproxy", @"webresultproxy", @"websearch", @"artifactcdn", @"tools-cache" ])
+        [rules addObject:[NSString stringWithFormat:@"MAP %@.diabrowser.engineering ~NOTFOUND", host]];
+    DPAddLaunchFlag([@"--host-resolver-rules=" stringByAppendingString:[rules componentsJoinedByString:@", "]]);
+}
+
+static void DPOfferRelaunch(DPPatch *patch) {
+    if (patch->on == gCutOff || patch->on != DPSavedOn(patch)) return;  // the self-test flips patches without saving
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = patch->on ? @"Relaunch Dia to cut off its AI servers" : @"Relaunch Dia to reconnect its AI servers";
+    alert.informativeText = patch->on ? @"Until then, AI is hidden, but Dia can still reach its AI servers." : @"Until then, chat can’t reach them.";
+    [alert addButtonWithTitle:@"Relaunch"];
+    [alert addButtonWithTitle:@"Later"];
+    if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
+}
+
 #pragma mark Patch
 
 static void DPInstallTurnOffAI(void) {
+    DPCutOffAIServers();
     DPAIItems = [NSHashTable weakObjectsHashTable];
     DPPlaceholderViews = [NSHashTable weakObjectsHashTable];
     DPMorningBriefs = [NSHashTable weakObjectsHashTable];
@@ -133,6 +160,7 @@ static void DPApplyTurnOffAI(DPPatch *patch) {
     for (NSTextView *view in DPPlaceholderViews.allObjects) view.needsDisplay = YES;
     for (NSView *section in DPMorningBriefs.allObjects) section.hidden = patch->on;
     DPApplyAIRows();
+    DPOfferRelaunch(patch);
 }
 
 DP_PATCH(DPTurnOffAI) {
@@ -140,7 +168,7 @@ DP_PATCH(DPTurnOffAI) {
     .order = 95,
     .section = @"AI",
     .title = @"Turn Off AI",
-    .detail = @"Hide every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Chat With This Tab, chat in the command bar, Morning Brief, and Settings' Apps and Skills. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
+    .detail = @"Hide every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Chat With This Tab, chat in the command bar, Morning Brief, and Settings' Apps and Skills. After a relaunch, Dia can't reach its AI servers either. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
     .symbol = @"bubble.left.and.exclamationmark.bubble.right.fill bubble.left.fill",
     .tint = @"systemPurpleColor",
     .hides = DPIsAIView,
