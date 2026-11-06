@@ -5,6 +5,7 @@
 // the sidebar out; each frame it asks for is recorded and the list placed from that, so the two never take turns.
 static char DPListFrameKey;
 static const CGFloat DPListInset = 6;  // From the window's top, as the tabs are from the strip's sides.
+static const CGFloat DPFirstRowInset = 6;  // Dia's room over the first row, which would leave it below the page's top.
 static BOOL DPPlacingList;
 
 static BOOL DPIsList(NSView *view) { return DPIsKind(view, DPDiaFlippedView) && DPIsKind(view.superview, DPDiaSidebarRoot); }
@@ -27,7 +28,8 @@ static NSRect DPListFrame(NSView *list, NSRect dia) {
     NSView *frameView = window.contentView.superview;
     CGFloat windowTop = NSMinY([root convertRect:frameView.bounds fromView:frameView]);
     CGFloat hidden = MAX(NSMinY([root convertRect:card.bounds fromView:card]), windowTop + DPListInset);
-    CGFloat lights = MAX(DPToolbarAlpha(window), DPLightsReveal(window)), top = round(hidden + (shown - hidden) * lights);
+    CGFloat lights = MAX(DPToolbarAlpha(window), DPLightsReveal(window));
+    CGFloat top = round(hidden + (shown - hidden) * lights) - DPFirstRowInset;  // The first row's top level with the page's.
     if (!isfinite(top) || top >= NSMaxY(dia)) return dia;
     return NSMakeRect(NSMinX(dia), top, NSWidth(dia), NSMaxY(dia) - top);
 }

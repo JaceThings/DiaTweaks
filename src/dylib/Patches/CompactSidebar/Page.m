@@ -53,11 +53,30 @@ static void DPPane_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     DPPaneAsked(self, (NSRect){DPDiaPaneFrame(self).origin, size});
 }
 
+// Dia centers the toolbar's buttons in the toolbar, which starts a margin below the window's top: over the chrome that
+// leaves more room above them than below, before the page. They rise by half the margin, through the bounds of the view
+// that holds them, so the room is the same; the window buttons follow them.
+static void DPCenterBarItems(NSView *bar, NSView *items) {
+    NSView *card = bar;
+    while (card && !DPIsKind(card, DPDiaContentContainer)) card = card.superview;
+    CGFloat lift = 0;
+    if (card && items != bar && DPStripPresent(bar.window)) {
+        NSView *frameView = bar.window.contentView.superview;
+        CGFloat margin = NSMaxY([frameView convertRect:frameView.bounds toView:nil]) - NSMaxY([card convertRect:card.bounds toView:nil]);
+        lift = round(MAX(0, margin) / 2);
+    }
+    CGFloat y = items.isFlipped ? lift : -lift;
+    if (items.bounds.origin.y == y) return;
+    [items setBoundsOrigin:NSMakePoint(items.bounds.origin.x, y)];
+    DPSubview(DPSidebarRootIn(bar.window), DPDiaSidebarHeader).needsLayout = YES;  // The window buttons line up again.
+}
+
 // The toolbar's buttons left of the address field move right of the window buttons, and the field gives up the room.
 // After the downloads button, they keep their own spacing from it, as if it were the first of them.
 static void DPClearLights(NSView *bar) {
     NSView *field = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); }), *items = field.superview;
     if (!field) return;
+    DPCenterBarItems(bar, items);
     NSRect fieldFrame = [DPDiaValue(field, &DPItemFrameKey, @(field.frame)) rectValue];
     NSMutableArray<NSView *> *leading = [NSMutableArray new];
     for (NSView *item in items.subviews) {
