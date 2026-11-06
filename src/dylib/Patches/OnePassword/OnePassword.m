@@ -15,7 +15,9 @@ static const char *DPDiapatch(void) {
 
 static int DPSpawn(pid_t *pid, const char *path, const posix_spawn_file_actions_t *files, const posix_spawnattr_t *attrs, char *const argv[], char *const envp[]) {
     const char *name = path ? strrchr(path, '/') : NULL;
-    if (!DPOnePassword.on || !name || strcmp(name, "/1Password-BrowserSupport")) return posix_spawn(pid, path, files, attrs, argv, envp);
+    if (!name || strcmp(name, "/1Password-BrowserSupport")) return posix_spawn(pid, path, files, attrs, argv, envp);
+    // Started for the patched Dia itself, the helper turns it away, then waits for good, even after Dia quits.
+    if (!DPOnePassword.on) return ENOENT;
     int argc = 0;
     while (argv[argc]) argc++;
     char *redirected[argc + 1];
