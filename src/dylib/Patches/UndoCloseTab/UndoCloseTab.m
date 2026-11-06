@@ -44,7 +44,7 @@ DP_PATCH(DPUndoCloseTab) {
     .title = @"Undo Closing a Tab",
     .detail = @"Press a shortcut, ⌘Z unless you set another, right after closing a tab to bring it back, as long as you haven’t typed or clicked since.",
     .symbol = @"arrow.uturn.backward.circle.fill",
-    .tint = @"systemBlueColor",
+    .tint = @"systemPinkColor",
     .section = @"Tabs",
     .classes = DPClasses(DPDiaWebContents),
     .shortcut = @"undoCloseTabShortcut",

@@ -179,7 +179,7 @@ DP_PATCH(DPGroupTabs) {
     .order = 86,
     .defaultOn = YES,
     .title = @"Group Tabs by Domain",
-    .detail = @"Adds Group Tabs by Domain, Expand All Tab Groups, Collapse All Tab Groups, Ungroup This Domain and Ungroup All Domains to the tab right-click menu and the Tabs menu. Grouping puts a window’s tabs together by site, also with a shortcut, ⌃⇧G unless you set another. Expand All and Collapse All open or close every group in the front window. Ungroup This Domain takes apart the current tab’s site group, and Ungroup All Domains every site group in the window, leaving the tabs open.",
+    .detail = @"Groups a window’s tabs by site, from the Tabs menu, a tab’s right-click menu or a shortcut.",
     .symbol = @"rectangle.3.group.fill",
     .tint = @"systemPinkColor",
     .section = @"Tabs",
