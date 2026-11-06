@@ -4,7 +4,7 @@ extern DPPatch DPCompactSidebarHeader;
 static const CGFloat DPHeaderTrim = 10;
 static const CGFloat DPTopTabsButtonInset = 14;
 static NSHashTable<NSView *> *DPSidebars;
-static char DPHeaderFrameKey, DPButtonsFrameKey, DPRetriesKey;
+static char DPHeaderFrameKey, DPButtonsKey;
 
 static NSRect DPLaidOutHeader(NSView *header) {
     return [DPDiaValue(header, &DPHeaderFrameKey, @(header.frame)) rectValue];
@@ -18,43 +18,49 @@ static NSRect DPCloseButtonInWindow(NSView *lights) {
     return r;
 }
 
+// Moved here, not after the header's layout: that makes Dia lay the header out again and put them back, which is the resize jitter.
 // Only buttons already near the corner move (a floating sidebar has them elsewhere), and never in full screen, where macOS slides them in each frame.
+static void DPButtonsRow_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    NSView *lights = DPGet(self, &DPButtonsKey);
+    NSWindow *window = self.window;
+    if (DPCompactSidebarHeader.on && lights && window && !(window.styleMask & NSWindowStyleMaskFullScreen)) {
+        NSRect old = self.frame, close = DPCloseButtonInWindow(lights);
+        BOOL flipped = self.superview.isFlipped;
+        close.origin.x += frame.origin.x - NSMinX(old);
+        close.origin.y += flipped ? frame.origin.y - NSMinY(old) : NSMinY(old) - frame.origin.y;
+        CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
+        if (!NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
+            frame.origin.x += dx;
+            frame.origin.y += flipped ? dy : -dy;
+        }
+    }
+    DPCallOriginal(DPButtonsRow_setFrame, self, frame);
+}
+
 static void DPHeader_layout(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPHeader_layout, self);
     NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
-    if (!lights || row == self || !DPMayAdjust(row)) return;
-    NSRect laidOut = [DPDiaValue(row, &DPButtonsFrameKey, @(row.frame)) rectValue], frame = laidOut;
-    row.frame = laidOut;
-    NSRect close = DPCloseButtonInWindow(lights);
-    CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
-    BOOL fullScreen = (self.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
-    // At launch Dia lays the header out before the buttons are in it, then not again until the sidebar changes.
-    NSUInteger retries = [DPGet(self, &DPRetriesKey) unsignedIntegerValue];
-    if (DPCompactSidebarHeader.on && NSIsEmptyRect(close) && self.window && retries < 8) {
-        DPSet(self, &DPRetriesKey, @(retries + 1));
-        __weak NSView *header = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{ header.needsLayout = YES; });
-    }
-    if (DPCompactSidebarHeader.on && !fullScreen && !NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
-        frame.origin.x += dx;
-        frame.origin.y += self.isFlipped ? dy : -dy;
-    }
-    DPOverride(row, &DPButtonsFrameKey, @(laidOut), @(frame));
-    row.frame = frame;
+    if (lights && row != self) DPSet(row, &DPButtonsKey, lights);
+    DPCallOriginal(DPHeader_layout, self);
 }
 
 static void DPCompactHeader(NSView *sidebar) {
     NSView *header = DPSubview(sidebar, DPDiaSidebarHeader);
-    if (!header || !DPMayAdjust(header)) return;
+    if (!header) return;
     NSRect laidOut = DPLaidOutHeader(header), frame = laidOut;
     if (DPCompactSidebarHeader.on) frame.size.height = MAX(0, NSHeight(laidOut) - DPHeaderTrim);
-    DPOverride(header, &DPHeaderFrameKey, @(laidOut), @(frame));
-    header.frame = frame;
+    if (!NSEqualRects(frame, header.frame)) {
+        if (!DPMayAdjust(header)) return;
+        DPOverride(header, &DPHeaderFrameKey, @(laidOut), @(frame));
+        header.frame = frame;
+    }
+    // The view under the header keeps its bottom edge, so whatever follows it stays put.
     for (NSView *sub in sidebar.subviews) {
         if (sub == header) continue;
         CGFloat top = NSMinY(sub.frame);
         if (fabs(top - NSMaxY(laidOut)) > 0.5 && fabs(top - NSMaxY(laidOut) + DPHeaderTrim) > 0.5) continue;
-        sub.frame = NSMakeRect(NSMinX(sub.frame), NSMaxY(frame), NSWidth(sub.frame), NSMaxY(sub.frame) - NSMaxY(frame));
+        NSRect moved = NSMakeRect(NSMinX(sub.frame), NSMaxY(frame), NSWidth(sub.frame), NSMaxY(sub.frame) - NSMaxY(frame));
+        if (NSEqualRects(moved, sub.frame) || !DPMayAdjust(sub)) continue;
+        sub.frame = moved;
     }
 }
 
@@ -68,6 +74,7 @@ static void DPInstallCompactSidebarHeader(void) {
     DPSidebars = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaSidebarController, @selector(viewDidLayout), (IMP)DPSidebar_viewDidLayout);
     DPHook(DPDiaSidebarHeader, @selector(layout), (IMP)DPHeader_layout);
+    DPHookClass(NSStackView.class, @selector(setFrame:), (IMP)DPButtonsRow_setFrame);
 }
 
 static void DPApplyCompactSidebarHeader(DPPatch *patch) { DPRelayoutViews(DPSidebars); }
