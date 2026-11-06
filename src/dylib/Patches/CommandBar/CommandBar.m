@@ -429,6 +429,9 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
 
 static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
+    // Moving the panel out of a page that is being hidden, or back into one, moves the window's views while Dia is
+    // still swapping tabs, which crashes it. Dia presents the bar again once the tab is in place.
+    if (page.hiddenOrHasHiddenAncestor) return;
     id openedTab = [DPScriptWindow(window) valueForKey:@"activeTab"];
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
@@ -608,6 +611,8 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
         [blanks removeObject:previous];
         DPCloseTab(blank);
     }
+    // The page came back into the window after the bar was left without one, so it is presented again below.
+    if (DPGet(self, &DPOwnBarKey)) DPSet(self, &DPOwnBarKey, nil);
     // The bar takes its size from the page, which has none until its pane lays it out.
     NSView *pane = self.superview;
     while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
