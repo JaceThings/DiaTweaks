@@ -184,6 +184,7 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 
 NSView *DPShortcutRow(DPPatch *patch) {
     NSTextField *clash = [NSTextField wrappingLabelWithString:@""];
+    clash.selectable = NO;  // Selecting it would edit it as plain text, losing its fonts and colors.
     NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], [[DPShortcutButton alloc] initWithPatch:patch clash:clash] ]];
     row.distribution = NSStackViewDistributionEqualCentering;
     NSStackView *column = [NSStackView stackViewWithViews:@[ row, clash ]];
