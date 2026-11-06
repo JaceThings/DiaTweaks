@@ -12,7 +12,10 @@ extern DPPatch DPLittleDia;
 
 // Extension.m
 void DPInstallLittleDiaExtension(void);
+BOOL DPWriteLittleDiaExtension(BOOL on);
+NSString *DPLittleDiaExtensionProblem(void);  // nil once its files are written.
 BOOL DPSendToLittleDia(NSDictionary *request);  // Hands the extension {action, ...}: see its worker. NO until it's loaded.
+BOOL DPLittleDiaStarting(void);  // Dia has no window or its extensions are still loading.
 
 // Options.m: the window's size, and Close with Escape.
 NSSize DPLittleDiaSize(void);
@@ -22,7 +25,7 @@ NSArray<NSView *> *DPLittleDiaRows(void);
 void DPInstallLittleDiaRoute(void);
 
 // Window.m: which popups are Little Dia's, their page, and their title bar.
-void DPExpectLittleDiaWindow(void (^missed)(void));  // The next popup in 3 seconds is Little Dia's; else `missed` runs.
+void DPExpectLittleDiaWindow(NSRect frame, void (^missed)(void));  // A popup in the next 3 seconds is this link's; else `missed` runs.
 BOOL DPIsLittleDiaWindow(NSWindow *window);  // Opened by Little Dia, whether or not it's still on.
 id DPLittleDiaPage(NSWindow *window);        // Its ArcWebContents, once Chromium has handed it over.
 void DPInstallLittleDiaWindows(void);
@@ -37,17 +40,9 @@ void DPFinishStack(void);
 pid_t DPLinkSource(void);            // The app the last link came from, or 0.
 void DPReturnToSource(pid_t pid);
 
-// Layout.m: close, back, forward and reload before the address, Open in Dia after it, and no Downloads button.
+// Bar.m: close, back, forward and reload before the address, Open in Dia after it, and no Downloads button.
 void DPInstallLittleDiaBar(void);
 void DPRelayoutLittleDiaBars(void);
-
-// Button.m
-NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void (^action)(void));
-NSButton *DPMakeOpenInDiaButton(void (^action)(void));
-
-// Look.m: the bar in the page's colour, over a hairline.
-NSView *DPMakeDivider(void);
-void DPMatchPage(NSView *row, id page);
 
 // Address.m: the address as Dia's main window shows it. Click it, or press ⌘L, to type another.
 NSView *DPMakeAddressView(NSView *title);
@@ -55,5 +50,6 @@ void DPRefreshAddressView(NSView *view);
 
 // Navigate.m: the page's own navigation.
 NSString *DPLittleDiaURL(NSWindow *window);                   // The page's address, or @"" before it has one.
+NSDictionary *DPLittleDiaTab(NSWindow *window, NSString *action);  // A request naming the window's tab.
 void DPLittleDiaGo(NSWindow *window, SEL action);             // goBack, goForward or reload
 void DPLittleDiaNavigate(NSWindow *window, NSString *typed);  // An address, or words to search for.

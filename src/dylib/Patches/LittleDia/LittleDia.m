@@ -12,7 +12,8 @@ static void DPInstallLittleDia(void) {
 
 static void DPApplyLittleDia(DPPatch *patch) {
     DPRefreshLittleDiaWindows();
-    if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch)) return;  // the self-test flips patches without saving
+    if (patch->on && !gLoadedOn) DPWriteLittleDiaExtension(YES);
+    if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch) || DPLittleDiaExtensionProblem()) return;  // the self-test flips patches without saving
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Relaunch Dia to use Little Dia";
     alert.informativeText = @"Until then, links from other apps keep opening in a tab.";
@@ -22,6 +23,8 @@ static void DPApplyLittleDia(DPPatch *patch) {
 }
 
 // Only checks open Little Dia windows: their bar has its buttons while on, and Dia's own bar is back while off.
+static NSString *DPLittleDiaProblem(DPPatch *patch) { return DPLittleDiaExtensionProblem(); }
+
 static NSString *DPVerifyLittleDia(DPPatch *patch) {
     for (NSView *bar in DPFindViews(DPDiaPopupBar)) {
         BOOL little = DPIsLittleDiaWindow(bar.window);
@@ -35,15 +38,16 @@ static NSString *DPVerifyLittleDia(DPPatch *patch) {
 
 DP_PATCH(DPLittleDia) {
     .key = @"littleDia",
-    .order = 86,
-    .section = @"Tabs & Downloads",
+    .order = 104,
+    .section = @"Links",
     .title = @"Little Dia",
     .detail = @"Opens links from other apps, like Slack, Discord or Mail, in a small window instead of a new tab, with back, forward, reload and an address you can edit. Click Open in Dia, or press ⌘O, to keep the page as a tab. Hold Option as you click a link to open it in a tab as usual.",
     .symbol = @"macwindow.on.rectangle rectangle.on.rectangle",
-    .tint = @"systemBlueColor",
+    .tint = @"systemMintColor",
     .classes = DPClasses(DPDiaOpenURLEvents, DPDiaPopupWindow, DPDiaPopupBar, DPDiaPopupTitle),
     .rows = DPLittleDiaRows,
     .install = DPInstallLittleDia,
     .apply = DPApplyLittleDia,
     .verify = DPVerifyLittleDia,
+    .ready = DPLittleDiaProblem,
 };

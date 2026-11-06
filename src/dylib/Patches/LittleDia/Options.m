@@ -9,7 +9,6 @@ static NSUserDefaults *DPSettings(void) {
     return settings;
 }
 
-// The size the window opens at, in points, before it's fitted to the screen.
 NSSize DPLittleDiaSize(void) {
     NSNumber *width = [DPSettings() objectForKey:DPWidthKey], *height = [DPSettings() objectForKey:DPHeightKey];
     return NSMakeSize(width ? width.doubleValue : 1180, height ? height.doubleValue : 860);
@@ -17,7 +16,6 @@ NSSize DPLittleDiaSize(void) {
 
 #pragma mark Settings rows
 
-// "Window Width  [——o——] 1180 pt": the slider and the number move together, and each change is saved straight away.
 @interface DPSizeRow : NSStackView <NSTextFieldDelegate>
 @property (nonatomic, copy) NSString *key;
 @property (nonatomic) NSSlider *slider;
@@ -69,7 +67,6 @@ static NSView *DPSizeSlider(NSString *title, NSString *key, double min, double m
     return row;
 }
 
-// Larger than the screen opens as large as the screen allows.
 NSArray<NSView *> *DPLittleDiaRows(void) {
     NSSize size = DPLittleDiaSize();
     return @[
@@ -103,11 +100,11 @@ static void DPInstallEscape(void) {
 DP_PATCH(DPLittleDiaEscape) {
     .key = @"littleDiaEscapeCloses",
     .defaultOn = YES,
-    .order = 86,
+    .order = 104,
     .title = @"Close with Escape",
     .detail = @"Press Escape to close the Little Dia window. Pages that use Escape themselves, like a dialog on the page, won’t see it.",
     .symbol = @"escape",
-    .tint = @"systemBlueColor",
+    .tint = @"systemMintColor",
     .requires = @"littleDia",
     .install = DPInstallEscape,
 };

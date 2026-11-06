@@ -1,4 +1,5 @@
 #import "LittleDia.h"
+#import "Commands/GroupTabs/GroupTabs.h"
 #import <objc/message.h>
 
 static id DPNavigation(NSWindow *window) {
@@ -9,6 +10,11 @@ static id DPNavigation(NSWindow *window) {
 void DPLittleDiaGo(NSWindow *window, SEL action) {
     id navigation = DPNavigation(window);
     if ([navigation respondsToSelector:action]) ((id (*)(id, SEL))objc_msgSend)(navigation, action);
+}
+
+// Names the window's tab to the extension: Chromium's tab IDs are its session IDs.
+NSDictionary *DPLittleDiaTab(NSWindow *window, NSString *action) {
+    return @{@"action" : action, @"tabId" : @(DPSessionOf(DPLittleDiaPage(window))), @"url" : DPLittleDiaURL(window)};
 }
 
 NSString *DPLittleDiaURL(NSWindow *window) {
@@ -27,12 +33,14 @@ static NSURL *DPTypedURL(NSString *text) {
     return nil;
 }
 
-// Searches go through the extension, which uses the profile's search engine, as the address bar would.
 void DPLittleDiaNavigate(NSWindow *window, NSString *typed) {
     NSString *text = [typed stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSURL *url = DPTypedURL(text);
     id navigation = DPNavigation(window);
-    if (!url && text.length) DPSendToLittleDia(@{@"action" : @"search", @"text" : text, @"url" : DPLittleDiaURL(window)});
-    else if (url && [navigation respondsToSelector:@selector(load:initiatorOrigin:)])
-        ((id (*)(id, SEL, NSURL *, id))objc_msgSend)(navigation, @selector(load:initiatorOrigin:), url, nil);
+    if (url && [navigation respondsToSelector:@selector(load:initiatorOrigin:)])
+        return (void)((id (*)(id, SEL, NSURL *, id))objc_msgSend)(navigation, @selector(load:initiatorOrigin:), url, nil);
+    if (url || !text.length) return;
+    NSMutableDictionary *request = [DPLittleDiaTab(window, @"search") mutableCopy];
+    request[@"text"] = text;
+    DPSendToLittleDia(request);
 }

@@ -1,11 +1,154 @@
-#import "Bar.h"
+#import "LittleDia.h"
 #import <objc/message.h>
+
+// One per popup bar: the buttons around Dia's address, which keeps its own look and Dia's updates to it.
+@interface DPLittleBar : NSObject
+@property (nonatomic, weak) NSView *title;
+@property (nonatomic) NSArray<NSButton *> *leading;  // close, back, forward, reload
+@property (nonatomic) NSButton *open;
+@property (nonatomic) NSView *address;
+@property (nonatomic) NSView *divider;
+@property (nonatomic) NSTimer *timer;
+@end
+
+static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28;
+
+@interface DPBarDivider : NSView
+@end
+
+@implementation DPBarDivider
+- (BOOL)mouseDownCanMoveWindow { return YES; }
+- (NSView *)hitTest:(NSPoint)point { return nil; }
+- (void)drawRect:(NSRect)rect {
+    [[NSColor.labelColor colorWithAlphaComponent:0.1] setFill];
+    NSRectFillUsingOperation(self.bounds, NSCompositingOperationSourceOver);
+}
+@end
+
+static NSView *DPMakeDivider(void) { return [DPBarDivider new]; }
+
+// The page's background, or failing that its theme-color. Chromium has neither for some pages: nil.
+static NSColor *DPPageColor(id page) {
+    id root = [page respondsToSelector:@selector(rootBackgroundColor)] ? ((id (*)(id, SEL))objc_msgSend)(page, @selector(rootBackgroundColor)) : nil;
+    float (*part)(id, SEL) = (void *)objc_msgSend;
+    if ([root respondsToSelector:@selector(a)] && part(root, @selector(a)) > 0.99)
+        return [NSColor colorWithSRGBRed:part(root, @selector(r)) green:part(root, @selector(g)) blue:part(root, @selector(b)) alpha:1];
+    id theme = [page respondsToSelector:@selector(themeColor)] ? ((id (*)(id, SEL))objc_msgSend)(page, @selector(themeColor)) : nil;
+    unsigned char (*byte)(id, SEL) = (void *)objc_msgSend;
+    if ([theme respondsToSelector:@selector(a)] && byte(theme, @selector(a)) == 255)
+        return [NSColor colorWithSRGBRed:byte(theme, @selector(r)) / 255.0 green:byte(theme, @selector(g)) / 255.0 blue:byte(theme, @selector(b)) / 255.0 alpha:1];
+    return nil;
+}
+
+static char DPColorKey;
+
+static void DPMatchPage(NSView *row, id page) {
+    NSColor *color = DPPageColor(page);
+    if ([DPGet(row, &DPColorKey) isEqual:color] || (!color && !DPGet(row, &DPColorKey))) return;
+    DPSet(row, &DPColorKey, color);
+    row.wantsLayer = YES;
+    row.layer.backgroundColor = color.CGColor;
+    CGFloat luminance = 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent;
+    row.appearance = !color ? nil : [NSAppearance appearanceNamed:luminance > 0.55 ? NSAppearanceNameAqua : NSAppearanceNameDarkAqua];
+}
+
+@interface DPBarButton : NSButton
+@property (nonatomic, copy) void (^handler)(void);
+@property (nonatomic) BOOL hovered, pill;  // pill: a filled capsule with an icon and a word, like Dia's Chat button
+@end
+
+@implementation DPBarButton
+
+- (instancetype)initWithSymbol:(NSString *)symbol size:(CGFloat)size label:(NSString *)label {
+    if (!(self = [super initWithFrame:NSZeroRect])) return nil;
+    self.bordered = NO;
+    self.wantsLayer = YES;
+    self.layer.cornerRadius = 6;
+    NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold];
+    self.image = [[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:label] imageWithSymbolConfiguration:config];
+    self.imagePosition = NSImageOnly;
+    self.accessibilityLabel = label;
+    self.toolTip = label;
+    self.target = self;
+    self.action = @selector(run:);
+    [self updateTint];
+    return self;
+}
+
+- (void)run:(id)sender { if (self.handler) self.handler(); }
+
+- (NSSize)intrinsicContentSize {
+    return self.pill ? NSMakeSize(ceil(super.intrinsicContentSize.width) + 20, 28) : NSMakeSize(28, 28);
+}
+
+- (BOOL)mouseDownCanMoveWindow { return NO; }
+
+- (void)updateTint {
+    self.contentTintColor = !self.enabled ? NSColor.tertiaryLabelColor : self.hovered || self.pill ? NSColor.labelColor : NSColor.secondaryLabelColor;
+    self.needsDisplay = YES;
+}
+
+- (void)setEnabled:(BOOL)enabled {
+    if (enabled == self.enabled) return;
+    super.enabled = enabled;
+    [self updateTint];
+}
+
+- (void)updateTrackingAreas {
+    for (NSTrackingArea *area in self.trackingAreas) [self removeTrackingArea:area];
+    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
+                                                       options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
+                                                         owner:self
+                                                      userInfo:nil]];
+    [super updateTrackingAreas];
+}
+
+- (void)mouseEntered:(NSEvent *)event { self.hovered = YES; [self updateTint]; }
+- (void)mouseExited:(NSEvent *)event { self.hovered = NO; [self updateTint]; }
+
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+
+- (void)drawRect:(NSRect)rect {
+    CGFloat fill = self.pill ? (self.hovered ? 0.16 : 0.1) : (self.hovered && self.enabled ? 0.08 : 0);
+    self.layer.backgroundColor = fill ? [NSColor.labelColor colorWithAlphaComponent:fill].CGColor : nil;
+    [super drawRect:rect];
+}
+
+@end
+
+static NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void (^action)(void)) {
+    DPBarButton *button = [[DPBarButton alloc] initWithSymbol:symbol size:13 label:label];
+    button.handler = action;
+    if (key) {
+        button.keyEquivalent = key;
+        button.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    }
+    return button;
+}
+
+static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
+    DPBarButton *button = [[DPBarButton alloc] initWithSymbol:@"arrow.up.forward" size:10 label:@"Open in Dia"];
+    button.pill = YES;
+    button.title = @"Open in Dia";
+    button.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    button.imagePosition = NSImageTrailing;
+    button.imageHugsTitle = YES;
+    button.toolTip = @"Open this page in a tab (⌘O)";
+    button.keyEquivalent = @"o";
+    button.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    button.handler = action;
+    [button updateTint];
+    return button;
+}
 
 @implementation DPLittleBar
 - (void)dealloc { [_timer invalidate]; }
 @end
 
-char DPBarKey;
+static char DPBarKey;  // The DPLittleBar on Dia's address view.
 static char DPHiddenByUsKey;
 static const CGFloat DPAddressHeight = 30;
 
@@ -18,7 +161,7 @@ static void DPUpdateButtons(DPLittleBar *bar) {
     bar.leading[3].enabled = page != nil;
 }
 
-DPLittleBar *DPMakeBar(NSView *title) {
+static DPLittleBar *DPMakeBar(NSView *title) {
     DPLittleBar *bar = [DPLittleBar new];
     bar.title = title;
     __weak NSView *weakTitle = title;
@@ -29,7 +172,7 @@ DPLittleBar *DPMakeBar(NSView *title) {
         DPMakeBarButton(@"arrow.clockwise", @"Reload", @"r", ^{ DPLittleDiaGo(weakTitle.window, @selector(reload)); }),
     ];
     bar.open = DPMakeOpenInDiaButton(^{
-        if (DPSendToLittleDia(@{@"action" : @"promote", @"url" : DPLittleDiaURL(weakTitle.window)})) DPPromoteLittleDiaWindow(weakTitle.window);
+        if (DPSendToLittleDia(DPLittleDiaTab(weakTitle.window, @"promote"))) DPPromoteLittleDiaWindow(weakTitle.window);
         else NSBeep();
     });
     bar.address = DPMakeAddressView(title);
@@ -44,7 +187,7 @@ DPLittleBar *DPMakeBar(NSView *title) {
     return bar;
 }
 
-void DPPlaceBar(DPLittleBar *bar) {
+static void DPPlaceBar(DPLittleBar *bar) {
     NSView *title = bar.title, *row = title.superview;
     CGFloat mid = NSMidY(title.frame);
     [bar.leading enumerateObjectsUsingBlock:^(NSButton *button, NSUInteger i, BOOL *stop) {
@@ -73,7 +216,7 @@ void DPPlaceBar(DPLittleBar *bar) {
     DPUpdateButtons(bar);
 }
 
-void DPRemoveBar(NSView *title) {
+static void DPRemoveBar(NSView *title) {
     DPLittleBar *bar = DPGet(title, &DPBarKey);
     if (!bar) return;
     DPSet(title, &DPBarKey, nil);
@@ -90,3 +233,67 @@ void DPRemoveBar(NSView *title) {
         }
 }
 
+// Dia lays out its popup bar around its address view, so this follows that view's frame to lay out Little Dia's bar.
+static char DPDiaOriginKey, DPDiaSizeKey;
+
+static BOOL DPInPopupBar(NSView *view) {
+    for (NSView *each = view.superview; each; each = each.superview)
+        if (DPIsKind(each, DPDiaPopupBar)) return YES;
+    return NO;
+}
+
+static BOOL DPShowsBar(NSView *title) { return DPLittleDia.on && DPInPopupBar(title) && DPIsLittleDiaWindow(title.window); }
+
+static NSRect DPTitleFrame(NSView *title, DPLittleBar *bar) {
+    NSRect bounds = title.superview.bounds;
+    NSPoint diaOrigin = [DPGet(title, &DPDiaOriginKey) pointValue];
+    NSSize diaSize = [DPGet(title, &DPDiaSizeKey) sizeValue];
+    CGFloat left = DPInset + bar.leading.count * DPButton + (bar.leading.count - 1) * DPGap + DPInset;
+    CGFloat right = NSWidth(bounds) - DPInset - bar.open.intrinsicContentSize.width - 6;
+    return NSMakeRect(left, diaOrigin.y, MAX(0, right - left), diaSize.height);
+}
+
+static DPLittleBar *DPBarFor(NSView *title) {
+    DPLittleBar *bar = DPGet(title, &DPBarKey);
+    if (!bar) DPSet(title, &DPBarKey, bar = DPMakeBar(title));
+    return bar;
+}
+
+// Dia keeps setting the address's frame; in a Little Dia window it gets this layout's instead.
+static void DPTitle_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
+    if (!DPInPopupBar(self)) return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
+    DPSet(self, &DPDiaOriginKey, [NSValue valueWithPoint:origin]);
+    if (!DPShowsBar(self)) {
+        DPRemoveBar(self);
+        return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
+    }
+    DPCallOriginal(DPTitle_setFrameOrigin, self, DPTitleFrame(self, DPBarFor(self)).origin);
+    DPPlaceBar(DPBarFor(self));
+}
+
+static void DPTitle_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
+    if (!DPInPopupBar(self)) return DPCallOriginal(DPTitle_setFrameSize, self, size);
+    DPSet(self, &DPDiaSizeKey, [NSValue valueWithSize:size]);
+    if (!DPGet(self, &DPDiaOriginKey)) DPSet(self, &DPDiaOriginKey, [NSValue valueWithPoint:self.frame.origin]);
+    if (!DPShowsBar(self)) {
+        DPRemoveBar(self);
+        return DPCallOriginal(DPTitle_setFrameSize, self, size);
+    }
+    DPCallOriginal(DPTitle_setFrameSize, self, DPTitleFrame(self, DPBarFor(self)).size);
+    DPPlaceBar(DPBarFor(self));
+}
+
+void DPRelayoutLittleDiaBars(void) {
+    for (NSView *bar in DPFindViews(DPDiaPopupBar)) {
+        NSView *title = DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaPopupTitle); });
+        if (!title) continue;
+        NSValue *origin = DPGet(title, &DPDiaOriginKey), *size = DPGet(title, &DPDiaSizeKey);
+        [title setFrameOrigin:origin ? origin.pointValue : title.frame.origin];
+        [title setFrameSize:size ? size.sizeValue : title.frame.size];
+    }
+}
+
+void DPInstallLittleDiaBar(void) {
+    DPHook(DPDiaPopupTitle, @selector(setFrameOrigin:), (IMP)DPTitle_setFrameOrigin);
+    DPHook(DPDiaPopupTitle, @selector(setFrameSize:), (IMP)DPTitle_setFrameSize);
+}

@@ -2,23 +2,21 @@
 #import <objc/message.h>
 
 static char DPLittleKey, DPPageKey, DPChromeKey, DPSourceKey, DPPromotedKey;
-static NSDate *DPExpectedUntil;
-static void (^DPMissed)(void);  // What to do if the window doesn't come.
-static id DPPendingPage;                   // A popup's page that came before its window.
-static __weak NSWindow *DPWindowAwaitingPage;  // A popup's window that came before its page.
 
-static BOOL DPExpecting(void) { return DPExpectedUntil && DPExpectedUntil.timeIntervalSinceNow > 0; }
+// Links on their way, oldest first: each {frame, missed}. Chromium makes their windows, and hands over their pages, in
+// the order it was asked, so the first window or page to arrive belongs to the first link still waiting.
+static NSMutableArray<NSDictionary *> *DPExpected;
+static NSMutableArray *DPPendingPages;                     // Pages that came before their window.
+static NSPointerArray *DPWindowsAwaitingPage;              // Windows that came before their page.
 
-void DPExpectLittleDiaWindow(void (^missed)(void)) {
-    DPExpectedUntil = [NSDate dateWithTimeIntervalSinceNow:3];
-    DPPendingPage = nil;
-    DPWindowAwaitingPage = nil;
-    void (^this)(void) = DPMissed = [missed copy];
+void DPExpectLittleDiaWindow(NSRect frame, void (^missed)(void)) {
+    NSDictionary *link = @{@"frame" : [NSValue valueWithRect:frame], @"missed" : [missed copy]};
+    [DPExpected addObject:link];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        if (DPMissed != this) return;
-        DPMissed = nil;
-        DPExpectedUntil = nil;
-        this();
+        if ([DPExpected indexOfObjectIdenticalTo:link] == NSNotFound) return;
+        [DPExpected removeObjectIdenticalTo:link];
+        if (!DPExpected.count) [DPPendingPages removeAllObjects];
+        ((void (^)(void))link[@"missed"])();
     });
 }
 
@@ -45,22 +43,27 @@ static void DPSetChrome(NSWindow *window, BOOL little) {
     titlebar.hidden = little;
 }
 
-// Claims a popup that appears while a link is on its way. Pages open popups too, but not in the same second.
+// Claims a popup that appears while a link is on its way. Pages open popups too, but rarely in the same second.
 static void DPClaim(NSWindow *window) {
-    if (!window || !DPIsKind(window, DPDiaPopupWindow) || DPGet(window, &DPLittleKey) || !DPExpecting()) return;
-    DPExpectedUntil = nil;
-    DPMissed = nil;
+    if (!window || !DPIsKind(window, DPDiaPopupWindow) || DPGet(window, &DPLittleKey) || !DPExpected.count) return;
+    NSDictionary *link = DPExpected.firstObject;
+    [DPExpected removeObjectAtIndex:0];
     DPSet(window, &DPLittleKey, @YES);
     if (DPLinkSource()) DPSet(window, &DPSourceKey, @(DPLinkSource()));
-    if (DPPendingPage) DPSet(window, &DPPageKey, DPPendingPage);
-    else DPWindowAwaitingPage = window;
-    DPPendingPage = nil;
+    if (DPPendingPages.count) {
+        DPSet(window, &DPPageKey, DPPendingPages.firstObject);
+        [DPPendingPages removeObjectAtIndex:0];
+    } else [DPWindowsAwaitingPage addPointer:(__bridge void *)window];
+    // Chromium adds its title bar to the size it's given, and the title bar is gone here.
+    NSRect frame = [link[@"frame"] rectValue];
+    [window setFrame:frame display:YES];
     [window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     DPRestoreStack(window);
-    // Chromium focuses the new window a moment later, which can bring Dia's windows forward again.
+    // Chromium sizes and focuses the new window again a moment later, which can bring Dia's windows forward again.
     __weak NSWindow *weakWindow = window;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        [weakWindow setFrame:frame display:YES];
         DPRestoreStack(weakWindow);
         DPFinishStack();
     });
@@ -72,12 +75,13 @@ static void DPBrowser_didCreate(id self, SEL _cmd, id browser, id page, BOOL act
     DPCallOriginal(DPBrowser_didCreate, self, browser, page, active);
     long (*type)(id, SEL) = (void *)objc_msgSend;
     if (!page || ![browser respondsToSelector:@selector(type)] || type(browser, @selector(type)) != 2) return;  // 2: a popup
-    NSWindow *waiting = DPWindowAwaitingPage;
-    if (waiting) {
-        DPWindowAwaitingPage = nil;
-        DPSet(waiting, &DPPageKey, page);
+    [DPWindowsAwaitingPage compact];
+    if (DPWindowsAwaitingPage.count) {
+        NSWindow *window = (__bridge NSWindow *)[DPWindowsAwaitingPage pointerAtIndex:0];
+        [DPWindowsAwaitingPage removePointerAtIndex:0];
+        DPSet(window, &DPPageKey, page);
         DPRefreshLittleDiaWindows();
-    } else if (DPExpecting()) DPPendingPage = page;
+    } else if (DPExpected.count) [DPPendingPages addObject:page];
 }
 
 static void DPPopupBar_viewDidMoveToWindow(NSView *self, SEL _cmd) {
@@ -87,7 +91,6 @@ static void DPPopupBar_viewDidMoveToWindow(NSView *self, SEL _cmd) {
 
 void DPPromoteLittleDiaWindow(NSWindow *window) { DPSet(window, &DPPromotedKey, @YES); }
 
-// Where the page went: Dia's front browser window comes forward.
 static void DPShowMainWindow(void) {
     for (NSWindow *window in NSApp.orderedWindows)
         if (DPIsKind(window, DPDiaWindow) && window.visible) {
@@ -104,6 +107,9 @@ void DPRefreshLittleDiaWindows(void) {
 }
 
 void DPInstallLittleDiaWindows(void) {
+    DPExpected = [NSMutableArray array];
+    DPPendingPages = [NSMutableArray array];
+    DPWindowsAwaitingPage = [NSPointerArray weakObjectsPointerArray];
     DPHookClass(objc_getClass(DPDiaPopupBar), @selector(viewDidMoveToWindow), (IMP)DPPopupBar_viewDidMoveToWindow);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil
