@@ -44,6 +44,7 @@ static void DPOpenWhenReady(NSURL *url, void (^fallback)(void), int tries) {
 static void DPOpenURLEvents_handle(id self, SEL _cmd, NSAppleEventDescriptor *event, NSAppleEventDescriptor *reply) {
     NSURL *url = DPLittleDia.on ? DPLittleDiaLink(event) : nil;
     if (!url) return DPCallOriginal(DPOpenURLEvents_handle, self, event, reply);
+    DPLinkArrived();
     DPOpenWhenReady(url, ^{ DPCallOriginal(DPOpenURLEvents_handle, self, event, [NSAppleEventDescriptor nullDescriptor]); }, 40);
 }
 
