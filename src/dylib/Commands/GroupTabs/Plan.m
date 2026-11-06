@@ -1,11 +1,5 @@
 #import "GroupTabs.h"
 
-static NSString *DPDecodeLabel(NSString *label) {
-    if (![label hasPrefix:@"xn--"]) return label;
-    NSString *decoded = [label stringByApplyingTransform:@"Any-Punycode" reverse:YES];
-    return decoded.length && ![decoded isEqualToString:label] ? decoded.lowercaseString : label;
-}
-
 NSString *DPDomainKey(NSString *urlString) {
     NSURL *url = [NSURL URLWithString:urlString ?: @""];
     NSString *scheme = url.scheme.lowercaseString;
@@ -13,9 +7,6 @@ NSString *DPDomainKey(NSString *urlString) {
     NSString *host = url.host.lowercaseString;
     if (!host.length) return nil;
     while ([host hasSuffix:@"."]) host = [host substringToIndex:host.length - 1];
-    NSMutableArray<NSString *> *labels = [NSMutableArray array];
-    for (NSString *part in [host componentsSeparatedByString:@"."]) [labels addObject:DPDecodeLabel(part)];
-    host = [labels componentsJoinedByString:@"."];
     if ([host hasPrefix:@"www."] && host.length > 4) host = [host substringFromIndex:4];
     return host.length ? host : nil;
 }

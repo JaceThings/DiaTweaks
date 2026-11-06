@@ -134,6 +134,9 @@ BOOL DPWriteManifest(NSString *path) {
             @"defaultOn": @(patch->defaultOn),
             @"requires": required ? required->key : NSNull.null,
             @"disabledBy": disabler ? disabler->key : NSNull.null,
+            @"section": patch->section ?: NSNull.null,
+            @"tint": patch->tint ?: NSNull.null,
+            @"symbol": patch->symbol ?: NSNull.null,
         }];
     }
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"version": @1, @"patches": patches}

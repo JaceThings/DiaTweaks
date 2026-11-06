@@ -648,8 +648,15 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
         if (DPCommandBar.on && !overlay && !blank && !DPGet(page, &DPOwnBarKey)) return @"a new tab page shows without the bar over it";
         if (overlay && overlay.panel.superview != overlay) return @"the bar isn't on the overlay";
     }
-    for (NSWindow *window in NSApp.windows)
-        if (!DPCommandBar.on && DPGet(window, &DPOverlayKey)) return @"the bar is still open";
+    for (NSWindow *window in NSApp.windows) {
+        DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+        if (!overlay) continue;
+        if (!DPCommandBar.on) return @"the bar is still open";
+        if (overlay.superview != window.contentView) return @"the bar is outside the content view, where hovering can't highlight suggestions";
+        NSString *active = DPActiveTabID(window);
+        if (overlay.openedTab && active && ![active isEqual:DPTabID(overlay.openedTab)] && ![active isEqual:DPTabID(overlay.returnTab)])
+            return @"the bar stays over a tab it wasn't opened for";
+    }
     return nil;
 }
 

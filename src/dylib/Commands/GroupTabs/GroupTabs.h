@@ -24,6 +24,7 @@ void DPRestorePlaces(id delegate, id browser, NSDictionary *places);
 void DPGroupTabsOnce(void);
 void DPGroupSelectedTabsOnce(void);
 NSSet<NSNumber *> *DPSelectedSessions(id browser);
+BOOL DPCanReadSelection(id browser);
 void DPSetAllGroupsCollapsed(BOOL collapsed);
 void DPUngroupDomain(void);
 void DPUngroupAllDomains(void);

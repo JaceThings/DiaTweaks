@@ -170,6 +170,17 @@ static void DPApplyGroupTabs(DPPatch *patch) {
     }
 }
 
+static NSString *DPVerifyGroupTabs(DPPatch *patch) {
+    NSMenuItem *item = nil;
+    for (NSMenuItem *top in NSApp.mainMenu.itemArray) item = item ?: [top.submenu itemWithTag:DPGroupMenuTag];
+    if (!item) return @"Group Tabs by Domain isn't in the menu bar";
+    if (item.hidden == patch->on) return patch->on ? @"Group Tabs by Domain is hidden" : @"Group Tabs by Domain still shows";
+    for (NSInteger i = 0; i < DPFollowerCount; i++)
+        if (![item.menu itemWithTag:DPFollowerTags[i]]) return @"a group command is missing from the menu bar";
+    if (patch->on && !DPCanReadSelection(DPCommandBrowser())) return @"can't read which tabs are selected";
+    return nil;
+}
+
 DP_PATCH(DPGroupTabs) {
     .key = @"groupTabsByDomain",
     .order = 86,
@@ -181,6 +192,7 @@ DP_PATCH(DPGroupTabs) {
     .section = @"Tabs",
     .install = DPInstallGroupTabs,
     .apply = DPApplyGroupTabs,
+    .verify = DPVerifyGroupTabs,
     .shortcut = @"groupTabsByDomainShortcut",
     .defaultShortcut = DPDefaultGroupTabsShortcut,
 };

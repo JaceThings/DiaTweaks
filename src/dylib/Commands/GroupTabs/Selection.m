@@ -92,14 +92,24 @@ static id DPSelection(NSWindow *window, NSArray *controllers) {
     return nil;
 }
 
-NSSet<NSNumber *> *DPSelectedSessions(id browser) {
-    NSWindow *window = DPBrowserWindow(browser);
-    if (!window) return nil;
+static NSArray *DPTabControllers(NSWindow *window) {
     NSMutableArray *controllers = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
     DPWalk(window, controllers, seen, 0);
     for (NSView *view in [DPFindViews(DPDiaTabList) arrayByAddingObjectsFromArray:DPFindViews(DPDiaTabStrip)])
         if (view.window == window) DPWalk(DPSwiftValue(DPSwiftValue(view, @"viewModel"), @"presenter"), controllers, seen, 0);
+    return controllers;
+}
+
+BOOL DPCanReadSelection(id browser) {
+    NSWindow *window = DPBrowserWindow(browser);
+    return !window || DPSelection(window, DPTabControllers(window));
+}
+
+NSSet<NSNumber *> *DPSelectedSessions(id browser) {
+    NSWindow *window = DPBrowserWindow(browser);
+    if (!window) return nil;
+    NSArray *controllers = DPTabControllers(window);
     NSArray<NSString *> *keys = DPSelectionIDKeys(DPSelection(window, controllers));
     if (keys.count < 2) return nil;
 
