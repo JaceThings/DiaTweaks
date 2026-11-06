@@ -89,6 +89,39 @@ static void DPPopupBar_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPClaim(self.window);
 }
 
+// A link that opens a new tab, from a small window's page, opens in that window instead: tabs here would be out of
+// sight, and one in the main window brings it forward. ⌘-click still opens a tab behind, and popups a page opens with a
+// size are still popups, since sign-in windows talk back to the page that opened them.
+enum { DPCurrentTab = 1, DPForegroundTab = 2 };
+
+static BOOL DPStaysInLittleDia(id page, NSInteger disposition) {
+    if (disposition != DPForegroundTab || (NSEvent.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift))) return NO;
+    for (NSWindow *window in NSApp.windows)
+        if (DPIsLittleDiaWindow(window) && DPLittleDiaPage(window) == page) return YES;
+    return NO;
+}
+
+// The same link, as if it stayed in its page.
+@interface DPStayingLink : NSProxy
+@property (nonatomic, strong) id action;
+@end
+
+@implementation DPStayingLink
+- (NSInteger)navigationDisposition { return DPCurrentTab; }
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector { return [self.action methodSignatureForSelector:selector]; }
+- (void)forwardInvocation:(NSInvocation *)invocation { [invocation invokeWithTarget:self.action]; }
+@end
+
+// Links and window.open: Dia, and any tweak that looks at links before it, are asked as if the link stayed, so no
+// other page is made.
+static NSInteger DPPage_decidePolicy(id self, SEL _cmd, id page, id action) {
+    if (!DPStaysInLittleDia(page, [[action valueForKey:@"navigationDisposition"] integerValue]))
+        return DPCallOriginal(DPPage_decidePolicy, self, page, action);
+    DPStayingLink *staying = [DPStayingLink alloc];
+    staying.action = action;
+    return DPCallOriginal(DPPage_decidePolicy, self, page, staying);
+}
+
 void DPPromoteLittleDiaWindow(NSWindow *window) { DPSet(window, &DPPromotedKey, @YES); }
 
 static void DPShowMainWindow(void) {
@@ -112,6 +145,9 @@ void DPInstallLittleDiaWindows(void) {
     DPWindowsAwaitingPage = [NSPointerArray weakObjectsPointerArray];
     DPHookClass(objc_getClass(DPDiaPopupBar), @selector(viewDidMoveToWindow), (IMP)DPPopupBar_viewDidMoveToWindow);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
+    DPOnLaunch(^{
+        DPHook(DPDiaWebContent, @selector(webContents:decidePolicyForNavigationAction:), (IMP)DPPage_decidePolicy);
+    });
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) { DPClaim(note.object); }];
     // Open in Dia goes to the main window. Otherwise, closed while in front, by ✕, ⌘W or Escape: back to the app the
