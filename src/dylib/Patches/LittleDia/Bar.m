@@ -55,6 +55,7 @@ static void DPMatchPage(NSView *row, id page) {
 @interface DPBarButton : NSButton
 @property (nonatomic, copy) void (^handler)(void);
 @property (nonatomic) BOOL hovered, pill;  // pill: a filled capsule with an icon and a word, like Dia's Chat button
+@property (nonatomic) CGFloat outerCorner;  // The top-left corner's radius, for a button tucked into the window's corner.
 @end
 
 @implementation DPBarButton
@@ -109,6 +110,26 @@ static void DPMatchPage(NSView *row, id page) {
 - (void)viewDidChangeEffectiveAppearance {
     [super viewDidChangeEffectiveAppearance];
     self.needsDisplay = YES;
+}
+
+- (void)layout {
+    [super layout];
+    if (!self.outerCorner) return;
+    // CALayer rounds every corner alike, so the shape is drawn: one corner follows the window's, the rest stay small.
+    CGFloat small = self.layer.cornerRadius, big = MIN(self.outerCorner, NSHeight(self.bounds) / 2);
+    NSRect r = self.bounds;
+    CGFloat top = self.isFlipped ? NSMinY(r) : NSMaxY(r), bottom = self.isFlipped ? NSMaxY(r) : NSMinY(r), down = self.isFlipped ? 1 : -1;
+    CGMutablePathRef path = CGPathCreateMutable();
+    CGPathMoveToPoint(path, NULL, NSMinX(r), top + down * big);
+    CGPathAddArcToPoint(path, NULL, NSMinX(r), top, NSMinX(r) + big, top, big);
+    CGPathAddArcToPoint(path, NULL, NSMaxX(r), top, NSMaxX(r), bottom, small);
+    CGPathAddArcToPoint(path, NULL, NSMaxX(r), bottom, NSMinX(r), bottom, small);
+    CGPathAddArcToPoint(path, NULL, NSMinX(r), bottom, NSMinX(r), top, small);
+    CGPathCloseSubpath(path);
+    CAShapeLayer *mask = [CAShapeLayer layer];
+    mask.path = path;
+    CGPathRelease(path);
+    self.layer.mask = mask;
 }
 
 - (void)drawRect:(NSRect)rect {
@@ -201,6 +222,12 @@ static void DPPlaceBar(DPLittleBar *bar) {
     bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - open.width, top, open.width, open.height);
     CGFloat corner = [row.window respondsToSelector:@selector(_cornerRadius)] ? ((CGFloat (*)(id, SEL))objc_msgSend)(row.window, @selector(_cornerRadius)) : 16;
     bar.open.layer.cornerRadius = MIN(open.height / 2, MAX(4, corner - gap));
+    // Close sits in the window's top-left corner, so that corner of it follows the window's too.
+    DPBarButton *close = (DPBarButton *)bar.leading.firstObject;
+    NSRect inWindow = [row convertRect:close.frame toView:nil];
+    CGFloat inset = MAX(NSMinX(inWindow), NSHeight(row.window.frame) - NSMaxY(inWindow));
+    close.outerCorner = MAX(close.layer.cornerRadius, corner - inset);
+    close.needsLayout = YES;
     // Dia's address stays, unseen, so its frame keeps telling this layout where the address belongs.
     title.alphaValue = 0;
     if (bar.address.superview != row) [row addSubview:bar.address positioned:NSWindowAbove relativeTo:title];
