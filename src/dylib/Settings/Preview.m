@@ -27,8 +27,9 @@ static NSURL *DPCachedPreview(NSString *name) {
     return [dir URLByAppendingPathComponent:name];
 }
 
-static NSArray<NSString *> *DPPreviewNames(NSString *key) {
-    NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
+// The layout is passed in: finding it walks every window's views.
+static NSArray<NSString *> *DPPreviewNames(NSString *key, NSString *layout) {
+    NSString *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
     NSMutableArray<NSString *> *names = [NSMutableArray new];
     for (NSString *prefix in @[layout, other])
         for (NSString *suffix in @[@"-onoff.webp", @".mp4", @".png"]) [names addObject:[NSString stringWithFormat:@"%@-%@%@", prefix, key, suffix]];
@@ -69,8 +70,9 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
 + (void)preload {
     static NSMutableSet<NSString *> *started;
     if (!started) started = [NSMutableSet new];
+    NSString *layout = DPTabLayout();
     for (NSUInteger i = 0; i < DPPatchCount; i++) {
-        NSArray<NSString *> *names = DPPreviewNames(DPPatches[i]->key);
+        NSArray<NSString *> *names = DPPreviewNames(DPPatches[i]->key, layout);
         if ([started containsObject:names[0]]) continue;
         [started addObject:names[0]];
         DPFetchPreview(names, ^(NSURL *file, BOOL changed) {});
@@ -90,7 +92,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     NSString *layout = DPTabLayout();
     if ([layout isEqual:_layout]) return;
     _layout = layout;
-    NSArray<NSString *> *names = _names = DPPreviewNames(_key);
+    NSArray<NSString *> *names = _names = DPPreviewNames(_key, layout);
     for (NSString *name in names)
         if ([DPCachedPreview(name) checkResourceIsReachableAndReturnError:nil]) {
             [self show:DPCachedPreview(name)];

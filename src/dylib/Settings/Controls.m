@@ -1,13 +1,25 @@
 #import "Settings.h"
 
+// An NSBox separator costs far more to lay out than the line it draws.
+@interface DPSeparatorView : NSView
+@end
+
+@implementation DPSeparatorView
+- (BOOL)wantsUpdateLayer { return YES; }
+- (void)updateLayer { self.layer.backgroundColor = NSColor.separatorColor.CGColor; }
+- (NSSize)intrinsicContentSize { return NSMakeSize(NSViewNoIntrinsicMetric, 1); }
+// Where NSBox draws its line in the same space.
+- (NSEdgeInsets)alignmentRectInsets { return NSEdgeInsetsMake(0.5, 0, -0.5, 0); }
+@end
+
 NSView *DPGroup(NSArray<NSView *> *rows) {
     NSStackView *stack = [NSStackView new];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.spacing = 0;
     [rows enumerateObjectsUsingBlock:^(NSView *row, NSUInteger i, BOOL *_) {
         if (i > 0) {
-            NSBox *line = [NSBox new];
-            line.boxType = NSBoxSeparator;
+            DPSeparatorView *line = [DPSeparatorView new];
+            line.wantsLayer = YES;
             [stack addArrangedSubview:line];
             [line.widthAnchor constraintEqualToAnchor:stack.widthAnchor constant:-24].active = YES;
         }
@@ -91,17 +103,23 @@ NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
 + (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description;
 @end
 
-// NSImageView throws on a missing symbol, which crashed Settings.
+// NSImageView throws on a missing symbol, which crashed Settings. Rows share a few symbols, so each is looked up and sized once.
 NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color) {
-    NSImage *image;
-    for (NSString *symbol in [symbols componentsSeparatedByString:@" "]) {
-        image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
-        if (!image && [NSImage respondsToSelector:@selector(imageWithPrivateSystemSymbolName:accessibilityDescription:)])
-            image = [NSImage imageWithPrivateSystemSymbolName:symbol accessibilityDescription:nil];
-        if (image) break;
+    static NSMutableDictionary<NSString *, id> *cache;
+    if (!cache) cache = [NSMutableDictionary new];
+    NSString *key = [NSString stringWithFormat:@"%@ %g", symbols, size];
+    NSImage *image = cache[key];
+    if (!image) {
+        for (NSString *symbol in [symbols componentsSeparatedByString:@" "]) {
+            image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
+            if (!image && [NSImage respondsToSelector:@selector(imageWithPrivateSystemSymbolName:accessibilityDescription:)])
+                image = [NSImage imageWithPrivateSystemSymbolName:symbol accessibilityDescription:nil];
+            if (image) break;
+        }
+        image = [image imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold]];
+        cache[key] = image ?: NSNull.null;
     }
-    NSImageView *view = image ? [NSImageView imageViewWithImage:image] : [NSImageView new];
-    view.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:size weight:NSFontWeightSemibold];
+    NSImageView *view = [image isKindOfClass:NSImage.class] ? [NSImageView imageViewWithImage:image] : [NSImageView new];
     view.contentTintColor = color;
     return view;
 }
