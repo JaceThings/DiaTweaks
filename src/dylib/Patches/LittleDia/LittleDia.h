@@ -43,7 +43,8 @@ void DPBringBackPutAway(NSWindow *little);  // Dia's windows put away because it
 void DPLinkArrived(void);                   // A link for Little Dia came in.
 BOOL DPHideAgain(void);                     // Hides Dia again once its last small window closes, if it was hidden.
 
-// Bar.m: close, back, forward and reload before the address, Open in Dia after it, and no Downloads button.
+// Bar.m: close, back, forward and reload before the address, Open in Dia and a profile menu after it, and no Downloads
+// button.
 void DPInstallLittleDiaBar(void);
 void DPRelayoutLittleDiaBars(void);
 
@@ -56,3 +57,8 @@ NSString *DPLittleDiaURL(NSWindow *window);                   // The page's addr
 NSDictionary *DPLittleDiaTab(NSWindow *window, NSString *action);  // A request naming the window's tab.
 void DPLittleDiaGo(NSWindow *window, SEL action);             // goBack, goForward or reload
 void DPLittleDiaNavigate(NSWindow *window, NSString *typed);  // An address, or words to search for.
+
+// Profile.m: Dia's profiles, in its order, and opening a page as a tab in one, focused.
+NSArray<NSString *> *DPLittleDiaProfiles(void);
+NSImage *DPLittleDiaProfileImage(NSString *name);
+void DPOpenInProfile(NSString *url, NSUInteger index, void (^done)(BOOL opened));

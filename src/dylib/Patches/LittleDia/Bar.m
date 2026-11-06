@@ -6,12 +6,13 @@
 @property (nonatomic, weak) NSView *title;
 @property (nonatomic) NSArray<NSButton *> *leading;  // close, back, forward, reload
 @property (nonatomic) NSButton *open;
+@property (nonatomic) NSButton *profiles;  // Open in another profile; hidden with only one.
 @property (nonatomic) NSView *address;
 @property (nonatomic) NSView *divider;
 @property (nonatomic) NSTimer *timer;
 @end
 
-static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28;
+static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20;
 
 @interface DPBarDivider : NSView
 @end
@@ -183,6 +184,36 @@ static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     return button;
 }
 
+// Dia's main window comes forward on the chosen profile, with the page as a new tab, and the small window closes.
+static void DPShowProfiles(NSButton *button) {
+    NSWindow *window = button.window;
+    NSMenu *menu = [NSMenu new];
+    [DPLittleDiaProfiles() enumerateObjectsUsingBlock:^(NSString *name, NSUInteger i, BOOL *stop) {
+        NSMenuItem *item = DPMenuItem(name, ^{
+            DPBringBackPutAway(window);
+            DPOpenInProfile(DPLittleDiaURL(window), i, ^(BOOL opened) {
+                if (!opened) return NSBeep();
+                DPPromoteLittleDiaWindow(window);
+                [window performClose:nil];
+            });
+        });
+        item.image = DPLittleDiaProfileImage(name);
+        if (@available(macOS 27, *)) [item setValue:@1 forKey:@"preferredImageVisibility"];  // 1: .visible
+        [menu addItem:item];
+    }];
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, NSHeight(button.bounds) + 4) inView:button];
+}
+
+static NSButton *DPMakeProfilesButton(void) {
+    DPBarButton *button = [[DPBarButton alloc] initWithSymbol:@"chevron.down" size:10 label:@"Open in Another Profile"];
+    button.pill = YES;
+    __weak DPBarButton *weakButton = button;
+    button.handler = ^{ DPShowProfiles(weakButton); };
+    button.hidden = DPLittleDiaProfiles().count < 2;
+    [button updateTint];
+    return button;
+}
+
 @implementation DPLittleBar
 - (void)dealloc { [_timer invalidate]; }
 @end
@@ -214,6 +245,7 @@ static DPLittleBar *DPMakeBar(NSView *title) {
         if (DPSendToLittleDia(DPLittleDiaTab(weakTitle.window, @"promote"))) DPPromoteLittleDiaWindow(weakTitle.window);
         else NSBeep();
     });
+    bar.profiles = DPMakeProfilesButton();
     bar.address = DPMakeAddressView(title);
     bar.divider = DPMakeDivider();
     __weak DPLittleBar *weakBar = bar;
@@ -235,14 +267,17 @@ static void DPPlaceBar(DPLittleBar *bar) {
     }];
     NSSize open = bar.open.intrinsicContentSize;
     if (bar.open.superview != row) [row addSubview:bar.open];
-    // The same gap above it as beside it.
+    if (bar.profiles.superview != row) [row addSubview:bar.profiles];
+    // The same gap above them as beside them.
     CGFloat top = round(mid - open.height / 2), gap = NSHeight(row.bounds) - NSMaxY(NSMakeRect(0, top, 0, open.height));
-    bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - open.width, top, open.width, open.height);
+    CGFloat chevron = bar.profiles.hidden ? 0 : DPGap + DPChevron;
+    bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - chevron - open.width, top, open.width, open.height);
+    bar.profiles.frame = NSMakeRect(NSMaxX(bar.open.frame) + DPGap, top, DPChevron, open.height);
     CGFloat corner = [row.window respondsToSelector:@selector(_cornerRadius)] ? ((CGFloat (*)(id, SEL))objc_msgSend)(row.window, @selector(_cornerRadius)) : 16;
-    // Close and Open in Dia sit in the window's top corners, so those corners of them follow the window's.
-    for (DPBarButton *button in @[ bar.leading.firstObject, bar.open ]) {
+    // The first and last buttons sit in the window's top corners, so those corners of them follow the window's.
+    for (DPBarButton *button in @[ bar.leading.firstObject, bar.profiles.hidden ? bar.open : bar.profiles ]) {
         NSRect inWindow = [row convertRect:button.frame toView:nil];
-        button.outerCornerOnRight = button == bar.open;
+        button.outerCornerOnRight = button != bar.leading.firstObject;
         CGFloat side = button.outerCornerOnRight ? NSWidth(row.window.frame) - NSMaxX(inWindow) : NSMinX(inWindow);
         button.outerCorner = MAX(button.layer.cornerRadius, corner - MAX(side, NSHeight(row.window.frame) - NSMaxY(inWindow)));
         button.needsLayout = YES;
@@ -267,7 +302,7 @@ static void DPRemoveBar(NSView *title) {
     if (!bar) return;
     DPSet(title, &DPBarKey, nil);
     [bar.timer invalidate];
-    for (NSView *view in [bar.leading arrayByAddingObjectsFromArray:@[ bar.open ]]) [view removeFromSuperview];
+    for (NSView *view in [bar.leading arrayByAddingObjectsFromArray:@[ bar.open, bar.profiles ]]) [view removeFromSuperview];
     [bar.address removeFromSuperview];
     [bar.divider removeFromSuperview];
     title.alphaValue = 1;
@@ -295,7 +330,7 @@ static NSRect DPTitleFrame(NSView *title, DPLittleBar *bar) {
     NSPoint diaOrigin = [DPGet(title, &DPDiaOriginKey) pointValue];
     NSSize diaSize = [DPGet(title, &DPDiaSizeKey) sizeValue];
     CGFloat left = DPInset + bar.leading.count * DPButton + (bar.leading.count - 1) * DPGap + DPInset;
-    CGFloat right = NSWidth(bounds) - DPInset - bar.open.intrinsicContentSize.width - 6;
+    CGFloat right = NSWidth(bounds) - DPInset - bar.open.intrinsicContentSize.width - (bar.profiles.hidden ? 0 : DPGap + DPChevron) - 6;
     return NSMakeRect(left, diaOrigin.y, MAX(0, right - left), diaSize.height);
 }
 
