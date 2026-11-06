@@ -43,37 +43,49 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPHeader_layout, self);
 }
 
-static void DPCompactHeader(NSView *sidebar) {
-    NSView *header = DPSubview(sidebar, DPDiaSidebarHeader);
-    if (!header) return;
-    NSRect laidOut = DPLaidOutHeader(header), frame = laidOut;
-    if (DPCompactSidebarHeader.on) frame.size.height = MAX(0, NSHeight(laidOut) - DPHeaderTrim);
-    if (!NSEqualRects(frame, header.frame)) {
-        if (!DPMayAdjust(header)) return;
-        DPOverride(header, &DPHeaderFrameKey, @(laidOut), @(frame));
-        header.frame = frame;
+// Dia lays the header and the view under it out as if the header still had its full height. Trimming them after that
+// pass makes Dia lay them out again, which puts the content back and makes it jump by DPHeaderTrim while the sidebar
+// opens or resizes. Rewriting the frames inside the setters leaves Dia's own layout with the trimmed values, so there
+// is nothing left to correct afterwards.
+static void DPCompactFrame_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    if (DPCompactSidebarHeader.on && DPSidebars) {
+        if (DPIsKind(self, DPDiaSidebarHeader)) {
+            NSArray *values = DPGet(self, &DPHeaderFrameKey);
+            if (!values || ![values[1] isEqual:[NSValue valueWithRect:frame]]) {
+                NSRect laidOut = frame;
+                frame.size.height = MAX(0, NSHeight(laidOut) - DPHeaderTrim);
+                DPOverride(self, &DPHeaderFrameKey, [NSValue valueWithRect:laidOut], [NSValue valueWithRect:frame]);
+            }
+        } else if ([DPSidebars containsObject:self.superview]) {
+            NSView *header = DPSubview(self.superview, DPDiaSidebarHeader);
+            NSRect laidOut = header ? DPLaidOutHeader(header) : NSZeroRect;
+            if (header && !NSIsEmptyRect(laidOut) && fabs(NSMinY(frame) - NSMaxY(laidOut)) < 0.5) {
+                frame.origin.y = MAX(0, NSMaxY(laidOut) - DPHeaderTrim);
+                frame.size.height += DPHeaderTrim;
+            }
+        }
     }
-    // The view under the header keeps its bottom edge, so whatever follows it stays put.
-    for (NSView *sub in sidebar.subviews) {
-        if (sub == header) continue;
-        CGFloat top = NSMinY(sub.frame);
-        if (fabs(top - NSMaxY(laidOut)) > 0.5 && fabs(top - NSMaxY(laidOut) + DPHeaderTrim) > 0.5) continue;
-        NSRect moved = NSMakeRect(NSMinX(sub.frame), NSMaxY(frame), NSWidth(sub.frame), NSMaxY(sub.frame) - NSMaxY(frame));
-        if (NSEqualRects(moved, sub.frame) || !DPMayAdjust(sub)) continue;
-        sub.frame = moved;
-    }
+    DPCallOriginal(DPCompactFrame_setFrame, self, frame);
+}
+
+static void DPSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
+    [DPSidebars addObject:self.view];
+    for (NSView *sub in self.view.subviews)
+        DPHookClass([sub class], @selector(setFrame:), (IMP)DPCompactFrame_setFrame);
+    DPCallOriginal(DPSidebar_viewWillLayout, self);
 }
 
 static void DPSidebar_viewDidLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPSidebar_viewDidLayout, self);
     [DPSidebars addObject:self.view];
-    if (self.view.isFlipped) DPCompactHeader(self.view);
 }
 
 static void DPInstallCompactSidebarHeader(void) {
     DPSidebars = [NSHashTable weakObjectsHashTable];
+    DPHook(DPDiaSidebarController, @selector(viewWillLayout), (IMP)DPSidebar_viewWillLayout);
     DPHook(DPDiaSidebarController, @selector(viewDidLayout), (IMP)DPSidebar_viewDidLayout);
     DPHook(DPDiaSidebarHeader, @selector(layout), (IMP)DPHeader_layout);
+    DPHook(DPDiaSidebarHeader, @selector(setFrame:), (IMP)DPCompactFrame_setFrame);
     DPHookClass(NSStackView.class, @selector(setFrame:), (IMP)DPButtonsRow_setFrame);
 }
 
