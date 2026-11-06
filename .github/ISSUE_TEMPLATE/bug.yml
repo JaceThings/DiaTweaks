@@ -29,8 +29,6 @@ body:
         - Show Toolbar When Copying URL
         - Hide Site Color in Tab Bar
         - Always Show Address Field
-        - Hide Chat Button
-        - Hide Personalize Button
         - Hide Sidebar Button
         - Extensions Shortcut
         - Tidy Tabs
@@ -38,7 +36,6 @@ body:
         - Switch Profiles with ⌘1–9
         - Translucent Sidebar
         - Compact Sidebar Header
-        - Hide Chats Button
         - Hide Pinned Tab Border
         - Hide Pinned Tab Card
         - Collapse Pinned Tabs
@@ -58,10 +55,13 @@ body:
         - Blur Page Behind
         - Darken Page Behind
         - Remember What You Typed
-        - Hide Upgrade Banner
         - Hide History Suggestions
-        - Turn Off AI
         - Hide New Tab Logo
+        - Turn Off AI
+        - Hide Chat Button
+        - Hide Chats Button
+        - Hide Upgrade Banner
+        - Hide Personalize Button
         - Hide Skills Suggestions
         - Window Material
         - Keep Windows Active

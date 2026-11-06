@@ -15,13 +15,14 @@ static void DPInstallHideUpgradeBanner(void) {
 
 DP_PATCH(DPHideUpgradeBanner) {
     .key = @"hideUpgradeBanner",
-    .order = 92,
-    .section = @"Command Bar",
+    .order = 95,
+    .section = @"AI",
     .title = @"Hide Upgrade Banner",
     .detail = @"Hide the “Looking for chat?” upgrade banner under the command bar.",
     .symbol = @"crown.fill",
-    .tint = @"systemOrangeColor",
+    .tint = @"systemPurpleColor",
     .classes = DPClasses(DPDiaChatUsage),
     .hides = DPIsUpgradeBanner,
     .install = DPInstallHideUpgradeBanner,
+    .coveredBy = @"turnOffAI",
 };

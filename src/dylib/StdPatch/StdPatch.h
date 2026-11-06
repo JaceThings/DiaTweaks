@@ -18,6 +18,7 @@ struct DPPatch {
     const char *const *builtIn;  // DPClasses meaning Dia does this itself; if one exists it stays off.
     __unsafe_unretained NSString *requires;    // Makes this an option on that patch's page.
     __unsafe_unretained NSString *disabledBy;  // While on, that patch hides what this one changes.
+    __unsafe_unretained NSString *coveredBy;   // While on, that patch does this one's job too, so this one is greyed out.
     __unsafe_unretained NSString *choice, *defaultChoice;  // Saved as the chosen item's representedObject.
     NSMenu *(*choices)(void);
     NSArray<NSView *> *(*rows)(void);

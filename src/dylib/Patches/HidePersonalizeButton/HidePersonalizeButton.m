@@ -8,9 +8,10 @@ DP_PATCH(DPHidePersonalizeButton) {
     .title = @"Hide Personalize Button",
     .detail = @"Hide the Personalization button at the top right of new tab pages.",
     .symbol = @"person.crop.circle.fill",
-    .tint = @"systemGrayColor",
-    .section = @"New Tab Page",
+    .tint = @"systemPurpleColor",
+    .section = @"AI",
     .classes = DPClasses(DPDiaToolbar, DPDiaPersonalizeButton),
     .disabledBy = @"hideToolbar",
     .hides = DPIsPersonalizeButton,
+    .coveredBy = @"turnOffAI",
 };

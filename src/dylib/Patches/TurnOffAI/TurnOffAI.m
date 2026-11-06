@@ -137,12 +137,12 @@ static void DPApplyTurnOffAI(DPPatch *patch) {
 
 DP_PATCH(DPTurnOffAI) {
     .key = @"turnOffAI",
-    .order = 88,
-    .section = @"Command Bar",
+    .order = 95,
+    .section = @"AI",
     .title = @"Turn Off AI",
     .detail = @"Hide every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Chat With This Tab, chat in the command bar, Morning Brief, and Settings' Apps and Skills. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
     .symbol = @"bubble.left.and.exclamationmark.bubble.right.fill bubble.left.fill",
-    .tint = @"systemOrangeColor",
+    .tint = @"systemPurpleColor",
     .hides = DPIsAIView,
     .install = DPInstallTurnOffAI,
     .apply = DPApplyTurnOffAI,

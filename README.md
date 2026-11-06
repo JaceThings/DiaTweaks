@@ -16,6 +16,7 @@ Each tweak changes one thing about Dia: it hides something you don't use, change
 | Tabs | Grouping, saving, unloading, closing and reopening tabs |
 | Command Bar | The command bar and what it suggests |
 | New Tab Page | What the new tab page shows |
+| AI | Turning off Dia's AI, all at once or one part at a time |
 | Window | How the window looks and behaves |
 | Passwords | Password managers and passkeys |
 | Links | Opening links in Peek and the address shown on hover |
