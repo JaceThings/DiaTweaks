@@ -7,7 +7,7 @@ extern DPPatch DPICloudPasswords;
 
 static NSString *const kAppleHost = @"/Library/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json";
 
-static NSString *DPHostManifestPath(void) { return DPAppSupport(@"Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"); }
+static NSString *DPHostManifestPath(void) { return DPAppSupport(@"Dia/User Data/NativeMessagingHosts/com.apple.passwordmanager.json"); }
 
 static NSError *gWriteError;
 
