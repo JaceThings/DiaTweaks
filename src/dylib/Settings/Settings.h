@@ -48,25 +48,32 @@ NSURL *DPWikiURL(DPPatch *patch);
 - (void)sync;
 @end
 
-@interface DPOverviewView : NSStackView
+@protocol DPPaneContent <NSObject>
+@property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
+@optional
+- (void)syncWithQuery:(NSString *)query;  // Gives the pane a search field.
+- (void)refresh;  // Each time the pane is shown.
+@end
+
+@interface DPOverviewView : NSStackView <DPPaneContent>
 @property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
 @property (nonatomic, strong) NSMapTable<NSView *, NSString *> *searchText;
-@property (nonatomic, strong) NSTextField *updateSummary;
 - (void)syncWithQuery:(NSString *)query;
+@end
+
+@interface DPHomeView : NSStackView <DPPaneContent>
+@property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
+- (void)refresh;
 @end
 
 @interface DPSoftwareUpdateView : NSStackView
 @end
 
-@interface DPOverviewView (Updates)
-- (NSArray<NSView *> *)makeUpdateRows;
-- (NSView *)makeSafeModeRow;
-- (void)refresh;
-@end
-
 @interface DPPaneView : NSView <NSSearchFieldDelegate>
-@property (nonatomic, strong) NSSearchToolbarItem *searchItem;
-@property (nonatomic, strong) DPOverviewView *overview;
+- (instancetype)initWithTitle:(NSString *)title content:(NSView<DPPaneContent> *)content;
+@property (nonatomic, readonly) NSString *title;
+@property (nonatomic, readonly) NSView<DPPaneContent> *content;
+@property (nonatomic, readonly) NSSearchToolbarItem *searchItem;  // nil when the content has nothing to search.
 @property (nonatomic, copy) void (^titleChanged)(NSString *title, BOOL canGoBack);
 @property (nonatomic, readonly) BOOL showsPage;
 - (void)goBack;
