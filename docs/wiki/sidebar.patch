@@ -1,0 +1,12 @@
+diff --git a/_Sidebar.md b/_Sidebar.md
+index 2f57a22..be63795 100644
+--- a/_Sidebar.md
++++ b/_Sidebar.md
+@@ -23,6 +23,7 @@
+   - [Switch Profiles with ⌘1–9](Switch-Profiles-with-⌘1–9)
+   - [Translucent Sidebar](Translucent-Sidebar)
+   - [Compact Sidebar Header](Compact-Sidebar-Header)
++  - [Hide Vertical Tab Glow](Hide-Vertical-Tab-Glow)
+   - [Hide Pinned Tab Border](Hide-Pinned-Tab-Border)
+   - [Hide Pinned Tab Card](Hide-Pinned-Tab-Card)
+   - [Collapse Pinned Tabs](Collapse-Pinned-Tabs)
