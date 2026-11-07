@@ -62,7 +62,7 @@
 
 - (void)setGrainAmount:(double)amount softness:(double)softness {
     NSString *material = DPChoice(&DPSidebarGrain);
-    if (![DPGrainMaterialKeys() containsObject:material]) material = @"grain";
+    if (![DPGrainMaterialKeys() containsObject:material]) material = @"sand";
     BOOL pattern = DPIsPatternGrainMaterial(material), matte = [material isEqual:@"matte"];
     CGFloat normalized = MAX(0, MIN(100, amount)) / 100;
     CGFloat opacity = pattern ? DPPatternGrainStrength(material) * normalized :

@@ -29,7 +29,7 @@ DP_PATCH(DPSidebarGrain) {
     .title = @"Sidebar Grain",
     .detail = @"Add texture behind sidebar or horizontal tabs. Adjust the grain and softness.",
     .choice = @"sidebarGrainMaterial",
-    .defaultChoice = @"grain",
+    .defaultChoice = @"sand",
     .symbol = @"circle.dotted",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",

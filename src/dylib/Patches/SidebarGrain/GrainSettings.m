@@ -35,7 +35,8 @@ NSInteger DPGrainSoftness(void) { return DPGrainSetting(DPGrainSoftnessKey, 0); 
     if (self.swatch)
         self.swatch.fillColor = DPGrainPreviewColor(self.previewWindow, self.effectiveAppearance);
     NSUInteger index = [DPGrainMaterialKeys() indexOfObject:DPChoice(&DPSidebarGrain)];
-    [self.material selectItemAtIndex:index == NSNotFound ? 0 : index];
+    if (index == NSNotFound) index = [DPGrainMaterialKeys() indexOfObject:@"sand"];
+    [self.material selectItemAtIndex:index];
     self.amount.integerValue = DPGrainAmount();
     self.softness.integerValue = DPGrainSoftness();
     self.amountLabel.stringValue = [NSString stringWithFormat:@"%ld%%", (long)self.amount.integerValue];
