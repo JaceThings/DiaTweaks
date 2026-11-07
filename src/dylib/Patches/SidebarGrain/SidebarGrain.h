@@ -9,3 +9,5 @@ void DPRefreshSidebarGrain(void);
 NSColor *DPGrainPreviewColor(NSWindow *window, NSAppearance *appearance);
 NSArray<NSView *> *DPGrainRowsForWindow(NSWindow *window);
 NSEvent *DPGrainRightClick(NSEvent *event);
+
+void DPRefreshGrainRows(void);

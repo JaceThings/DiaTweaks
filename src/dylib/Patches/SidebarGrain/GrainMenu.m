@@ -16,7 +16,7 @@
     popover.behavior = NSPopoverBehaviorTransient;
     NSViewController *controller = [NSViewController new];
     NSView *row = DPGrainRowsForWindow(sidebar.window).firstObject;
-    controller.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 270, 205)];
+    controller.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 238)];
     [controller.view addSubview:row];
     row.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[

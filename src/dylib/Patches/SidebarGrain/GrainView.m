@@ -1,34 +1,15 @@
-#import "GrainView.h"
+#import "SidebarGrain.h"
 
-static CGImageRef DPGrainTile(void) {
-    static CGImageRef image;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        enum { size = 192 };
-        NSMutableData *data = [NSMutableData dataWithLength:size * size * 4];
-        uint8_t *pixels = data.mutableBytes;
-        uint32_t random = 0x19643a8d;
-        for (NSUInteger i = 0; i < size * size; i++) {
-            random ^= random << 13;
-            random ^= random >> 17;
-            random ^= random << 5;
-            int tone = (int)(random & 255) + (int)((random >> 8) & 255) - 255;
-            uint8_t alpha = (uint8_t)abs(tone);
-            pixels[4*i] = pixels[4*i+1] = pixels[4*i+2] = tone > 0 ? alpha : 0;
-            pixels[4*i+3] = alpha;
-        }
-        CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)data);
-        CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-        image = CGImageCreate(size, size, 8, 32, size * 4, space,
-            (CGBitmapInfo)kCGImageAlphaPremultipliedLast, provider, NULL, false, kCGRenderingIntentDefault);
-        CGColorSpaceRelease(space);
-        CGDataProviderRelease(provider);
-    });
-    return image;
-}
+@interface NSWindow (DPGrainAppearance)
+- (BOOL)_hasActiveAppearance;
+@end
+@interface NSView (DPGrainAppearance)
+- (void)_windowChangedKeyState;
+@end
 
 @implementation DPSidebarGrainView {
     CGFloat _grainOpacity, _softness;
+    NSString *_material;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -40,13 +21,50 @@ static CGImageRef DPGrainTile(void) {
 
 - (NSView *)hitTest:(NSPoint)point { return nil; }
 
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    for (NSString *name in @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
+         NSWindowDidBecomeMainNotification, NSWindowDidResignMainNotification,
+         NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification])
+        [center removeObserver:self name:name object:nil];
+    if (self.window && self.tracksWindowActivity) {
+        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidBecomeKeyNotification object:self.window];
+        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidResignKeyNotification object:self.window];
+        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidBecomeMainNotification object:self.window];
+        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidResignMainNotification object:self.window];
+        [center addObserver:self selector:@selector(refreshActivity:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
+        [center addObserver:self selector:@selector(refreshActivity:) name:NSApplicationDidResignActiveNotification object:NSApp];
+        [self refreshActivity:nil];
+    }
+}
+
+- (void)refreshActivity:(NSNotification *)notification {
+    [self setGrainAmount:DPGrainAmount() softness:DPGrainSoftness()];
+}
+
+- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
+
+- (void)_windowChangedKeyState {
+    [super _windowChangedKeyState];
+    [self refreshActivity:nil];
+}
+
 - (void)setGrainAmount:(double)amount softness:(double)softness {
-    // Give the lower half of the slider more room for subtle adjustments.
-    CGFloat opacity = (0.66 * pow(0.60, 1.35)) * pow(MAX(0, MIN(100, amount)) / 100, 1.35);
+    NSString *material = DPChoice(&DPSidebarGrain);
+    if (![DPGrainMaterialKeys() containsObject:material]) material = @"grain";
+    BOOL pattern = DPIsPatternGrainMaterial(material), matte = [material isEqual:@"matte"];
+    CGFloat normalized = MAX(0, MIN(100, amount)) / 100;
+    CGFloat opacity = pattern ? DPPatternGrainStrength(material) * normalized :
+        matte ? pow(normalized, 1.15) : (0.66 * pow(0.60, 1.35)) * pow(normalized, 1.35);
+    if (self.tracksWindowActivity && self.window && !self.window._hasActiveAppearance) opacity = 0;
     CGFloat soft = MAX(0, MIN(100, softness)) / 100;
-    if (_grainOpacity == opacity && _softness == soft) return;
+    if (_grainOpacity == opacity && _softness == soft && [_material isEqual:material]) return;
     _softness = soft;
     _grainOpacity = opacity;
+    _material = material;
+    // Multiply the tile into the existing material; the backing image stays static.
+    self.layer.compositingFilter = [material isEqual:@"fine"] ? nil : @"multiplyBlendMode";
     self.needsDisplay = YES;
 }
 
@@ -63,9 +81,22 @@ static CGImageRef DPGrainTile(void) {
     } else {
         CGContextClipToRect(context, self.bounds);
     }
-    CGContextSetAlpha(context, _grainOpacity * (1 - 0.45 * _softness));
     CGContextSetInterpolationQuality(context, kCGInterpolationLow);
-    CGContextDrawTiledImage(context, CGRectMake(0, 0, 120 + 24 * _softness, 120 + 24 * _softness), DPGrainTile());
+    if (![_material isEqual:@"fine"]) {
+        BOOL pattern = DPIsPatternGrainMaterial(_material);
+        CGFloat size = pattern ? 100 : 128 + 32 * _softness;
+        CGFloat strength = _grainOpacity * (pattern ? 1 - .65 * _softness : 1);
+        CGRect tile = CGRectMake(0, 0, size, size);
+        CGContextSetBlendMode(context, kCGBlendModeCopy);
+        CGContextSetAlpha(context, strength * (1 - _softness));
+        CGContextDrawTiledImage(context, tile, pattern ? DPPatternGrainTile(_material, NO) : DPMatteGrainTile(NO));
+        CGContextSetBlendMode(context, kCGBlendModePlusLighter);
+        CGContextSetAlpha(context, strength * _softness);
+        CGContextDrawTiledImage(context, tile, pattern ? DPPatternGrainTile(_material, YES) : DPMatteGrainTile(YES));
+    } else {
+        CGContextSetAlpha(context, _grainOpacity * (1 - 0.45 * _softness));
+        CGContextDrawTiledImage(context, CGRectMake(0, 0, 120 + 24 * _softness, 120 + 24 * _softness), DPFineGrainTile());
+    }
     CGContextRestoreGState(context);
 }
 

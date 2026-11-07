@@ -14,6 +14,7 @@ static void DPUpdateSidebarGrain(NSView *sidebar) {
     }
     if (!grain) {
         grain = [[DPSidebarGrainView alloc] initWithFrame:sidebar.bounds];
+        grain.tracksWindowActivity = YES;
         DPSet(sidebar, &DPGrainViewKey, grain);
     }
     if (grain.superview != sidebar) [sidebar addSubview:grain positioned:NSWindowBelow relativeTo:nil];
@@ -39,7 +40,7 @@ static void DPInstallSidebarGrain(void) {
     DPHook(DPDiaSidebarController, @selector(viewDidLayout), (IMP)DPGrainSidebarDidLayout);
 }
 
-static void DPApplySidebarGrain(DPPatch *patch) { DPRefreshSidebarGrain(); }
+static void DPApplySidebarGrain(DPPatch *patch) { DPRefreshGrainRows(); DPRefreshSidebarGrain(); }
 
 static NSString *DPVerifySidebarGrain(DPPatch *patch) {
     for (NSView *footer in DPFindViews(DPDiaSidebarFooter)) {
@@ -58,9 +59,11 @@ DP_PATCH(DPSidebarGrain) {
     .key = @"sidebarGrain",
     .order = 84,
     .title = @"Sidebar Grain",
-    .detail = @"Add a fine texture to the sidebar. Drag the slider to preview the amount.",
+    .detail = @"Add texture to the sidebar. Adjust the grain and softness.",
+    .choice = @"sidebarGrainMaterial",
+    .defaultChoice = @"grain",
     .symbol = @"circle.dotted",
-    .tint = @"systemCyanColor",
+    .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaSidebarController, DPDiaSidebarFooter),
     .install = DPInstallSidebarGrain,
