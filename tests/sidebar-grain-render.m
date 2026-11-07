@@ -36,7 +36,8 @@ double DPTestTextureContrast(NSAppearance *appearance, NSString *texture, double
     BOOL dark = [[appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] isEqual:NSAppearanceNameDarkAqua];
     CGContextSetRGBFillColor(context, dark ? .10 : .64, dark ? .16 : .76, dark ? .19 : .82, 1);
     CGContextFillRect(context, CGRectMake(0, 0, 200, 200));
-    CGContextSetBlendMode(context, [texture isEqual:@"fine"] ? kCGBlendModeNormal : kCGBlendModeMultiply);
+    BOOL screen = [view.layer.compositingFilter isEqual:@"screenBlendMode"];
+    CGContextSetBlendMode(context, [texture isEqual:@"fine"] ? kCGBlendModeNormal : screen ? kCGBlendModeScreen : kCGBlendModeMultiply);
     CGContextDrawImage(context, CGRectMake(0, 0, 200, 200), image);
     CGImageRelease(image); CGContextRelease(context); CGColorSpaceRelease(space);
     const uint8_t *pixels = composite.bytes;
@@ -48,7 +49,7 @@ double DPTestTextureContrast(NSAppearance *appearance, NSString *texture, double
         // Measure before final 8-bit rounding: a dark, almost flat result can
         // straddle a byte boundary and otherwise look noisier numerically.
         double alpha = source[4*i+3] / 255.0, red = source[4*i] / 255.0;
-        double value = fine ? base * (1-alpha) + red : base * (1-alpha+red);
+        double value = fine ? base * (1-alpha) + red : screen ? base + red*(1-base) : base * (1-alpha+red);
         assert(fabs(pixels[4*i] - value*255) <= 2.1);
         sum += value; square += value * value;
         assert(pixels[4*i+3] == 255);
@@ -79,6 +80,13 @@ void DPTestTextureActivity(NSAppearance *appearance) {
             assert(([[grain valueForKey:@"grainOpacity"] doubleValue] > 0) == keepActive.boolValue);
             [preview setGrainAmount:100 softness:0];
             assert([[preview valueForKey:@"grainOpacity"] doubleValue] > 0);
+        }
+        for (NSString *name in @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua, NSAppearanceNameAqua]) {
+            preview.appearance = [NSAppearance appearanceNamed:name];
+            [preview layoutSubtreeIfNeeded];
+            id expected = [texture isEqual:@"fine"] ? nil :
+                [name isEqual:NSAppearanceNameDarkAqua] ? @"screenBlendMode" : @"multiplyBlendMode";
+            assert((!expected && !preview.layer.compositingFilter) || [preview.layer.compositingFilter isEqual:expected]);
         }
     }
     [grain removeFromSuperview]; [preview removeFromSuperview];

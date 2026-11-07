@@ -14,3 +14,6 @@ CGImageRef DPPatternGrainTile(NSString *material, BOOL soft);
 CGFloat DPPatternGrainStrength(NSString *material);
 
 NSRect DPGrainHostBounds(NSView *host);
+
+BOOL DPGrainDarkAppearance(NSAppearance *appearance);
+CGImageRef DPGrainAppearanceTile(NSString *material, BOOL soft, BOOL dark);

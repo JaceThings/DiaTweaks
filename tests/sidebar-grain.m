@@ -28,6 +28,7 @@ int main(void) { @autoreleasepool {
     DPTestTextureHosts();
     assert(DPGrainAmount() == 100 && DPGrainSoftness() == 0);
     NSUInteger renders = 0;
+    NSMutableDictionary *lightContrast = [NSMutableDictionary new];
     for (NSString *name in @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]) {
         NSAppearance *appearance = [NSAppearance appearanceNamed:name];
         NSColor *fallback = DPGrainPreviewColor(nil, appearance);
@@ -40,6 +41,12 @@ int main(void) { @autoreleasepool {
                 for (NSUInteger s = 0; s < 3; s++) {
                     contrast[s] = DPTestTextureContrast(appearance, texture, amount.doubleValue, s * 50);
                     renders++;
+                }
+                if (amount.doubleValue == 100 && ![texture isEqual:@"fine"]) {
+                    if ([name isEqual:NSAppearanceNameAqua]) lightContrast[texture] = @(contrast[0]);
+                    else {
+                        assert(contrast[0] > .01 && contrast[0] >= [lightContrast[texture] doubleValue] * .75);
+                    }
                 }
                 if (amount.doubleValue == 0) {
                     for (NSUInteger s = 0; s < 3; s++) assert(contrast[s] < .00001);

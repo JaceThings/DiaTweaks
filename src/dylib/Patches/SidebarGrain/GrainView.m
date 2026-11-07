@@ -10,6 +10,7 @@
 @implementation DPSidebarGrainView {
     CGFloat _grainOpacity, _softness;
     NSString *_material;
+    BOOL _darkAppearance;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -47,6 +48,11 @@
     [self setGrainAmount:DPGrainAmount() softness:DPGrainSoftness()];
 }
 
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    [self refreshActivity:nil];
+}
+
 - (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 
 - (void)_windowChangedKeyState {
@@ -63,12 +69,14 @@
         matte ? pow(normalized, 1.15) : (0.66 * pow(0.60, 1.35)) * pow(normalized, 1.35);
     if (self.tracksWindowActivity && self.window && !self.window._hasActiveAppearance) opacity = 0;
     CGFloat soft = MAX(0, MIN(100, softness)) / 100;
-    if (_grainOpacity == opacity && _softness == soft && [_material isEqual:material]) return;
+    BOOL dark = DPGrainDarkAppearance(self.effectiveAppearance);
+    if (_darkAppearance == dark && _grainOpacity == opacity && _softness == soft && [_material isEqual:material]) return;
+    _darkAppearance = dark;
     _softness = soft;
     _grainOpacity = opacity;
     _material = material;
-    // Multiply the tile into the existing material; the backing image stays static.
-    self.layer.compositingFilter = [material isEqual:@"fine"] ? nil : @"multiplyBlendMode";
+    self.layer.compositingFilter = [material isEqual:@"fine"] ? nil :
+        dark ? @"screenBlendMode" : @"multiplyBlendMode";
     self.needsDisplay = YES;
 }
 
@@ -93,10 +101,10 @@
         CGRect tile = CGRectMake(0, 0, size, size);
         CGContextSetBlendMode(context, kCGBlendModeCopy);
         CGContextSetAlpha(context, strength * (1 - _softness));
-        CGContextDrawTiledImage(context, tile, pattern ? DPPatternGrainTile(_material, NO) : DPMatteGrainTile(NO));
+        CGContextDrawTiledImage(context, tile, DPGrainAppearanceTile(_material, NO, _darkAppearance));
         CGContextSetBlendMode(context, kCGBlendModePlusLighter);
         CGContextSetAlpha(context, strength * _softness);
-        CGContextDrawTiledImage(context, tile, pattern ? DPPatternGrainTile(_material, YES) : DPMatteGrainTile(YES));
+        CGContextDrawTiledImage(context, tile, DPGrainAppearanceTile(_material, YES, _darkAppearance));
     } else {
         CGContextSetAlpha(context, _grainOpacity * (1 - 0.45 * _softness));
         CGContextDrawTiledImage(context, CGRectMake(0, 0, 120 + 24 * _softness, 120 + 24 * _softness), DPFineGrainTile());
