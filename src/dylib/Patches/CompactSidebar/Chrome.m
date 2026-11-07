@@ -1,0 +1,135 @@
+#import "CompactSidebar.h"
+
+// Like Zen, the strip, the toolbar and the space around the page share one color a shade darker than the page, and the
+// page sits in it as a card with rounded corners.
+static const CGFloat DPPageRadius = 10;
+static char DPChromeKey, DPRoundedKey, DPBarAppearanceKey, DPFieldColorKey, DPOurFieldColorKey;
+static BOOL DPSettingAppearance;
+
+// A shade darker than a plain page in the window's appearance. Not Dia's toolbar color, which takes each site's color:
+// the strip and the space round the page would change with every site, and not all at the same moment.
+CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance) {
+    __block CGColorRef chrome = NULL;
+    [appearance performAsCurrentDrawingAppearance:^{
+        BOOL dark = [appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]] == NSAppearanceNameDarkAqua;
+        NSColor *page = [NSColor.textBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        chrome = [page blendedColorWithFraction:dark ? 0.2 : 0.05 ofColor:NSColor.blackColor].CGColor;
+    }];
+    return chrome;
+}
+
+// The address field on the chrome: the page's color, a touch lighter in dark, so it reads as part of the page.
+static CGColorRef DPFieldColor(NSAppearance *appearance, CGFloat alpha) {
+    __block CGColorRef field = NULL;
+    [appearance performAsCurrentDrawingAppearance:^{
+        BOOL dark = [appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]] == NSAppearanceNameDarkAqua;
+        NSColor *page = [NSColor.textBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        if (dark) page = [page blendedColorWithFraction:0.08 ofColor:NSColor.whiteColor];
+        field = [page colorWithAlphaComponent:alpha].CGColor;
+    }];
+    return field;
+}
+
+static CGFloat DPPageTop(NSWindow *window) {
+    for (NSView *pane in DPFindViews(DPDiaContentPane)) {
+        NSView *page = pane.window == window ? DPSubview(pane, DPDiaPage) : nil;
+        if (page && !page.hidden) return NSMaxY([page convertRect:page.bounds toView:nil]);
+    }
+    return NAN;
+}
+
+// Where the toolbar's bottom edge is once it shows, from the window's bottom: its pane's top less its height.
+CGFloat DPToolbarBottom(NSWindow *window) {
+    for (NSView *bar in DPFindViews(DPDiaToolbar)) {
+        NSView *pane = bar.superview;
+        if (bar.window == window && pane) return NSMaxY([pane convertRect:pane.bounds toView:nil]) - NSHeight(bar.bounds);
+    }
+    return DPPageTop(window);
+}
+
+BOOL DPToolbarHidden(NSWindow *window) { return DPToolbarAlpha(window) < 0.01; }
+
+
+// Dia gives the toolbar a light or dark appearance to suit each site's color. On the chrome, which doesn't take the
+// site's color, its buttons and text follow the window's instead, as the strip's do; Dia's comes back without the strip.
+static void DPMatchBarAppearance(NSView *bar) {
+    id dia = DPGet(bar, &DPBarAppearanceKey);
+    NSAppearance *want = DPStripPresent(bar.window) || dia == NSNull.null ? nil : dia;
+    if (bar.appearance == want || (!dia && !DPStripPresent(bar.window))) return;
+    DPSettingAppearance = YES;
+    bar.appearance = want;
+    DPSettingAppearance = NO;
+}
+
+// Dia fills the address field with a shade of each site's color too. On the chrome it takes the field color instead,
+// at Dia's opacity, which it fades as the pointer comes and goes; Dia's comes back without the strip.
+static void DPMatchField(NSView *field) {
+    NSView *capsule = nil;
+    for (NSView *sub in field.subviews) if (DPIsKind(sub, DPDiaFlippedView)) capsule = sub;
+    CALayer *layer = capsule.layer;
+    if (!layer) return;
+    CGColorRef now = layer.backgroundColor, ours = (__bridge CGColorRef)DPGet(capsule, &DPOurFieldColorKey);
+    if (now && !(ours && CGColorEqualToColor(now, ours))) DPSet(capsule, &DPFieldColorKey, (__bridge id)now);
+    CGColorRef dia = (__bridge CGColorRef)DPGet(capsule, &DPFieldColorKey);
+    CGColorRef want = !DPStripPresent(field.window) ? dia : dia ? DPFieldColor(field.effectiveAppearance, CGColorGetAlpha(dia)) : NULL;
+    DPSet(capsule, &DPOurFieldColorKey, want && want != dia ? (__bridge id)want : nil);
+    if (want && !(now && CGColorEqualToColor(now, want))) DPNow(^{ layer.backgroundColor = want; });
+}
+
+static void DPField_updateLayer(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPField_updateLayer, self);
+    DPMatchField(self);
+}
+
+void DPApplyChrome(NSView *pane) {
+    NSView *bar = DPSubview(pane, DPDiaToolbar), *page = DPSubview(pane, DPDiaPage);
+    BOOL on = DPStripPresent(pane.window) && bar;
+    NSView *chrome = DPGet(pane, &DPChromeKey);
+    if (on && !chrome) {
+        DPSet(pane, &DPChromeKey, chrome = [NSView new]);
+        chrome.wantsLayer = YES;
+    }
+    // Behind the pane, not in it: hide toolbar reorders the pane's views, and the two would keep reordering each other.
+    NSView *holder = pane.superview;
+    if (on && holder && (chrome.superview != holder || [holder.subviews indexOfObject:chrome] > [holder.subviews indexOfObject:pane]))
+        [holder addSubview:chrome positioned:NSWindowBelow relativeTo:pane];
+    chrome.hidden = !on;
+    // The toolbar's own background and the line under it give way to the chrome.
+    for (NSView *sub in bar.subviews) {
+        if (!DPIsKind(sub, DPDiaColorView)) continue;
+        CGFloat alpha = on ? 0 : 1;
+        if (sub.alphaValue != alpha) sub.alphaValue = alpha;
+    }
+    // The page's corners round only while the strip shows, and go back square only if this rounded them.
+    if (page && (on || [DPGet(page, &DPRoundedKey) boolValue])) {
+        DPSet(page, &DPRoundedKey, @(on));
+        page.wantsLayer = YES;
+        page.layer.cornerRadius = on ? DPPageRadius : 0;
+        page.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
+        page.layer.masksToBounds = on;
+    }
+    if (bar) DPMatchBarAppearance(bar);
+    NSView *field = bar ? DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); }) : nil;
+    if (field) DPMatchField(field);
+    if (!on) return;
+    if (!NSEqualRects(chrome.frame, pane.frame)) chrome.frame = pane.frame;
+    chrome.layer.backgroundColor = DPChromeColor(pane.window, pane.effectiveAppearance);
+}
+
+static void DPBar_setAppearance(NSView *self, SEL _cmd, NSAppearance *appearance) {
+    if (DPSettingAppearance) return DPCallOriginal(DPBar_setAppearance, self, appearance);
+    DPSet(self, &DPBarAppearanceKey, appearance ?: NSNull.null);
+    DPCallOriginal(DPBar_setAppearance, self, DPStripPresent(self.window) ? nil : appearance);
+}
+
+static void DPPane_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPPane_layout, self);
+    DPApplyChrome(self);
+    DPRelayoutCompactPanes(self.window);  // Hide Toolbar lays the panes out as it turns on and off; they reach up only without it.
+}
+
+void DPInstallCompactChrome(void) {
+    DPHook(DPDiaContentPane, @selector(layout), (IMP)DPPane_layout);
+    DPHook(DPDiaToolbar, @selector(setAppearance:), (IMP)DPBar_setAppearance);
+    DPHook(DPDiaAddressField, @selector(updateLayer), (IMP)DPField_updateLayer);
+}
