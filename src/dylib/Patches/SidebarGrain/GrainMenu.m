@@ -40,7 +40,7 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
         if (sidebar.window != event.window || sidebar.hiddenOrHasHiddenAncestor ||
             !DPGrainHostAvailable(sidebar)) continue;
         NSPoint point = [sidebar convertPoint:event.locationInWindow fromView:nil];
-        if (!NSPointInRect(point, sidebar.bounds)) continue;
+        if (!NSPointInRect(point, DPGrainHostBounds(sidebar))) continue;
         NSView *hit = [sidebar hitTest:[sidebar convertPoint:point toView:sidebar.superview]];
         NSCollectionView *collection = nil;
         for (NSView *view = hit; view && view != sidebar; view = view.superview) {

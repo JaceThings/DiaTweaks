@@ -14,6 +14,22 @@ BOOL DPGrainHostAvailable(NSView *host) {
     return DPSubview(host, DPDiaSidebarFooter) != nil;
 }
 
+NSRect DPGrainHostBounds(NSView *host) {
+    NSRect bounds = host.bounds;
+    if (!DPIsKind(host, DPDiaTabStrip)) return bounds;
+    NSView *content = DPFindView(host.window.contentView, ^BOOL(NSView *view) {
+        return DPIsKind(view, DPDiaContentContainer);
+    });
+    if (!content) return NSZeroRect;
+    NSRect page = [host convertRect:content.bounds fromView:content];
+    // Dia's strip extends below its visible chrome to feather tab shadows.
+    // Keep the texture above the actual page boundary, not that larger root.
+    CGFloat edge = host.isFlipped ? NSMinY(page) : NSMaxY(page);
+    NSRect chrome = host.isFlipped ? NSMakeRect(NSMinX(bounds), NSMinY(bounds), NSWidth(bounds), MAX(0, edge - NSMinY(bounds))) :
+        NSMakeRect(NSMinX(bounds), MAX(NSMinY(bounds), edge), NSWidth(bounds), MAX(0, NSMaxY(bounds) - edge));
+    return NSIntersectionRect(bounds, chrome);
+}
+
 static void DPUpdateGrainHost(NSView *host) {
     DPSidebarGrainView *grain = DPGet(host, &DPGrainViewKey);
     if (!DPSidebarGrain.on || !DPGrainHostAvailable(host)) {
@@ -22,11 +38,12 @@ static void DPUpdateGrainHost(NSView *host) {
         return;
     }
     if (!grain) {
-        grain = [[DPSidebarGrainView alloc] initWithFrame:host.bounds];
+        grain = [[DPSidebarGrainView alloc] initWithFrame:DPGrainHostBounds(host)];
         grain.tracksWindowActivity = YES;
         DPSet(host, &DPGrainViewKey, grain);
     }
     if (grain.superview != host) [host addSubview:grain positioned:NSWindowBelow relativeTo:nil];
+    grain.frame = DPGrainHostBounds(host);
     [grain setGrainAmount:DPGrainAmount() softness:DPGrainSoftness()];
 }
 

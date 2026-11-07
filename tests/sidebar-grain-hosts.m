@@ -21,6 +21,8 @@ void DPTestTextureHosts(void) {
     NSView *sidebar = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 200, 500)];
     NSView *footer = DPTestHostView(DPDiaSidebarFooter, NSMakeRect(0, 0, 200, 40));
     NSView *strip = DPTestHostView(DPDiaTabStrip, NSMakeRect(0, 460, 600, 40));
+    NSView *content = DPTestHostView(DPDiaContentContainer, NSMakeRect(0, 0, 600, 480));
+    [window.contentView addSubview:content];
     [window.contentView addSubview:sidebar]; [sidebar addSubview:footer];
     [window.contentView addSubview:strip];
     DPSidebarGrain.on = YES;
@@ -34,7 +36,9 @@ void DPTestTextureHosts(void) {
     DPSidebarGrainView *grain = (id)strip.subviews.firstObject;
     assert([grain isKindOfClass:DPSidebarGrainView.class] && ![grain hitTest:NSMakePoint(10, 10)]);
     grain.frame = NSMakeRect(80, 0, 520, 40);
-    assert(NSEqualRects(grain.frame, strip.bounds));
+    assert(NSEqualRects(grain.frame, NSMakeRect(0, 20, 600, 20)));
+    content.frame = NSMakeRect(0, 0, 600, 470); DPRefreshSidebarGrain();
+    assert(NSEqualRects(grain.frame, NSMakeRect(0, 10, 600, 30)));
     // Another window's vertical sidebar must not suppress this horizontal strip.
     NSWindow *other = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 300, 500)
         styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];

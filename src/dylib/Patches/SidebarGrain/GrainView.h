@@ -12,3 +12,5 @@ NSArray<NSString *> *DPGrainMaterialTitles(void);
 BOOL DPIsPatternGrainMaterial(NSString *material);
 CGImageRef DPPatternGrainTile(NSString *material, BOOL soft);
 CGFloat DPPatternGrainStrength(NSString *material);
+
+NSRect DPGrainHostBounds(NSView *host);

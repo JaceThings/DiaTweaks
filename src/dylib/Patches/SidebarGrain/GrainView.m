@@ -22,7 +22,7 @@
 - (NSView *)hitTest:(NSPoint)point { return nil; }
 
 - (void)setFrame:(NSRect)frame {
-    [super setFrame:self.superview ? self.superview.bounds : frame];
+    [super setFrame:self.superview ? DPGrainHostBounds(self.superview) : frame];
 }
 
 - (void)viewDidMoveToWindow {
