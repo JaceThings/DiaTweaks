@@ -3,7 +3,7 @@
 // Like Zen, the strip, the toolbar and the space around the page share one color a shade darker than the page, and the
 // page sits in it as a card with rounded corners.
 static const CGFloat DPPageRadius = 10;
-static char DPChromeKey, DPRoundedKey, DPBarAppearanceKey;
+static char DPChromeKey, DPRoundedKey, DPBarAppearanceKey, DPFieldColorKey, DPOurFieldColorKey;
 static BOOL DPSettingAppearance;
 
 // A shade darker than a plain page in the window's appearance. Not Dia's toolbar color, which takes each site's color:
@@ -16,6 +16,18 @@ CGColorRef DPChromeColor(NSWindow *window, NSAppearance *appearance) {
         chrome = [page blendedColorWithFraction:dark ? 0.2 : 0.05 ofColor:NSColor.blackColor].CGColor;
     }];
     return chrome;
+}
+
+// The address field on the chrome: the page's color, a touch lighter in dark, so it reads as part of the page.
+static CGColorRef DPFieldColor(NSAppearance *appearance, CGFloat alpha) {
+    __block CGColorRef field = NULL;
+    [appearance performAsCurrentDrawingAppearance:^{
+        BOOL dark = [appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]] == NSAppearanceNameDarkAqua;
+        NSColor *page = [NSColor.textBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        if (dark) page = [page blendedColorWithFraction:0.08 ofColor:NSColor.whiteColor];
+        field = [page colorWithAlphaComponent:alpha].CGColor;
+    }];
+    return field;
 }
 
 static CGFloat DPPageTop(NSWindow *window) {
@@ -49,6 +61,26 @@ static void DPMatchBarAppearance(NSView *bar) {
     DPSettingAppearance = NO;
 }
 
+// Dia fills the address field with a shade of each site's color too. On the chrome it takes the field color instead,
+// at Dia's opacity, which it fades as the pointer comes and goes; Dia's comes back without the strip.
+static void DPMatchField(NSView *field) {
+    NSView *capsule = nil;
+    for (NSView *sub in field.subviews) if (DPIsKind(sub, DPDiaFlippedView)) capsule = sub;
+    CALayer *layer = capsule.layer;
+    if (!layer) return;
+    CGColorRef now = layer.backgroundColor, ours = (__bridge CGColorRef)DPGet(capsule, &DPOurFieldColorKey);
+    if (now && !(ours && CGColorEqualToColor(now, ours))) DPSet(capsule, &DPFieldColorKey, (__bridge id)now);
+    CGColorRef dia = (__bridge CGColorRef)DPGet(capsule, &DPFieldColorKey);
+    CGColorRef want = !DPStripPresent(field.window) ? dia : dia ? DPFieldColor(field.effectiveAppearance, CGColorGetAlpha(dia)) : NULL;
+    DPSet(capsule, &DPOurFieldColorKey, want && want != dia ? (__bridge id)want : nil);
+    if (want && !(now && CGColorEqualToColor(now, want))) DPNow(^{ layer.backgroundColor = want; });
+}
+
+static void DPField_updateLayer(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPField_updateLayer, self);
+    DPMatchField(self);
+}
+
 void DPApplyChrome(NSView *pane) {
     NSView *bar = DPSubview(pane, DPDiaToolbar), *page = DPSubview(pane, DPDiaPage);
     BOOL on = DPStripPresent(pane.window) && bar;
@@ -77,6 +109,8 @@ void DPApplyChrome(NSView *pane) {
         page.layer.masksToBounds = on;
     }
     if (bar) DPMatchBarAppearance(bar);
+    NSView *field = bar ? DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaAddressField); }) : nil;
+    if (field) DPMatchField(field);
     if (!on) return;
     if (!NSEqualRects(chrome.frame, pane.frame)) chrome.frame = pane.frame;
     chrome.layer.backgroundColor = DPChromeColor(pane.window, pane.effectiveAppearance);
@@ -97,4 +131,5 @@ static void DPPane_layout(NSView *self, SEL _cmd) {
 void DPInstallCompactChrome(void) {
     DPHook(DPDiaContentPane, @selector(layout), (IMP)DPPane_layout);
     DPHook(DPDiaToolbar, @selector(setAppearance:), (IMP)DPBar_setAppearance);
+    DPHook(DPDiaAddressField, @selector(updateLayer), (IMP)DPField_updateLayer);
 }
