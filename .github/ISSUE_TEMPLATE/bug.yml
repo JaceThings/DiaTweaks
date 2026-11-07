@@ -1,6 +1,6 @@
 name: Bug
 description: Something a patch broke or doesn't do right.
-labels: [bug]
+labels: ["🐛 Bug"]
 body:
   - type: checkboxes
     id: searched
