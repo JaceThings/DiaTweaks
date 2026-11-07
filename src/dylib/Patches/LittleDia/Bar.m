@@ -289,8 +289,10 @@ static void DPPlaceBar(DPLittleBar *bar) {
     CGFloat hairline = 1 / MAX(1, row.window.backingScaleFactor);
     if (bar.divider.superview != row) [row addSubview:bar.divider];
     bar.divider.frame = NSMakeRect(0, row.isFlipped ? NSHeight(row.bounds) - hairline : 0, NSWidth(row.bounds), hairline);
+    // Dia's Downloads button would sit under Open in Dia. Newer Dia puts it in a stack it shows and hides it in itself, so
+    // the row's view holding it is what's hidden.
     for (NSView *view in row.subviews)
-        if (DPHasLabel(view, @"Downloads") && !view.hidden) {
+        if (!view.hidden && DPFindView(view, ^BOOL(NSView *each) { return DPHasLabel(each, @"Downloads"); })) {
             view.hidden = YES;
             DPSet(view, &DPHiddenByUsKey, @YES);
         }
