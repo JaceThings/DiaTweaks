@@ -75,3 +75,5 @@
 #define DPDiaTabListSeparator   "_TtC7TabList20TabListSeparatorView"
 #define DPDiaTabListCollection  "_TtCC7TabList11TabListView14CollectionView"
 #define DPDiaTabListLayout      "_TtC7TabList27TabListCollectionViewLayout"
+#define DPDiaHoverableButton    "_TtC5ARCUI15HoverableButton"
+#define DPDiaWindowController   "_TtC6Window24PlatformWindowController"
