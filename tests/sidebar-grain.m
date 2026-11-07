@@ -2,11 +2,9 @@
 #import <objc/message.h>
 
 DPPatch DPSidebarGrain;
-NSHashTable<NSView *> *DPGrainSidebars;
 NSString *DPTestTexture = @"grain";
 NSString *DPChoice(DPPatch *patch) { return DPTestTexture; }
 void DPSetChoice(DPPatch *patch, NSString *choice) { DPTestTexture = choice; }
-void DPRefreshSidebarGrain(void) {}
 
 static NSString *DPTestDomain(void) {
     return [NSString stringWithFormat:@"com.diapatches.grain-test.%d", getpid()];
@@ -27,6 +25,7 @@ int main(void) { @autoreleasepool {
         class_getInstanceMethod(NSUserDefaults.class, @selector(dp_grainTestSuite:)));
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     [defaults removePersistentDomainForName:DPTestDomain()];
+    DPTestTextureHosts();
     assert(DPGrainAmount() == 100 && DPGrainSoftness() == 0);
     NSUInteger renders = 0;
     for (NSString *name in @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]) {

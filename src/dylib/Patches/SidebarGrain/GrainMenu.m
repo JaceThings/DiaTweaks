@@ -2,7 +2,7 @@
 
 @interface DPGrainMenu : NSObject
 @property (weak) NSView *sidebar;
-@property CGFloat anchorY;
+@property NSPoint anchor;
 - (void)editGrain:(NSMenuItem *)item;
 @end
 
@@ -26,16 +26,19 @@
     ]];
     popover.contentViewController = controller;
     popover.contentSize = controller.view.frame.size;
-    [popover showRelativeToRect:NSMakeRect(NSMaxX(sidebar.bounds) - 1, self.anchorY, 1, 1)
-                         ofView:sidebar preferredEdge:NSRectEdgeMaxX];
+    BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
+    NSRect anchor = horizontal ? NSMakeRect(self.anchor.x, self.anchor.y, 1, 1) :
+        NSMakeRect(NSMaxX(sidebar.bounds) - 1, self.anchor.y, 1, 1);
+    NSRectEdge edge = horizontal ? (sidebar.isFlipped ? NSRectEdgeMaxY : NSRectEdgeMinY) : NSRectEdgeMaxX;
+    [popover showRelativeToRect:anchor ofView:sidebar preferredEdge:edge];
 }
 @end
 
 NSEvent *DPGrainRightClick(NSEvent *event) {
     if (!DPSidebarGrain.on || !event.window) return event;
-    for (NSView *sidebar in DPGrainSidebars) {
+    for (NSView *sidebar in DPGrainHosts) {
         if (sidebar.window != event.window || sidebar.hiddenOrHasHiddenAncestor ||
-            !DPSubview(sidebar, DPDiaSidebarFooter)) continue;
+            !DPGrainHostAvailable(sidebar)) continue;
         NSPoint point = [sidebar convertPoint:event.locationInWindow fromView:nil];
         if (!NSPointInRect(point, sidebar.bounds)) continue;
         NSView *hit = [sidebar hitTest:[sidebar convertPoint:point toView:sidebar.superview]];
@@ -46,13 +49,23 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
                 break;
             }
         }
-        if (!collection && hit != sidebar) return event;
+        BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
+        if (horizontal && ([hit isKindOfClass:NSControl.class] ||
+            [hit.accessibilityRole isEqual:NSAccessibilityButtonRole] ||
+            [hit.accessibilityRole isEqual:NSAccessibilityRadioButtonRole])) return event;
+        if (!collection && hit != sidebar && (!horizontal || !hit ||
+            NSHeight([sidebar convertRect:hit.bounds fromView:hit]) < NSHeight(sidebar.bounds) - 0.5)) return event;
         if ([collection indexPathForItemAtPoint:[collection convertPoint:event.locationInWindow fromView:nil]]) return event;
-        NSMenu *menu = [collection menuForEvent:event] ?: [sidebar menuForEvent:event] ?: [NSMenu new];
+        NSMenu *menu = nil;
+        if (horizontal) {
+            for (NSView *view = hit; view && view != sidebar.superview && !menu; view = view.superview)
+                menu = [view menuForEvent:event];
+            if (!menu || [menu indexOfItemWithTitle:@"Show Tabs in Sidebar"] < 0) return event;
+        } else menu = [collection menuForEvent:event] ?: [sidebar menuForEvent:event] ?: [NSMenu new];
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"Edit Sidebar Grain…" action:@selector(editGrain:) keyEquivalent:@""];
         DPGrainMenu *target = [DPGrainMenu new];
         target.sidebar = sidebar;
-        target.anchorY = point.y;
+        target.anchor = point;
         item.target = target;
         NSInteger index = [menu indexOfItemWithTitle:@"Auto-Hide Tabs"];
         if (index >= 0) {

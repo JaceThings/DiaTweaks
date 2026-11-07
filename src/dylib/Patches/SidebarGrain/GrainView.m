@@ -21,6 +21,10 @@
 
 - (NSView *)hitTest:(NSPoint)point { return nil; }
 
+- (void)setFrame:(NSRect)frame {
+    [super setFrame:self.superview ? self.superview.bounds : frame];
+}
+
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;

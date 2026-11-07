@@ -1,7 +1,7 @@
 #import "GrainView.h"
 
 extern DPPatch DPSidebarGrain;
-extern NSHashTable<NSView *> *DPGrainSidebars;
+extern NSHashTable<NSView *> *DPGrainHosts;
 
 NSInteger DPGrainAmount(void);
 NSInteger DPGrainSoftness(void);
@@ -11,3 +11,7 @@ NSArray<NSView *> *DPGrainRowsForWindow(NSWindow *window);
 NSEvent *DPGrainRightClick(NSEvent *event);
 
 void DPRefreshGrainRows(void);
+
+BOOL DPGrainHostAvailable(NSView *host);
+void DPTrackGrainHost(NSView *host);
+NSString *DPVerifyGrainHosts(DPPatch *patch);

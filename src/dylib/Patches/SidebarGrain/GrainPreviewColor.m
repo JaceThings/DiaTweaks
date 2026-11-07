@@ -4,9 +4,9 @@ NSColor *DPGrainPreviewColor(NSWindow *window, NSAppearance *appearance) {
     NSView *sidebar = nil;
     NSArray<NSWindow *> *windows = window ? @[window] : NSApp.orderedWindows;
     for (NSWindow *candidate in windows) {
-        for (NSView *view in DPGrainSidebars) {
+        for (NSView *view in DPGrainHosts) {
             if (view.window == candidate && !view.hiddenOrHasHiddenAncestor &&
-                DPSubview(view, DPDiaSidebarFooter)) {
+                DPGrainHostAvailable(view)) {
                 sidebar = view;
                 break;
             }
