@@ -55,7 +55,7 @@ Tweak names work as keys or titles, like `hideToolbar` or `"Hide Toolbar"`, and 
 
 ## Updating
 
-Dia's own updater is switched off. **Settings → Patches → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. Under **Automatic Updates**, pick for each of Dia and DiaTweaks: off, just show updates, download them, or download and install them when you quit (the default).
+Dia's own updater is switched off. **Settings → Home → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. Under **Automatic Updates**, pick for each of Dia and DiaTweaks: off, just show updates, download them, or download and install them when you quit (the default).
 
 - **Dia now:** `diatweaks update-dia`
 - **DiaTweaks now:** `diatweaks update`
@@ -117,7 +117,7 @@ If Dia crashes twice in a row right after opening, it opens next time with the t
 
 ## Uninstall
 
-In Dia, open **Settings → Patches** and click **Restore…**. Dia reopens as the original app with its own updates.
+In Dia, open **Settings → Home** and click **Restore…**. Dia reopens as the original app with its own updates.
 
 To also delete DiaTweaks' files and the `diatweaks` command, run `diatweaks restore --purge` instead.
 
