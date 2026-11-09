@@ -52,7 +52,7 @@ static void DPInstallAppIcon(void) {
     DPHook("NSWorkspace", @selector(setIcon:forFile:options:), (IMP)DPWorkspace_setIcon);
     DPInstallDockTile();
     // The Dock shows the icon it last cached for Dia, which a relaunch brings back, so the chosen one is drawn again.
-    DPOnLaunch(^{ if (DPAppIcon.on && DPCatalogLinked()) DPDrawOwnTile(); });
+    DPOnLaunch(^{ if ((DPAppIcon.on || DPOwnTileInDock()) && DPCatalogLinked()) DPDrawOwnTile(); });
 }
 
 static NSString *DPVerifyAppIcon(DPPatch *patch) {
