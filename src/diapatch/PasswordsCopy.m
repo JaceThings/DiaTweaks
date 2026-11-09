@@ -23,6 +23,7 @@ static NSString *const kRelayScript =
 NSString *const DPCopyFolder = @"/Applications/.DiaTweaks";
 
 static pid_t gDia;
+static NSString *gApp;
 static NSString *gSessions[DPPasswordsServiceCount];
 
 static BOOL writeExtension(NSString *folder, const DPPasswordsService *service) {
@@ -80,7 +81,8 @@ static pid_t launch(NSString *home) {
     if (pipe(toDia) || pipe(fromDia)) return 0;
     toDia[0] = highFD(toDia[0]), toDia[1] = highFD(toDia[1]), fromDia[0] = highFD(fromDia[0]), fromDia[1] = highFD(fromDia[1]);
 
-    NSString *app = [runnableCopy(home) stringByAppendingPathComponent:@"Contents/MacOS/Dia"];
+    gApp = runnableCopy(home);
+    NSString *app = [gApp stringByAppendingPathComponent:@"Contents/MacOS/Dia"];
     NSString *profile = [@"--user-data-dir=" stringByAppendingString:[data stringByAppendingPathComponent:@"ud"]];
     NSString *load = [@"--load-extension=" stringByAppendingString:[extensions componentsJoinedByString:@","]];
     const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, load.UTF8String, "--remote-debugging-pipe", "--no-startup-window", "--mute-audio", NULL };
@@ -137,7 +139,7 @@ BOOL DPCopyStart(NSString *home) {
         gSessions[i] = gDia ? attach(&DPPasswordsServices[i]) : nil;
         attached = attached && gSessions[i];
     }
-    DPForgetApp([DPCopyFolder stringByAppendingPathComponent:@"Dia.app"]);  // or links and "open Dia" go to the windowless copy
+    if (gApp) DPForgetApp(gApp);  // or links and "open Dia" go to the windowless copy
     return attached;
 }
 
