@@ -39,25 +39,29 @@ static __weak DPPaneView *DPShownPane;
     return settings;
 }
 
-// The divider takes the sidebar's spare height, so our rows sit at its bottom.
-- (void)fitDivider {
+// The divider takes the sidebar's spare height, so our rows sit at its bottom. It's sized when the table first asks for its height, and re-fitted when the clip's size or insets change.
+- (CGFloat)fittedDividerHeight {
     NSTableView *table = self.table;
     NSClipView *clip = table.enclosingScrollView.contentView;
-    NSInteger divider = table.numberOfRows - DPOurRowCount + DPDividerRow;
-    if (!clip || divider < 0) return;
+    if (!clip || table.numberOfRows < DPOurRowCount) return DPDividerMinHeight;
     if (!self.watchingHeight) {
         self.watchingHeight = YES;
-        clip.postsFrameChangedNotifications = YES;
-        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(fitDivider) name:NSViewFrameDidChangeNotification object:clip];
+        clip.postsFrameChangedNotifications = clip.postsBoundsChangedNotifications = YES;
+        for (NSNotificationName name in @[NSViewFrameDidChangeNotification, NSViewBoundsDidChangeNotification])
+            [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(fitDivider) name:name object:clip];
     }
-    CGFloat others = NSMaxY([table rectOfRow:table.numberOfRows - 1]) - NSHeight([table rectOfRow:divider]);
+    CGFloat others = (table.numberOfRows - 1) * (table.rowHeight + table.intercellSpacing.height);
     CGFloat spare = NSHeight(clip.bounds) - clip.contentInsets.top - clip.contentInsets.bottom - others - 12;
-    CGFloat height = MAX(DPDividerMinHeight, floor(spare));
-    if (height == self.dividerHeight) return;
-    self.dividerHeight = height;
+    return self.dividerHeight = MAX(DPDividerMinHeight, floor(spare));
+}
+
+- (void)fitDivider {
+    CGFloat before = self.dividerHeight;
+    if ([self fittedDividerHeight] == before) return;
+    NSInteger divider = self.table.numberOfRows - DPOurRowCount + DPDividerRow;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
-        [table noteHeightOfRowsWithIndexesChanged:[NSIndexSet indexSetWithIndex:divider]];
+        [self.table noteHeightOfRowsWithIndexesChanged:[NSIndexSet indexSetWithIndex:divider]];
     }];
 }
 
@@ -206,10 +210,7 @@ static NSView *DPSidebar_viewForRow(id self, SEL _cmd, NSTableView *table, NSTab
     DPSidebarRow ours = DPOurRow(table, row);
     if (ours == DPDiaRow) return DPCallOriginal(DPSidebar_viewForRow, self, table, column, row);
     DPSettings *settings = [DPSettings forTable:table];
-    if (ours == DPDividerRow) {
-        dispatch_async(dispatch_get_main_queue(), ^{ [settings fitDivider]; });
-        return DPDividerCell(table);
-    }
+    if (ours == DPDividerRow) return DPDividerCell(table);
     dispatch_async(dispatch_get_main_queue(), ^{ [settings preparePane:[settings paneFor:ours]]; });
     return ours == DPHomeRow ? DPLinkCell(table, @"Home", @"house") : DPLinkCell(table, @"Patches", @"wand.and.stars");
 }
@@ -228,7 +229,7 @@ static BOOL DPSidebar_shouldSelectRow(id self, SEL _cmd, NSTableView *table, NSI
 }
 
 static CGFloat DPSidebar_heightOfRow(id self, SEL _cmd, NSTableView *table, NSInteger row) {
-    return DPOurRow(table, row) == DPDividerRow ? [DPSettings forTable:table].dividerHeight : table.rowHeight;
+    return DPOurRow(table, row) == DPDividerRow ? [[DPSettings forTable:table] fittedDividerHeight] : table.rowHeight;
 }
 
 static NSToolbarItem *DPSettings_toolbarItem(id self, SEL _cmd, NSToolbar *toolbar, NSToolbarItemIdentifier identifier, BOOL willInsert) {
