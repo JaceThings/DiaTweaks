@@ -84,7 +84,7 @@ DP_PATCH(DPKeepFoldersOpen) {
     .title = @"Keep Folders Open",
     .detail = @"Stop sidebar folders collapsing on their own when they empty, so new tabs and live folder items show up.",
     .symbol = @"folder.fill",
-    .tint = @"systemGreenColor",
+    .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaTabGroupCell),
     .install = DPInstallKeepFoldersOpen,
