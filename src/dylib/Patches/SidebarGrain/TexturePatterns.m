@@ -1,4 +1,5 @@
 #import "TextureNoise.h"
+#import "GrainView.h"
 
 static float DPSandCell(NSInteger x, NSInteger y) {
     // Variable cell density avoids a visible grid in the mineral pattern.
@@ -26,14 +27,15 @@ static float DPSandCell(NSInteger x, NSInteger y) {
 
 void DPFillTexturePattern(NSString *material, uint8_t *pixels) {
     if ([material isEqual:@"grain"]) {
-        const float mean[] = {.795, .793, .798}, deviation[] = {.245, .209, .223};
         for (NSInteger y = 0; y < 200; y++) for (NSInteger x = 0; x < 200; x++) {
+            float shared = DPTextureCorrelated(x, y, 173);
             for (NSUInteger c = 0; c < 3; c++) {
-                float tone = mean[c] + deviation[c] * DPTextureCorrelated(x, y, 173 + c * 311);
-                pixels[(y*200+x)*4+c] = lroundf(fmaxf(0, fminf(1, tone)) * 66);
+                float tone = DPGrainTone + DPGrainSpread * (.8f * shared + .6f * DPTextureCorrelated(x, y, 484 + c * 311));
+                pixels[(y*200+x)*4+c] = lroundf(fmaxf(0, fminf(1, tone)) * 255);
             }
-            pixels[(y*200+x)*4+3] = 66;
+            pixels[(y*200+x)*4+3] = 255;
         }
+        DPFitGrainTone(pixels, 40000);
         return;
     }
     BOOL sand = [material isEqual:@"sand"], denim = [material isEqual:@"denim"];
@@ -54,10 +56,8 @@ void DPFillTexturePattern(NSString *material, uint8_t *pixels) {
         field[y*200+x] = value; sum += value; square += value*value;
     }
     double mean = sum/40000, deviation = sqrt(MAX(0, square/40000 - mean*mean));
-    double targetMean = sand ? .706 : denim ? .8715 : .7569;
-    double targetDeviation = sand ? .1869 : denim ? .075 : .065;
     for (NSUInteger i = 0; i < 40000; i++) {
-        double tone = targetMean + (field[i]-mean) * targetDeviation / MAX(deviation, .001);
+        double tone = DPGrainTone + (field[i]-mean) * DPGrainSpread / MAX(deviation, .001);
         uint8_t value = lround(fmax(0, fmin(1, tone)) * 255);
         pixels[i*4] = pixels[i*4+1] = pixels[i*4+2] = value;
         pixels[i*4+3] = 255;

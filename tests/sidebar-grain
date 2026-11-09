@@ -9,7 +9,7 @@ clang -fobjc-arc -O2 -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
     tests/sidebar-grain-hosts.m tests/sidebar-grain-menu.m \
     "$patch/GrainView.m" "$patch/GrainAppearance.m" "$patch/GrainMaterial.m" "$patch/TextureMaterial.m" \
     "$patch/TexturePatterns.m" "$patch/GrainSettings.m" "$patch/GrainControls.m" \
-    "$patch/GrainPreviewColor.m" "$patch/GrainHosts.m" "$patch/GrainMenu.m" \
+    "$patch/GrainHosts.m" "$patch/GrainMenu.m" \
     src/dylib/Patches/KeepWindowsActive/KeepWindowsActive.m \
     src/dylib/StdPatch/Hook.m src/dylib/StdPatch/Views.m -o "$temporary/check"
 "$temporary/check"

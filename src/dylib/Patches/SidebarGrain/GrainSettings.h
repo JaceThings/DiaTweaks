@@ -1,13 +1,11 @@
 #import "SidebarGrain.h"
 
-@interface DPGrainSettingsRow : NSStackView
-@property DPSidebarGrainView *grain;
-@property NSBox *swatch;
-@property (weak) NSWindow *previewWindow;
-@property NSTextField *amountLabel, *softnessLabel;
-@property NSSlider *amount, *softness;
-@property NSPopUpButton *material;
-- (void)sync;
-@end
+typedef struct {
+    __unsafe_unretained NSString *key, *title;
+    NSInteger min, max, fallback;
+} DPGrainSetting;
 
-void DPRegisterGrainRow(DPGrainSettingsRow *row);
+extern const DPGrainSetting DPGrainAmountSetting, DPGrainSoftnessSetting, DPGrainScaleSetting;
+
+NSUserDefaults *DPGrainDefaults(void);
+NSInteger DPGrainValue(const DPGrainSetting *setting);

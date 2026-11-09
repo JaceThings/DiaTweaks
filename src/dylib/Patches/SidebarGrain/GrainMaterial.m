@@ -15,6 +15,13 @@ static uint32_t DPGrainRandom(uint32_t *state) {
     return *state;
 }
 
+// Each channel of a speck mostly follows the others, so the colour is a tint and not a rainbow.
+static float DPGrainNormal(uint32_t *state) {
+    float value = 0;
+    for (NSUInteger sample = 0; sample < 6; sample++) value += (DPGrainRandom(state) & 65535) / 65535.0f;
+    return (value - 3) * M_SQRT2;
+}
+
 void DPBlurGrainPixels(uint8_t *pixels, NSInteger width, NSInteger height, NSUInteger passes) {
     const float weight[] = {.25, .5, .25};
     for (NSUInteger pass = 0; pass < passes; pass++) {
@@ -28,6 +35,21 @@ void DPBlurGrainPixels(uint8_t *pixels, NSInteger width, NSInteger height, NSUIn
                 pixels[(y*width+x)*4+c] = lroundf(value);
             }
     }
+}
+
+// Gives the tile the shared tone and spread, after a blur or resize has flattened them. The spread is of the
+// brightness, so independent colour noise gets a larger one per channel and looks as strong as grey noise.
+void DPFitGrainTone(uint8_t *pixels, NSUInteger count) {
+    double mean[3] = {0}, sum = 0, square = 0;
+    for (NSUInteger i = 0; i < count; i++) {
+        double brightness = 0;
+        for (NSUInteger c = 0; c < 3; c++) { mean[c] += pixels[i*4+c]; brightness += pixels[i*4+c]; }
+        sum += brightness / 3; square += brightness * brightness / 9;
+    }
+    double spread = sqrt(MAX(0, square / count - pow(sum / count, 2)));
+    double gain = spread > 0.01 ? DPGrainSpread * 255 / spread : 0;
+    for (NSUInteger i = 0; i < count; i++) for (NSUInteger c = 0; c < 3; c++)
+        pixels[i*4+c] = lround(fmax(0, fmin(255, DPGrainTone * 255 + (pixels[i*4+c] - mean[c] / count) * gain)));
 }
 
 CGImageRef DPFineGrainTile(void) {
@@ -57,15 +79,12 @@ CGImageRef DPMatteGrainTile(BOOL soft) {
         enum { size = 256 };
         float *noise = calloc(size * size * 3, sizeof(float));
         uint32_t random = 0x643a8d19;
-        for (NSUInteger i = 0; i < size * size * 3; i++) {
-            float value = 0;
-            for (NSUInteger sample = 0; sample < 6; sample++)
-                value += (DPGrainRandom(&random) & 65535) / 65535.0f;
-            noise[i] = (value - 3) * M_SQRT2;
+        for (NSUInteger i = 0; i < size * size; i++) {
+            float shared = DPGrainNormal(&random);
+            for (NSUInteger channel = 0; channel < 3; channel++) noise[i*3+channel] = .8f * shared + .6f * DPGrainNormal(&random);
         }
         NSMutableData *data = [NSMutableData dataWithLength:size * size * 4];
         uint8_t *pixels = data.mutableBytes;
-        const float mean[] = {.800, .800, .804}, deviation[] = {.250, .216, .236};
         const float weight[] = {.2, .8, .2};
         for (NSInteger y = 0; y < size; y++) for (NSInteger x = 0; x < size; x++) {
             NSUInteger pixel = y * size + x;
@@ -73,15 +92,17 @@ CGImageRef DPMatteGrainTile(BOOL soft) {
                 float value = 0;
                 for (NSInteger dy = -1; dy <= 1; dy++) for (NSInteger dx = -1; dx <= 1; dx++)
                     value += weight[dy+1] * weight[dx+1] * noise[(((y+dy+size)%size)*size+(x+dx+size)%size)*3+channel];
-                float tone = fmaxf(0, fminf(1, mean[channel] + deviation[channel] * value / .72f));
-                pixels[pixel*4+channel] = (uint8_t)lroundf(tone * 66);
+                float tone = fmaxf(0, fminf(1, DPGrainTone + DPGrainSpread * value / .72f));
+                pixels[pixel*4+channel] = (uint8_t)lroundf(tone * 255);
             }
-            pixels[pixel*4+3] = 66;
+            pixels[pixel*4+3] = 255;
         }
         free(noise);
+        DPFitGrainTone(pixels, size * size);
         image = DPGrainImage(data, size);
         NSMutableData *blurred = [data mutableCopy];
         DPBlurGrainPixels(blurred.mutableBytes, size, size, 1);
+        DPFitGrainTone(blurred.mutableBytes, size * size);
         softened = DPGrainImage(blurred, size);
     });
     return soft ? softened : image;

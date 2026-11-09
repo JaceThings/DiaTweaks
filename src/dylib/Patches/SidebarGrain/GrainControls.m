@@ -1,57 +1,84 @@
 #import "GrainSettings.h"
 
-NSArray<NSView *> *DPGrainRowsForWindow(NSWindow *window) {
-    NSPopUpButton *material = [NSPopUpButton new];
-    [material addItemsWithTitles:DPGrainMaterialTitles()];
-    material.autoenablesItems = NO;
-    material.accessibilityLabel = @"Sidebar texture";
-    NSStackView *texture = [NSStackView stackViewWithViews:@[[NSTextField labelWithString:@"Texture"], [NSView new], material]];
-    NSTextField *label = [NSTextField labelWithString:@"Grain"];
-    NSTextField *value = [NSTextField labelWithString:@""];
-    value.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
-    value.textColor = NSColor.secondaryLabelColor;
-    value.alignment = NSTextAlignmentRight;
-    NSStackView *heading = [NSStackView stackViewWithViews:@[label, [NSView new], value]];
+static const DPGrainSetting *const DPGrainSettings[] = { &DPGrainAmountSetting, &DPGrainSoftnessSetting, &DPGrainScaleSetting };
+static NSHashTable<NSView *> *DPGrainSliders;
 
-    NSBox *swatch = [NSBox new];
-    swatch.boxType = NSBoxCustom;
-    swatch.borderWidth = 0;
-    swatch.cornerRadius = 10;
-    swatch.contentViewMargins = NSZeroSize;
-    DPSidebarGrainView *grain = [[DPSidebarGrainView alloc] initWithFrame:swatch.contentView.bounds];
-    grain.layer.cornerRadius = swatch.cornerRadius;
-    [swatch.contentView addSubview:grain];
-    [swatch.heightAnchor constraintEqualToConstant:40].active = YES;
+@interface DPGrainSliderRow : NSStackView <NSTextFieldDelegate>
+@property const DPGrainSetting *setting;
+@property NSSlider *slider;
+@property NSTextField *field;
+@end
 
-    NSSlider *slider = [NSSlider sliderWithValue:0 minValue:0 maxValue:100 target:nil action:@selector(adjustGrain:)];
-    slider.continuous = YES;
-    slider.accessibilityLabel = @"Sidebar grain";
-    NSSlider *softness = [NSSlider sliderWithValue:0 minValue:0 maxValue:100 target:nil action:@selector(adjustGrain:)];
-    softness.continuous = YES;
-    softness.accessibilityLabel = @"Grain softness";
-    NSButton *reset = [NSButton buttonWithTitle:@"Reset" target:nil action:@selector(resetGrain:)];
-    NSTextField *softnessValue = [NSTextField labelWithString:@""];
-    softnessValue.font = value.font;
-    softnessValue.textColor = value.textColor;
-    NSStackView *footer = [NSStackView stackViewWithViews:@[[NSTextField labelWithString:@"Softness"], [NSView new], softnessValue]];
-    NSStackView *actions = [NSStackView stackViewWithViews:@[[NSView new], reset]];
-    DPGrainSettingsRow *row = [DPGrainSettingsRow stackViewWithViews:@[texture, heading, swatch, slider, footer, softness, actions]];
+@implementation DPGrainSliderRow
+
+- (void)sync {
+    self.slider.integerValue = self.field.integerValue = DPGrainValue(self.setting);
+}
+
+- (void)tune:(NSControl *)control {
+    NSInteger value = MAX(self.setting->min, MIN(self.setting->max, lround(control.doubleValue)));
+    [DPGrainDefaults() setInteger:value forKey:self.setting->key];
+    [self sync];
+    DPRefreshSidebarGrain();
+}
+
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+    NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
+    if (!step) return NO;
+    self.field.doubleValue = textView.string.doubleValue + step.doubleValue;
+    [self tune:self.field];
+    [textView selectAll:nil];
+    return YES;
+}
+
+@end
+
+static NSView *DPGrainSliderRowFor(const DPGrainSetting *setting) {
+    DPGrainSliderRow *row = [DPGrainSliderRow new];
+    row.setting = setting;
+    row.slider = [NSSlider sliderWithValue:0 minValue:setting->min maxValue:setting->max target:row action:@selector(tune:)];
+    [row.slider setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSNumberFormatter *whole = [NSNumberFormatter new];
+    whole.maximumFractionDigits = 0;
+    row.field = [NSTextField textFieldWithString:@""];
+    row.field.formatter = whole;
+    row.field.alignment = NSTextAlignmentRight;
+    row.field.target = row.field.delegate = row;
+    row.field.action = @selector(tune:);
+    [row.field.widthAnchor constraintEqualToConstant:44].active = YES;
+    NSStackView *controls = [NSStackView stackViewWithViews:@[ row.slider, row.field, [NSTextField labelWithString:@"%"] ]];
+    [row setViews:@[ [NSTextField labelWithString:setting->title], controls ] inGravity:NSStackViewGravityTop];
     row.orientation = NSUserInterfaceLayoutOrientationVertical;
     row.alignment = NSLayoutAttributeLeading;
-    row.spacing = 7;
-    for (NSView *view in row.arrangedSubviews)
-        [view.widthAnchor constraintEqualToAnchor:row.widthAnchor].active = YES;
-    row.material = material;
-    material.target = row;
-    material.action = @selector(changeMaterial:);
-    row.grain = grain;
-    row.swatch = swatch;
-    row.previewWindow = window;
-    row.amountLabel = value;
-    row.softnessLabel = softnessValue;
-    row.amount = slider;
-    row.softness = softness;
-    slider.target = softness.target = reset.target = row;
-    DPRegisterGrainRow(row);
-    return @[row];
+    [controls.widthAnchor constraintEqualToAnchor:row.widthAnchor].active = YES;
+    [row sync];
+    if (!DPGrainSliders) DPGrainSliders = [NSHashTable weakObjectsHashTable];
+    [DPGrainSliders addObject:row];
+    return row;
+}
+
+@interface DPGrainResetRow : NSStackView
+@end
+
+@implementation DPGrainResetRow
+- (void)reset:(NSButton *)button {
+    for (NSUInteger i = 0; i < 3; i++) [DPGrainDefaults() removeObjectForKey:DPGrainSettings[i]->key];
+    for (DPGrainSliderRow *row in DPGrainSliders) [row sync];
+    DPRefreshSidebarGrain();
+}
+@end
+
+NSArray<NSView *> *DPGrainRows(void) {
+    DPGrainResetRow *reset = [DPGrainResetRow new];
+    NSButton *button = [NSButton buttonWithTitle:@"Reset" target:reset action:@selector(reset:)];
+    button.controlSize = NSControlSizeSmall;
+    button.accessibilityLabel = @"Reset grain settings";
+    NSTextField *label = [NSTextField labelWithString:@"Reset Grain, Softness and Scale"];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    reset.distribution = NSStackViewDistributionFill;
+    [reset setViews:@[ label, button ] inGravity:NSStackViewGravityLeading];
+    NSMutableArray<NSView *> *rows = [NSMutableArray new];
+    for (NSUInteger i = 0; i < 3; i++) [rows addObject:DPGrainSliderRowFor(DPGrainSettings[i])];
+    [rows addObject:reset];
+    return rows;
 }

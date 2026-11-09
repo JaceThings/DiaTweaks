@@ -4,9 +4,14 @@
 @property (weak) NSView *sidebar;
 @property NSPoint anchor;
 - (void)editGrain:(NSMenuItem *)item;
+- (void)chooseTexture:(NSPopUpButton *)picker;
 @end
 
 @implementation DPGrainMenu
+- (void)chooseTexture:(NSPopUpButton *)picker {
+    DPSetChoice(&DPSidebarGrain, picker.selectedItem.representedObject);
+}
+
 - (void)editGrain:(NSMenuItem *)item {
     NSView *sidebar = self.sidebar;
     if (!sidebar.window) return;
@@ -14,18 +19,26 @@
     [popover close];
     popover = [NSPopover new];
     popover.behavior = NSPopoverBehaviorTransient;
+    NSPopUpButton *picker = [NSPopUpButton new];
+    picker.menu = DPGrainTextureMenu();
+    picker.controlSize = NSControlSizeSmall;
+    picker.target = self;
+    picker.action = @selector(chooseTexture:);
+    for (NSMenuItem *texture in picker.menu.itemArray) if ([texture.representedObject isEqual:DPChoice(&DPSidebarGrain)]) [picker selectItem:texture];
+    NSTextField *label = [NSTextField labelWithString:@"Texture"];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSStackView *texture = [NSStackView stackViewWithViews:@[ label, picker ]];
+    texture.distribution = NSStackViewDistributionFill;
+    NSStackView *rows = [NSStackView stackViewWithViews:[@[ texture ] arrayByAddingObjectsFromArray:DPGrainRows()]];
+    rows.orientation = NSUserInterfaceLayoutOrientationVertical;
+    rows.alignment = NSLayoutAttributeLeading;
+    rows.spacing = 12;
+    rows.edgeInsets = NSEdgeInsetsMake(14, 14, 14, 14);
+    for (NSView *row in rows.arrangedSubviews) [row.widthAnchor constraintEqualToAnchor:rows.widthAnchor constant:-28].active = YES;
+    [rows.widthAnchor constraintEqualToConstant:300].active = YES;
     NSViewController *controller = [NSViewController new];
-    NSView *row = DPGrainRowsForWindow(sidebar.window).firstObject;
-    controller.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 238)];
-    [controller.view addSubview:row];
-    row.translatesAutoresizingMaskIntoConstraints = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [row.topAnchor constraintEqualToAnchor:controller.view.topAnchor constant:14],
-        [row.leadingAnchor constraintEqualToAnchor:controller.view.leadingAnchor constant:14],
-        [row.trailingAnchor constraintEqualToAnchor:controller.view.trailingAnchor constant:-14],
-    ]];
+    controller.view = rows;
     popover.contentViewController = controller;
-    popover.contentSize = controller.view.frame.size;
     BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
     NSRect anchor = horizontal ? NSMakeRect(self.anchor.x, self.anchor.y, 1, 1) :
         NSMakeRect(NSMaxX(sidebar.bounds) - 1, self.anchor.y, 1, 1);

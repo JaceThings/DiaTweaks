@@ -5,30 +5,43 @@ BOOL DPGrainDarkAppearance(NSAppearance *appearance) {
         isEqual:NSAppearanceNameDarkAqua];
 }
 
-CGImageRef DPGrainAppearanceTile(NSString *material, BOOL soft, BOOL dark) {
-    CGImageRef image = DPIsPatternGrainMaterial(material) ? DPPatternGrainTile(material, soft) : DPMatteGrainTile(soft);
-    if (!dark || !image) return image;
+// Redraws the tile at its scaled size, so it stays crisp. A sharp tile repeats or drops whole pixels, which
+// keeps each grain square. A soft one is smooth anyway. Either gets its tone and spread back after the resize.
+static CGImageRef DPScaledGrainTile(CGImageRef image, NSInteger scale, BOOL fit, BOOL soft, BOOL dark) CF_RETURNS_RETAINED {
+    size_t width = CGImageGetWidth(image) * scale / 100, height = CGImageGetHeight(image) * scale / 100;
+    NSMutableData *data = [NSMutableData dataWithLength:width * height * 4];
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(data.mutableBytes, width, height, 8, width * 4, space,
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (!context) return NULL;
+    CGContextSetInterpolationQuality(context, soft ? kCGInterpolationHigh : kCGInterpolationNone);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+    uint8_t *pixels = data.mutableBytes;
+    if (fit && scale != 100) DPFitGrainTone(pixels, width * height);
+    // Screen lifts by the amount Multiply darkens, so the tile is inverted for dark mode.
+    if (dark) for (size_t i = 0; i < width * height; i++) for (NSUInteger c = 0; c < 3; c++) pixels[i*4+c] = 255 - pixels[i*4+c];
+    CGImageRef result = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
+    return result;
+}
+
+// Tiles are kept for the scale in use, and dropped when it changes.
+CGImageRef DPGrainAppearanceTile(NSString *material, BOOL soft, BOOL dark, NSInteger scale) {
+    BOOL fine = [material isEqual:@"fine"];
+    CGImageRef image = fine ? DPFineGrainTile() : DPIsPatternGrainMaterial(material) ? DPPatternGrainTile(material, soft) : DPMatteGrainTile(soft);
+    dark = dark && !fine;
+    if (!image || (scale == 100 && !dark)) return image;
     static NSMutableDictionary<NSString *, id> *tiles;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ tiles = [NSMutableDictionary new]; });
-    NSString *key = [NSString stringWithFormat:@"%@-%d", material, soft];
+    static NSInteger tilesScale;
+    if (!tiles || tilesScale != scale) {
+        tiles = [NSMutableDictionary new];
+        tilesScale = scale;
+    }
+    NSString *key = [NSString stringWithFormat:@"%@-%d-%d", material, soft, dark];
     if (!tiles[key]) {
-        size_t width = CGImageGetWidth(image), height = CGImageGetHeight(image);
-        NSMutableData *data = [NSMutableData dataWithLength:width * height * 4];
-        CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-        CGContextRef context = CGBitmapContextCreate(data.mutableBytes, width, height, 8, width * 4, space,
-            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-        CGColorSpaceRelease(space);
-        if (!context) return image;
-        CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
-        uint8_t *pixels = data.mutableBytes;
-        // Invert premultiplied tones so Screen lifts dark details by the same
-        // amount that Multiply darkens them in light mode, without a pale wash.
-        for (size_t i = 0; i < width * height; i++) for (NSUInteger c = 0; c < 3; c++)
-            pixels[i*4+c] = pixels[i*4+3] - MIN(pixels[i*4+3], pixels[i*4+c]);
-        CGImageRef inverted = CGBitmapContextCreateImage(context);
-        CGContextRelease(context);
-        if (inverted) tiles[key] = CFBridgingRelease(inverted);
+        CGImageRef tile = DPScaledGrainTile(image, scale, !fine, soft, dark);
+        if (tile) tiles[key] = CFBridgingRelease(tile);
     }
     return (__bridge CGImageRef)tiles[key] ?: image;
 }

@@ -19,17 +19,16 @@ static void DPInstallSidebarGrain(void) {
     DPHook(DPDiaTabStripController, @selector(viewDidLayout), (IMP)DPGrainStripDidLayout);
 }
 
-static void DPApplySidebarGrain(DPPatch *patch) { DPRefreshGrainRows(); DPRefreshSidebarGrain(); }
-
-static NSArray<NSView *> *DPGrainRows(void) { return DPGrainRowsForWindow(nil); }
+static void DPApplySidebarGrain(DPPatch *patch) { DPRefreshSidebarGrain(); }
 
 DP_PATCH(DPSidebarGrain) {
     .key = @"sidebarGrain",
     .order = 74,
     .title = @"Sidebar Grain",
-    .detail = @"Add texture behind sidebar or horizontal tabs. Adjust the grain and softness.",
+    .detail = @"Add texture behind sidebar or horizontal tabs. Adjust the grain, softness and scale.",
     .choice = @"sidebarGrainMaterial",
     .defaultChoice = @"sand",
+    .choices = DPGrainTextureMenu,
     .symbol = @"circle.dotted",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",

@@ -13,11 +13,6 @@ BOOL DPIsPatternGrainMaterial(NSString *material) {
     return [@[@"grain", @"sand", @"tweed", @"denim"] containsObject:material];
 }
 
-CGFloat DPPatternGrainStrength(NSString *material) {
-    // Calibrated linear strength keeps each pattern within its useful contrast range.
-    return [@{@"grain": @0.8, @"sand": @0.15, @"tweed": @0.4, @"denim": @0.6}[material] doubleValue];
-}
-
 static CGImageRef DPSoftenPatternTile(CGImageRef image) CF_RETURNS_RETAINED {
     NSInteger width = CGImageGetWidth(image), height = CGImageGetHeight(image);
     NSMutableData *data = [NSMutableData dataWithLength:width * height * 4];
@@ -28,6 +23,7 @@ static CGImageRef DPSoftenPatternTile(CGImageRef image) CF_RETURNS_RETAINED {
     if (!context) return NULL;
     CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
     DPBlurGrainPixels(data.mutableBytes, width, height, 4);
+    DPFitGrainTone(data.mutableBytes, width * height);
     CGImageRef result = CGBitmapContextCreateImage(context);
     CGContextRelease(context);
     return result;

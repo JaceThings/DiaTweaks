@@ -8,7 +8,7 @@
 @end
 
 @implementation DPSidebarGrainView {
-    CGFloat _grainOpacity, _softness;
+    CGFloat _grainOpacity, _softness, _scale;
     NSString *_material;
     BOOL _darkAppearance;
 }
@@ -45,7 +45,7 @@
 }
 
 - (void)refreshActivity:(NSNotification *)notification {
-    [self setGrainAmount:DPGrainAmount() softness:DPGrainSoftness()];
+    [self setGrainAmount:DPGrainAmount() softness:DPGrainSoftness() scale:DPGrainScale()];
 }
 
 - (void)viewDidChangeEffectiveAppearance {
@@ -60,22 +60,23 @@
     [self refreshActivity:nil];
 }
 
-- (void)setGrainAmount:(double)amount softness:(double)softness {
+// Fine's black and white specks go over the page rather than into it, so they take less opacity for the same contrast.
+// A sharp tile mixed with a soft one has less contrast than either, as they only partly agree, so the mix is boosted.
+- (void)setGrainAmount:(double)amount softness:(double)softness scale:(double)scale {
     NSString *material = DPChoice(&DPSidebarGrain);
     if (![DPGrainMaterialKeys() containsObject:material]) material = @"sand";
-    BOOL pattern = DPIsPatternGrainMaterial(material), matte = [material isEqual:@"matte"];
-    CGFloat normalized = MAX(0, MIN(100, amount)) / 100;
-    CGFloat opacity = pattern ? DPPatternGrainStrength(material) * normalized :
-        matte ? pow(normalized, 1.15) : (0.66 * pow(0.60, 1.35)) * pow(normalized, 1.35);
+    CGFloat soft = MAX(0, MIN(100, softness)) / 100, zoom = MAX(50, MIN(300, scale)) / 100;
+    BOOL fine = [material isEqual:@"fine"];
+    CGFloat opacity = MAX(0, MIN(100, amount)) / 100 * (fine ? 0.3 : 0.8 / sqrt(1 - 1.5 * soft * (1 - soft)));
     if (self.tracksWindowActivity && self.window && !self.window._hasActiveAppearance) opacity = 0;
-    CGFloat soft = MAX(0, MIN(100, softness)) / 100;
     BOOL dark = DPGrainDarkAppearance(self.effectiveAppearance);
-    if (_darkAppearance == dark && _grainOpacity == opacity && _softness == soft && [_material isEqual:material]) return;
+    if (_darkAppearance == dark && _grainOpacity == opacity && _softness == soft && _scale == zoom && [_material isEqual:material]) return;
     _darkAppearance = dark;
     _softness = soft;
+    _scale = zoom;
     _grainOpacity = opacity;
     _material = material;
-    self.layer.compositingFilter = [material isEqual:@"fine"] ? nil :
+    self.layer.compositingFilter = fine ? nil :
         dark ? @"screenBlendMode" : @"multiplyBlendMode";
     self.needsDisplay = YES;
 }
@@ -94,20 +95,24 @@
         CGContextClipToRect(context, self.bounds);
     }
     CGContextSetInterpolationQuality(context, kCGInterpolationLow);
-    if (![_material isEqual:@"fine"]) {
-        BOOL pattern = DPIsPatternGrainMaterial(_material);
-        CGFloat size = pattern ? 100 : 128 + 32 * _softness;
-        CGFloat strength = _grainOpacity * (pattern ? 1 - .65 * _softness : 1);
-        CGRect tile = CGRectMake(0, 0, size, size);
-        CGContextSetBlendMode(context, kCGBlendModeCopy);
-        CGContextSetAlpha(context, strength * (1 - _softness));
-        CGContextDrawTiledImage(context, tile, DPGrainAppearanceTile(_material, NO, _darkAppearance));
-        CGContextSetBlendMode(context, kCGBlendModePlusLighter);
-        CGContextSetAlpha(context, strength * _softness);
-        CGContextDrawTiledImage(context, tile, DPGrainAppearanceTile(_material, YES, _darkAppearance));
+    NSInteger percent = lround(_scale * 100);
+    if ([_material isEqual:@"fine"]) {
+        CGContextSetAlpha(context, _grainOpacity);
+        CGFloat size = (120 + 24 * _softness) * _scale;
+        CGContextDrawTiledImage(context, CGRectMake(0, 0, size, size), DPGrainAppearanceTile(_material, NO, NO, percent));
     } else {
-        CGContextSetAlpha(context, _grainOpacity * (1 - 0.45 * _softness));
-        CGContextDrawTiledImage(context, CGRectMake(0, 0, 120 + 24 * _softness, 120 + 24 * _softness), DPFineGrainTile());
+        CGFloat size = (DPIsPatternGrainMaterial(_material) ? 100 : 128 + 32 * _softness) * _scale;
+        CGRect tile = CGRectMake(0, 0, size, size);
+        if (_softness < 1) {
+            CGContextSetBlendMode(context, kCGBlendModeCopy);
+            CGContextSetAlpha(context, _grainOpacity * (1 - _softness));
+            CGContextDrawTiledImage(context, tile, DPGrainAppearanceTile(_material, NO, _darkAppearance, percent));
+        }
+        if (_softness > 0) {
+            CGContextSetBlendMode(context, kCGBlendModePlusLighter);
+            CGContextSetAlpha(context, _grainOpacity * _softness);
+            CGContextDrawTiledImage(context, tile, DPGrainAppearanceTile(_material, YES, _darkAppearance, percent));
+        }
     }
     CGContextRestoreGState(context);
 }
