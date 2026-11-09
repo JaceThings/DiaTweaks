@@ -21,6 +21,12 @@ static void DPGrainDotDidLayout(NSView *self, SEL _cmd) {
     DPRefreshSidebarGrain();
 }
 
+// At the top, the profile switched when its dot is redrawn as selected.
+static void DPGrainDotDidUpdate(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPGrainDotDidUpdate, self);
+    if ([DPSwiftValue(self, @"isSelected") boolValue]) DPRefreshSidebarGrain();
+}
+
 static void DPInstallSidebarGrain(void) {
     DPGrainHosts = [NSHashTable weakObjectsHashTable];
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskRightMouseDown handler:^NSEvent *(NSEvent *event) {
@@ -30,6 +36,7 @@ static void DPInstallSidebarGrain(void) {
     DPHook(DPDiaTabStripController, @selector(viewDidLayout), (IMP)DPGrainStripDidLayout);
     DPHook(DPDiaSpaceSwitcherItem, @selector(updateLayer), (IMP)DPGrainSwitcherItemDidUpdate);
     DPHook(DPDiaPageIndicatorDot, @selector(layout), (IMP)DPGrainDotDidLayout);
+    DPHook(DPDiaPageIndicatorDot, @selector(updateLayer), (IMP)DPGrainDotDidUpdate);
 }
 
 static void DPApplySidebarGrain(DPPatch *patch) { DPRefreshSidebarGrain(); }
