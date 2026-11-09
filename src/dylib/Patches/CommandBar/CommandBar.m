@@ -1,6 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarKeepText;
+extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarInteractive, DPCommandBarKeepText;
 static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
@@ -17,7 +17,7 @@ static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey =
 @property(copy) NSString *startURL;
 @property CGFloat collapsedHeight, collapsedWidth;
 @property CFTimeInterval sizedAt;
-@property BOOL picked, overBlank;
+@property BOOL picked, overBlank, passingThrough;
 @end
 
 @interface NSObject (DPCAFilter)
@@ -156,8 +156,16 @@ static CALayer *DPBlurLayer(void) {
     return backdrop;
 }
 
+// Layers only: wheel events go past it to the page behind, never the pointer.
+@interface DPPassThroughView : NSView
+@end
+
+@implementation DPPassThroughView
+- (NSView *)hitTest:(NSPoint)point { return nil; }
+@end
+
 static NSView *DPLayerView(NSRect frame, NSArray<CALayer *> *layers) {
-    NSView *view = [[NSView alloc] initWithFrame:frame];
+    NSView *view = [[DPPassThroughView alloc] initWithFrame:frame];
     view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     view.wantsLayer = YES;
     for (CALayer *layer in layers) {
@@ -249,13 +257,22 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 }
 
 - (NSView *)hitTest:(NSPoint)point {
+    if (self.passingThrough) return nil;  // Looking for the page under a scroll, not the bar.
     NSView *hit = [super hitTest:point];
     return !hit || (self.panel && [hit isDescendantOf:self.panel]) ? hit : self;
 }
 
 - (void)mouseDown:(NSEvent *)event { DPCancelCommandBar(self); }
 - (void)rightMouseDown:(NSEvent *)event {}
-- (void)scrollWheel:(NSEvent *)event {}
+// Taken here rather than passed to the page, so the pointer never hovers it; only the wheel reaches it.
+- (void)scrollWheel:(NSEvent *)event {
+    if (!DPCommandBarInteractive.on) return;
+    NSView *content = self.host.contentView;
+    self.passingThrough = YES;
+    NSView *under = [content hitTest:[content convertPoint:event.locationInWindow fromView:nil]];
+    self.passingThrough = NO;
+    [under scrollWheel:event];
+}
 
 @end
 
@@ -350,9 +367,15 @@ static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
 
 static id DPWatchKeys(DPCommandBarOverlay *overlay) {
     __weak DPCommandBarOverlay *weak = overlay;
-    return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
+    return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
         DPCommandBarOverlay *overlay = weak;
         if (!overlay || event.window != overlay.host) return event;
+        // The page is under the bar, so a click closes it first and then lands on the page.
+        if (event.type == NSEventTypeLeftMouseDown) {
+            NSRect bar = [overlay.panel convertRect:overlay.panel.bounds toView:nil];
+            if (DPCommandBarInteractive.on && !NSMouseInRect(event.locationInWindow, bar, NO)) DPCancelCommandBar(overlay);
+            return event;
+        }
         if (event.type == NSEventTypeLeftMouseUp || event.keyCode == 36 || event.keyCode == 76) {
             overlay.picked = overlay.picked || DPBarText(overlay).string.length > 0;
             if (overlay.openedTab) DPWatchSoon(overlay, 60);
@@ -854,9 +877,22 @@ DP_PATCH(DPCommandBarShadow) {
     .apply = DPApplyCommandBar,
 };
 
+DP_PATCH(DPCommandBarInteractive) {
+    .key = @"commandBarInteractive",
+    .defaultOn = YES,
+    .order = 91,
+    .title = @"Scroll Page Behind",
+    .detail = @"Scroll the page behind the command bar while it's open, like Arc. The pointer doesn't highlight it; clicking closes the bar and acts on the page.",
+    .symbol = @"cursorarrow.rays",
+    .tint = @"systemOrangeColor",
+    .requires = @"commandBar",
+    .section = @"Interaction",
+    .apply = DPApplyCommandBar,
+};
+
 DP_PATCH(DPCommandBarKeepText) {
     .key = @"commandBarKeepText",
-    .order = 91,
+    .order = 92,
     .title = @"Remember What You Typed",
     .detail = @"Bring back what you typed when you open the bar again after Escape, selected so you can carry on or type over it.",
     .symbol = @"text.cursor",
