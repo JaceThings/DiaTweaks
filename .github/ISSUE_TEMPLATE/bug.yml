@@ -54,6 +54,8 @@ body:
         - Open New Tabs in Command Bar
         - Blur Page Behind
         - Darken Page Behind
+        - Shadow Behind Bar
+        - Scroll Page Behind
         - Remember What You Typed
         - Hide History Suggestions
         - Hide New Tab Logo
