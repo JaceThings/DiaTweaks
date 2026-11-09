@@ -65,7 +65,7 @@ static NSMenu *DPAppIconChoices(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Icon"];
     NSString *section = @"Dia";
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:section]];
-    DPAddIcon(menu, @"Default", @"AppIcon", [NSImage imageNamed:@"AppIcon"]);
+    DPAddIcon(menu, @"Default", @"AppIcon", [NSImage imageNamed:NSBundle.mainBundle.infoDictionary[@"DiaTweaksOwnIcon"] ?: @"AppIcon"]);
     for (NSDictionary *icon in [NSArray arrayWithContentsOfFile:DPAppSupport(@"DiaPatches/app-icons/icons.plist")]) {
         if (![icon[@"section"] isEqual:section]) [menu addItem:[NSMenuItem sectionHeaderWithTitle:(section = icon[@"section"])]];
         NSString *preview = DPAppSupport([NSString stringWithFormat:@"DiaPatches/app-icons/%@.png", icon[@"name"]]);
@@ -74,7 +74,7 @@ static NSMenu *DPAppIconChoices(void) {
     return menu;
 }
 
-// diapatch uses the same default when nothing has been chosen yet.
+// "AppIcon" stands for Dia's own icon, so turning the tweak on changes nothing until a choice is made.
 DP_PATCH(DPAppIcon) {
     .key = @"appIcon",
     .order = 115,
@@ -84,7 +84,7 @@ DP_PATCH(DPAppIcon) {
     .tint = @"systemBrownColor",
     .section = @"Window",
     .choice = @"appIconChoice",
-    .defaultChoice = @"AppIconRed",
+    .defaultChoice = @"AppIcon",
     .choices = DPAppIconChoices,
     .install = DPInstallAppIcon,
     .apply = DPApplyAppIcon,
