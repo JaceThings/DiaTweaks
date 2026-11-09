@@ -50,7 +50,7 @@ static void DPInstallHideVerticalTabGlow(void) {
 
 DP_PATCH(DPHideVerticalTabGlow) {
     .key = @"hideVerticalTabGlow",
-    .order = 77,
+    .order = 75,
     .title = @"Hide Vertical Tab Glow",
     .detail = @"Remove the selected sidebar tab's glow and glass highlights, with a uniform border.",
     .symbol = @"sun.max",
