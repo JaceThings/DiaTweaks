@@ -72,6 +72,7 @@ NSArray<NSView *> *DPGrainRows(void) {
     DPGrainResetRow *reset = [DPGrainResetRow new];
     NSButton *button = [NSButton buttonWithTitle:@"Reset" target:reset action:@selector(reset:)];
     button.controlSize = NSControlSizeSmall;
+    [button setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
     button.accessibilityLabel = @"Reset grain settings";
     NSTextField *label = [NSTextField labelWithString:@"Reset Grain, Softness and Scale"];
     [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
