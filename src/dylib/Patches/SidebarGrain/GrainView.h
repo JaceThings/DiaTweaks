@@ -5,6 +5,7 @@
 - (void)setGrainAmount:(double)amount softness:(double)softness;
 @end
 
+void DPBlurGrainPixels(uint8_t *pixels, NSInteger width, NSInteger height, NSUInteger passes);
 CGImageRef DPFineGrainTile(void);
 CGImageRef DPMatteGrainTile(BOOL soft);
 NSArray<NSString *> *DPGrainMaterialKeys(void);

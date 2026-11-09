@@ -27,19 +27,7 @@ static CGImageRef DPSoftenPatternTile(CGImageRef image) CF_RETURNS_RETAINED {
     CGColorSpaceRelease(space);
     if (!context) return NULL;
     CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
-    uint8_t *output = data.mutableBytes;
-    const CGFloat weight[] = {.25, .5, .25};
-    for (NSUInteger pass = 0; pass < 4; pass++) {
-        NSData *source = [data copy];
-        const uint8_t *pixels = source.bytes;
-        for (NSInteger y = 0; y < height; y++) for (NSInteger x = 0; x < width; x++)
-            for (NSInteger c = 0; c < 4; c++) {
-                CGFloat value = 0;
-                for (NSInteger dy = -1; dy <= 1; dy++) for (NSInteger dx = -1; dx <= 1; dx++)
-                    value += weight[dy+1] * weight[dx+1] * pixels[(((y+dy+height)%height)*width+(x+dx+width)%width)*4+c];
-                output[(y*width+x)*4+c] = lround(value);
-            }
-    }
+    DPBlurGrainPixels(data.mutableBytes, width, height, 4);
     CGImageRef result = CGBitmapContextCreateImage(context);
     CGContextRelease(context);
     return result;

@@ -15,6 +15,21 @@ static uint32_t DPGrainRandom(uint32_t *state) {
     return *state;
 }
 
+void DPBlurGrainPixels(uint8_t *pixels, NSInteger width, NSInteger height, NSUInteger passes) {
+    const float weight[] = {.25, .5, .25};
+    for (NSUInteger pass = 0; pass < passes; pass++) {
+        NSData *source = [NSData dataWithBytes:pixels length:width * height * 4];
+        const uint8_t *from = source.bytes;
+        for (NSInteger y = 0; y < height; y++) for (NSInteger x = 0; x < width; x++)
+            for (NSInteger c = 0; c < 4; c++) {
+                float value = 0;
+                for (NSInteger dy = -1; dy <= 1; dy++) for (NSInteger dx = -1; dx <= 1; dx++)
+                    value += weight[dy+1] * weight[dx+1] * from[(((y+dy+height)%height)*width+(x+dx+width)%width)*4+c];
+                pixels[(y*width+x)*4+c] = lroundf(value);
+            }
+    }
+}
+
 CGImageRef DPFineGrainTile(void) {
     static CGImageRef image;
     static dispatch_once_t once;
@@ -66,15 +81,7 @@ CGImageRef DPMatteGrainTile(BOOL soft) {
         free(noise);
         image = DPGrainImage(data, size);
         NSMutableData *blurred = [data mutableCopy];
-        uint8_t *blur = blurred.mutableBytes;
-        const float smoothing[] = {.25, .5, .25};
-        for (NSInteger y = 0; y < size; y++) for (NSInteger x = 0; x < size; x++)
-            for (NSUInteger channel = 0; channel < 3; channel++) {
-                float value = 0;
-                for (NSInteger dy = -1; dy <= 1; dy++) for (NSInteger dx = -1; dx <= 1; dx++)
-                    value += smoothing[dy+1] * smoothing[dx+1] * pixels[(((y+dy+size)%size)*size+(x+dx+size)%size)*4+channel];
-                blur[(y*size+x)*4+channel] = (uint8_t)lroundf(value);
-            }
+        DPBlurGrainPixels(blurred.mutableBytes, size, size, 1);
         softened = DPGrainImage(blurred, size);
     });
     return soft ? softened : image;
