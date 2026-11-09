@@ -39,9 +39,23 @@ static void DPFindAIRows(NSTableView *table) {
         NSView *view = [table rowViewAtRow:row makeIfNecessary:YES];
         if (view && DPIsAIRowView(table, view)) [rows addIndex:row];
     }
+    BOOL changed = ![rows isEqualToIndexSet:DPGet(table, &DPAIRowsKey) ?: [NSIndexSet indexSet]];
     DPSet(table, &DPAIRowsKey, rows);
     if (rows.count) [table hideRowsAtIndexes:rows withAnimation:NSTableViewAnimationEffectNone];
     finding = NO;
+    if (!changed || !DPIsKind(table.delegate, DPDiaSuggestionsView)) return;
+    for (NSView *view = table; view; view = view.superview)
+        if (DPIsKind(view, DPDiaCommandBar)) { view.needsLayout = YES; break; }
+}
+
+CGFloat DPHiddenSuggestionsHeight(NSView *suggestions) {
+    if (!DPTurnOffAI.on) return 0;
+    NSTableView *table = (NSTableView *)DPFindView(suggestions, ^BOOL(NSView *view) { return [view isKindOfClass:NSTableView.class]; });
+    NSIndexSet *rows = DPGet(table, &DPAIRowsKey);
+    CGFloat height = 0;
+    for (NSUInteger row = rows.firstIndex; rows.count && row != NSNotFound; row = [rows indexGreaterThanIndex:row])
+        height += [(id<NSTableViewDelegate>)table.delegate tableView:table heightOfRow:row];
+    return height;
 }
 
 static void DPTable_endUpdates(NSTableView *self, SEL _cmd) {

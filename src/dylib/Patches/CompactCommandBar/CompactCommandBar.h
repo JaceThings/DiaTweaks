@@ -1,4 +1,5 @@
 #import "StdPatch/StdPatch.h"
+#import "Patches/TurnOffAI/TurnOffAI.h"
 
 extern DPPatch DPCompactCommandBar, DPCompactWithChat;
 

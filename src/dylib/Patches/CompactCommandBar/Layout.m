@@ -3,7 +3,8 @@
 static const CGFloat DPCommandBarSpacing = 14;
 static char DPCompactedKey;
 
-// Leaves as much space under the input, or the suggestions once there are some, as above the input.
+// Leaves as much space under the input, or the suggestions once there are some, as above the input, and none for the
+// suggestions Turn Off AI hides.
 NSSize DPCompactSize(NSView *container, NSSize size) {
     NSView *commandBar = DPCommandBarPart(container, DPDiaCommandBar), *toolbar = DPCompactToolbar(commandBar);
     NSView *input = DPCommandBarPart(commandBar, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(commandBar, DPDiaCommandBarSuggestions);
@@ -11,6 +12,7 @@ NSSize DPCompactSize(NSView *container, NSSize size) {
         CGFloat emptyGap = suggestions.intrinsicContentSize.height > 0 ? 0 : NSMinY(suggestions.frame) - NSMaxY(input.frame);
         size.height -= MAX(0, NSHeight(toolbar.frame) + emptyGap - NSMinY(input.frame));
     }
+    size.height -= DPHiddenSuggestionsHeight(suggestions);
     return size;
 }
 
@@ -50,7 +52,13 @@ static void DPRefit(NSView *commandBar) {
 static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPCommandBar_layout, self);
     DPRefit(self);
-    NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar);
+    NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar), *suggestions = DPCommandBarPart(self, DPDiaCommandBarSuggestions);
+    CGFloat hidden = DPHiddenSuggestionsHeight(suggestions);
+    if (hidden && toolbar && !DPCompactToolbar(self)) {
+        NSRect frame = toolbar.frame;
+        frame.origin.y = NSMaxY(suggestions.frame) - hidden;
+        toolbar.frame = frame;
+    }
     NSStackView *stack = toolbar.subviews.firstObject;
     if (![stack isKindOfClass:NSStackView.class]) return;
     BOOL compact = DPCompactToolbar(self) != nil;
@@ -59,7 +67,7 @@ static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     // Faded, not hidden: the add tabs button stretches to push Go to the trailing edge.
     for (NSView *view in stack.views)
         if (view != DPGoButton(toolbar)) view.alphaValue = !compact;
-    NSView *input = DPCommandBarPart(self, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(self, DPDiaCommandBarSuggestions);
+    NSView *input = DPCommandBarPart(self, DPDiaCommandBarInput);
     if (!compact || !input || !suggestions || !self.window) return;
     CGFloat gap = NSMinY(suggestions.frame) - NSMaxY(input.frame), rowBottom = NSMinY(suggestions.frame) + NSMinY(input.frame) - gap;
     CGFloat cut = MAX(0, NSMaxY([self convertRect:self.bounds toView:nil]) - NSHeight(self.window.frame));
