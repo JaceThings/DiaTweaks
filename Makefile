@@ -38,10 +38,11 @@ build/group-tabs: tests/group-tabs.m $(GROUP_TABS) | build
 build/mouse-back-forward: tests/mouse-back-forward.m src/dylib/Patches/MouseBackForward/MouseBackForward.m src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ tests/mouse-back-forward.m src/dylib/StdPatch/Hook.m
 
-# Checks that need no Dia: grouping, mouse navigation, and that Settings shows each tweak like its neighbours.
+# Checks that need no Dia: grouping, mouse navigation, the Sidebar Grain textures, and that Settings shows each tweak like its neighbours.
 check: build/group-tabs build/mouse-back-forward build/patches.json
 	build/group-tabs
 	build/mouse-back-forward
+	tests/sidebar-grain
 	scripts/check-patches
 
 test: build/DiaPatches.dylib
