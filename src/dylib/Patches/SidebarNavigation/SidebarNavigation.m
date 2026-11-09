@@ -44,7 +44,7 @@ DP_PATCH(DPSidebarNavigationControls) {
 DP_PATCH(DPSidebarNavigation) {
     .key = @"sidebarNavigation", .defaultOn = YES, .order = 95,
     .title = @"Move navigation buttons",
-    .detail = @"Place Back, Forward and Reload beside the window controls.",
+    .detail = @"Place Toggle Sidebar, Back, Forward and Reload beside the window controls.",
     .symbol = @"arrow.left.arrow.right", .section = @"Sidebar & Tab Bar",
     .requires = @"sidebarNavigationControls", .apply = DPApplySidebarNavigation,
 };

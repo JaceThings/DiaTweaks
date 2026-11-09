@@ -27,6 +27,7 @@ extern DPPatch DPSidebarNavigationControls, DPSidebarNavigation, DPSidebarHidePr
 @end
 DPSidebarNavigationState *DPNavigationState(NSView *header, BOOL create);
 void DPRestoreSidebarNavigation(DPSidebarNavigationState *state);
+BOOL DPPlaceSidebarToggle(DPSidebarNavigationState *state, NSView *destination, NSRect frame);
 void DPPlaceSidebarNavigation(DPSidebarNavigationState *state, NSView *header);
 void DPRefreshSidebarNavigation(NSView *header);
 void DPApplySidebarNavigation(DPPatch *patch);

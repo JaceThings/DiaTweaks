@@ -4,7 +4,7 @@ static char DPHorizontalFrameKey;
 BOOL DPHorizontalNavigationAvailable(NSView *strip) {
     if (!DPSidebarNavigationControls.on || !strip.window || strip.hiddenOrHasHiddenAncestor) return NO;
     return !DPFindView(strip.window.contentView, ^BOOL(NSView *view) {
-        return DPIsKind(view, DPDiaSidebarFooter) && !view.hiddenOrHasHiddenAncestor;
+        return DPIsKind(view, DPDiaSidebarFooter);
     });
 }
 void DPRestoreHorizontalNavigation(DPSidebarNavigationState *state) {
@@ -29,9 +29,13 @@ void DPRefreshHorizontalNavigation(NSView *strip) {
     NSRect lights = traffic && !traffic.hiddenOrHasHiddenAncestor ? [strip convertRect:traffic.bounds fromView:traffic] : NSZeroRect;
     CGFloat start = NSIsEmptyRect(lights) ? 14 : NSMaxX(lights) + 8;
     NSArray *labels = @[@[@"Go back"], @[@"Go forward"], @[@"Reload this page", @"Stop loading this page"]];
-    NSUInteger capacity = MIN(3, (NSUInteger)floor(MAX(0,NSWidth(strip.bounds)-start-128)/28));
-    if (!capacity) { DPRestoreSidebarNavigation(state); return; }
-    CGFloat shift = capacity * 28 + 8;
+    NSUInteger slots = (NSUInteger)floor(MAX(0, NSWidth(strip.bounds) - start - 128) / 28);
+    if (!slots) { DPRestoreSidebarNavigation(state); return; }
+    CGFloat y = NSIsEmptyRect(lights) ? 7 : round(NSMidY(lights)-14);
+    BOOL hasToggle = DPPlaceSidebarToggle(state, strip, NSMakeRect(start, y, 28, 28));
+    NSUInteger capacity = MIN(3, slots - hasToggle);
+    CGFloat shift = (capacity + hasToggle) * 28 + 8;
+    if (hasToggle) start += 28;
     state.shiftedViews = state.shiftedViews ?: [NSHashTable weakObjectsHashTable];
     // The native dock and the tab container share their original relative spacing.
     for (NSView *child in strip.subviews) {
@@ -44,7 +48,6 @@ void DPRefreshHorizontalNavigation(NSView *strip) {
         DPOverride(child, &DPHorizontalFrameKey, @(native), @(frame));
         [state.shiftedViews addObject:child]; child.frame = frame;
     }
-    CGFloat y = NSIsEmptyRect(lights) ? 7 : round(NSMidY(lights)-14);
     for (NSUInteger i=0; i<labels.count; i++) {
         NSString *key = labels[i][0];
         DPNavigationSlot *slot = state.toolbarControls[key];

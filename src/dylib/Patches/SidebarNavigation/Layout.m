@@ -14,7 +14,9 @@ DPSidebarNavigationState *DPNavigationState(NSView *header, BOOL create) {
 
 void DPRefreshSidebarNavigation(NSView *header) {
     DPSidebarNavigationState *state = DPNavigationState(header, NO);
-    BOOL active = DPSidebarNavigationControls.on && header.window && !header.hiddenOrHasHiddenAncestor &&
+    // Auto-hide hides the sidebar root and floating container before revealing them.
+    // Keep the header configured while it waits offscreen.
+    BOOL active = DPSidebarNavigationControls.on && header.window && !header.hidden &&
         DPSubview(header.superview, DPDiaSidebarFooter);
     if (!active) { DPRestoreSidebarNavigation(state); return; }
     NSView *toolbar = DPNavigationSourceToolbar(header.window);
@@ -83,7 +85,9 @@ void DPInstallSidebarNavigationLayout(void) {
     DPHook(DPDiaSidebarHeader, @selector(viewDidMoveToWindow), (IMP)DPNavigationHeader_attached);
     DPHook(DPDiaSidebarHeader, @selector(viewWillMoveToWindow:), (IMP)DPNavigationHeader_detaching);
     DPHook(DPDiaToolbar, @selector(layout), (IMP)DPNavigationToolbar_layout);
-    DPHookClass(objc_getClass(DPDiaFloatingSidebar), @selector(layout), (IMP)DPNavigationFloating_layout);
+    Class floating = objc_getClass(DPDiaFloatingSidebar);
+    DPHookClass(floating, @selector(layout), (IMP)DPNavigationFloating_layout);
+    DPHookClass(floating, @selector(viewDidUnhide), (IMP)DPNavigationRoot_unhidden);
     for (NSView *header in DPFindViews(DPDiaSidebarHeader)) {
         DPHookClass(header.superview.class, @selector(layout), (IMP)DPNavigationRoot_layout);
         DPHookClass(header.superview.class, @selector(viewDidUnhide), (IMP)DPNavigationRoot_unhidden);

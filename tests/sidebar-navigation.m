@@ -1,5 +1,9 @@
 #import "Patches/SidebarNavigation/SidebarNavigation.h"
 DPPatch DPSidebarNavigationControls, DPSidebarNavigation, DPSidebarHideProfile;
+static DPPatch HideSidebarButton;
+DPPatch *DPPatchNamed(NSString *key) {
+    return [key isEqualToString:@"hideSidebarButton"] ? &HideSidebarButton : NULL;
+}
 @interface NavScriptTab : NSObject
 @property NSString *URL;
 @end
@@ -94,5 +98,45 @@ int main(void) { @autoreleasepool {
     DPRefreshSidebarNavigation(header);
     NSCAssert(otherBack.superview == header && back.superview == toolbar, @"navigation must follow the active toolbar when several are visible");
     DPRestoreSidebarNavigation(DPNavigationState(header,NO));
+    NSView *toggle = [NavFixtureButton new];
+    toggle.accessibilityLabel = @"Toggle sidebar";
+    [otherToolbar addSubview:toggle];
+    [header addSubview:lights];
+    DPSidebarHideProfile.on = YES;
+    DPRefreshSidebarNavigation(header);
+    NSCAssert(toggle.superview == header && NSMinX(toggle.frame) == NSMaxX(lights.frame) + 4 &&
+        NSMaxX(toggle.frame) <= NSMinX(otherBack.frame), @"sidebar toggle leads navigation beside traffic lights");
+    NSView *floating = MakeView(DPDiaFloatingSidebar, root.frame);
+    [window.contentView addSubview:floating];
+    [root removeFromSuperview]; [floating addSubview:root];
+    for (NSUInteger cycle = 0; cycle < 3; cycle++) {
+        root.hidden = floating.hidden = YES;
+        wrapper.hidden = NO; // Dia can relayout the profile indicator while moving the sidebar.
+        DPRefreshSidebarNavigation(header);
+        NSCAssert(toggle.superview == header && wrapper.hidden && NSMinX(toggle.frame) == NSMaxX(lights.frame) + 4,
+            @"the floating sidebar keeps its controls in place while hidden");
+        NSCAssert(!DPHorizontalNavigationAvailable(strip), @"an auto-hidden sidebar still uses vertical tabs");
+        root.hidden = NO;
+        DPRefreshSidebarNavigation(header);
+        floating.hidden = NO;
+        NSCAssert(toggle.superview == header && !toggle.hiddenOrHasHiddenAncestor && wrapper.hidden,
+            @"the first visible sidebar frame already shows the toggle and hides the profile");
+    }
+    lights.hidden = YES;
+    DPRefreshSidebarNavigation(header);
+    NSCAssert(NSMinX(toggle.frame) == 6, @"hidden leading controls move the sidebar toggle left");
+    HideSidebarButton.on = YES;
+    DPRefreshSidebarNavigation(header);
+    NSCAssert(toggle.superview == otherToolbar, @"Hide Sidebar Button returns the toggle to its native owner");
+    HideSidebarButton.on = NO;
+    [footer removeFromSuperview]; DPRefreshSidebarNavigation(header);
+    DPRefreshHorizontalNavigation(strip);
+    NSCAssert(toggle.superview == strip && NSMinX(toggle.frame) == 82 && NSMinX(otherBack.frame) == 110,
+        @"horizontal navigation starts with the sidebar toggle");
+    topLights.hidden = YES; DPRefreshHorizontalNavigation(strip);
+    NSCAssert(NSMinX(toggle.frame) == 14 && NSMinX(otherBack.frame) == 42,
+        @"the horizontal toggle moves left when traffic lights are hidden");
+    DPSidebarNavigation.on = NO; DPRefreshHorizontalNavigation(strip);
+    NSCAssert(toggle.superview == otherToolbar && !DPNavigationSlotFor(toggle), @"turning navigation off restores the native toggle");
     puts("PASS: standalone navigation, master/child toggle combinations, restoration, no drift, traffic lights, downloads, horizontal placement/restoration, narrow widths, and shutdown cleanup");
 } }
