@@ -25,9 +25,13 @@ static void DPLinkCatalog(void) {
     });
 }
 
+static BOOL DPCatalogLinked(void) {
+    return [NSBundle.mainBundle.infoDictionary[@"CFBundleIconName"] isEqual:@"DiaChosenIcon"];
+}
+
 static void DPApplyAppIcon(DPPatch *patch) {
     if (patch->on != DPSavedOn(patch)) return;  // the self-test flips patches without saving
-    if (![NSBundle.mainBundle.infoDictionary[@"CFBundleIconName"] isEqual:@"DiaChosenIcon"]) {
+    if (!DPCatalogLinked()) {
         if (patch->on) DPLinkCatalog();
         return;
     }
@@ -47,6 +51,8 @@ static BOOL DPWorkspace_setIcon(NSWorkspace *self, SEL _cmd, NSImage *image, NSS
 static void DPInstallAppIcon(void) {
     DPHook("NSWorkspace", @selector(setIcon:forFile:options:), (IMP)DPWorkspace_setIcon);
     DPInstallDockTile();
+    // The Dock shows the icon it last cached for Dia, which a relaunch brings back, so the chosen one is drawn again.
+    DPOnLaunch(^{ if (DPAppIcon.on && DPCatalogLinked()) DPDrawOwnTile(); });
 }
 
 static NSString *DPVerifyAppIcon(DPPatch *patch) {
