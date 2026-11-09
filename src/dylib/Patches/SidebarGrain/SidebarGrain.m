@@ -25,7 +25,7 @@ static NSArray<NSView *> *DPGrainRows(void) { return DPGrainRowsForWindow(nil); 
 
 DP_PATCH(DPSidebarGrain) {
     .key = @"sidebarGrain",
-    .order = 77,
+    .order = 74,
     .title = @"Sidebar Grain",
     .detail = @"Add texture behind sidebar or horizontal tabs. Adjust the grain and softness.",
     .choice = @"sidebarGrainMaterial",
