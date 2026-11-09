@@ -47,5 +47,11 @@ void DPTestTextureHosts(void) {
     DPTestTextureMenu(window, strip);
     DPSidebarGrain.on = NO; DPRefreshSidebarGrain();
     assert(DPTextureCount(sidebar) == 0 && DPTextureCount(strip) == 0);
+    DPTrackGrainHost(sidebar); DPTrackGrainHost(strip); // Layouts while off leave Dia's views alone.
+    assert(DPTextureCount(sidebar) == 0 && DPTextureCount(strip) == 0);
+    DPSidebarGrain.on = YES; DPTrackGrainHost(strip);
+    assert(DPTextureCount(strip) == 1);
+    DPSidebarGrain.on = NO; DPTrackGrainHost(strip);
+    assert(DPTextureCount(strip) == 0);
     [strip removeFromSuperview]; [sidebar removeFromSuperview];
 }

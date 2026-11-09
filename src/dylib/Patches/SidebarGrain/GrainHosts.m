@@ -3,14 +3,18 @@
 NSHashTable<NSView *> *DPGrainHosts;
 static char DPGrainViewKey;
 
+// The footer sits beside the page, never in the page or the strip, so the search skips both.
+static BOOL DPHasSidebarFooter(NSView *view, NSView *strip) {
+    if (DPIsKind(view, DPDiaSidebarFooter)) return YES;
+    if (view == strip || DPIsKind(view, DPDiaContentContainer)) return NO;
+    for (NSView *sub in view.subviews) if (DPHasSidebarFooter(sub, strip)) return YES;
+    return NO;
+}
+
 BOOL DPGrainHostAvailable(NSView *host) {
     if (!host.window) return NO;
-    if (DPIsKind(host, DPDiaTabStrip)) {
-        // A hidden, auto-hiding sidebar is still a vertical layout.
-        return !DPFindView(host.window.contentView, ^BOOL(NSView *view) {
-            return DPIsKind(view, DPDiaSidebarFooter);
-        });
-    }
+    // A hidden, auto-hiding sidebar is still a vertical layout.
+    if (DPIsKind(host, DPDiaTabStrip)) return !DPHasSidebarFooter(host.window.contentView, host);
     return DPSubview(host, DPDiaSidebarFooter) != nil;
 }
 
@@ -30,32 +34,42 @@ NSRect DPGrainHostBounds(NSView *host) {
     return NSIntersectionRect(bounds, chrome);
 }
 
-static void DPUpdateGrainHost(NSView *host) {
+// Settings are read only when they may have changed: on a refresh, or when the texture first goes in.
+static void DPUpdateGrainHost(NSView *host, BOOL settings) {
     DPSidebarGrainView *grain = DPGet(host, &DPGrainViewKey);
     if (!DPSidebarGrain.on || !DPGrainHostAvailable(host)) {
+        if (!grain) return;
         [grain removeFromSuperview];
         DPSet(host, &DPGrainViewKey, nil);
         return;
     }
+    NSRect bounds = DPGrainHostBounds(host);
     if (!grain) {
-        grain = [[DPSidebarGrainView alloc] initWithFrame:DPGrainHostBounds(host)];
+        grain = [[DPSidebarGrainView alloc] initWithFrame:bounds];
         grain.tracksWindowActivity = YES;
         DPSet(host, &DPGrainViewKey, grain);
     }
-    if (grain.superview != host) [host addSubview:grain positioned:NSWindowBelow relativeTo:nil];
-    grain.frame = DPGrainHostBounds(host);
-    [grain setGrainAmount:DPGrainAmount() softness:DPGrainSoftness()];
+    if (grain.superview != host) {
+        [host addSubview:grain positioned:NSWindowBelow relativeTo:nil];
+        settings = YES;
+    }
+    if (!NSEqualRects(grain.frame, bounds)) grain.frame = bounds;
+    if (settings) [grain setGrainAmount:DPGrainAmount() softness:DPGrainSoftness()];
 }
 
+static void DPUpdateGrainHosts(BOOL settings) {
+    for (NSView *host in DPGrainHosts) DPUpdateGrainHost(host, settings);
+}
+
+// Runs on every layout. Off, it does nothing to Dia's views unless this host still holds a texture.
 void DPTrackGrainHost(NSView *host) {
     if (!DPGrainHosts) DPGrainHosts = [NSHashTable weakObjectsHashTable];
     [DPGrainHosts addObject:host];
-    DPRefreshSidebarGrain();
+    if (!DPSidebarGrain.on && !DPGet(host, &DPGrainViewKey)) return;
+    DPUpdateGrainHosts(NO);
 }
 
-void DPRefreshSidebarGrain(void) {
-    for (NSView *host in DPGrainHosts) DPUpdateGrainHost(host);
-}
+void DPRefreshSidebarGrain(void) { DPUpdateGrainHosts(YES); }
 
 NSString *DPVerifyGrainHosts(DPPatch *patch) {
     NSMutableArray<NSView *> *hosts = [NSMutableArray new];
