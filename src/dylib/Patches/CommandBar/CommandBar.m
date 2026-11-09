@@ -1,10 +1,11 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarKeepText;
+extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarKeepText;
 static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
-                *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow";
+                *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow",
+                *const DPShadowIntensityKey = @"commandBarShadowIntensity";
 
 @interface DPCommandBarOverlay : NSView
 @property(weak) NSView *page, *panel;
@@ -35,7 +36,8 @@ static NSUserDefaults *DPSettings(void) {
 }
 
 static double DPTuned(NSString *key) {
-    NSDictionary *defaults = @{ DPHeightKey : @0.3, DPDarknessKey : @0.24, DPBlurRadiusKey : @4, DPBlurWindowKey : @NO };
+    NSDictionary *defaults = @{ DPHeightKey : @0.3, DPDarknessKey : @0.24, DPBlurRadiusKey : @4, DPBlurWindowKey : @NO,
+                                DPShadowIntensityKey : @0.3 };
     return [([DPSettings() objectForKey:key] ?: defaults[key]) doubleValue];
 }
 
@@ -196,10 +198,25 @@ static NSView *DPAddShade(NSWindow *window, BOOL blur) {
     return shade;
 }
 
+static void DPUpdatePanelShadow(NSView *panel) {
+    if (!panel) return;
+    if (DPCommandBarShadow.on) {
+        // Arc-like: a soft drop shadow so the bar stands out with no dim or blur behind it.
+        NSShadow *shadow = [NSShadow new];
+        shadow.shadowColor = [NSColor colorWithWhite:0 alpha:MIN(MAX(DPTuned(DPShadowIntensityKey), 0), 0.8)];
+        shadow.shadowBlurRadius = 32;
+        shadow.shadowOffset = NSMakeSize(0, 0);
+        panel.shadow = shadow;
+    } else {
+        panel.shadow = nil;
+    }
+}
+
 static void DPShowShade(DPCommandBarOverlay *overlay) {
     [overlay.shade removeFromSuperview];
     [overlay.windowBlur removeFromSuperview];
     overlay.shade = overlay.windowBlur = nil;
+    DPUpdatePanelShadow(overlay.panel);
     NSString *returnID = DPTabID(overlay.returnTab);
     if (!returnID || [DPBlanks(overlay.host) containsObject:returnID]) return;
     overlay.windowBlur = DPAddWindowBlur(overlay.panel);
@@ -274,6 +291,7 @@ static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
     NSView *page = overlay.page, *panel = overlay.panel, *home = DPGet(panel, &DPHomeKey);
     DPSet(page, &DPOverlayKey, nil);
     DPSet(panel, &DPHomeKey, nil);
+    panel.shadow = nil;
     if (panel && home) [home addSubview:panel];
     for (NSView *view in overlay.shownShadows) view.hidden = YES;
     DPHidePage(page, NO);
@@ -658,6 +676,9 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
         if (!overlay) continue;
         if (!DPCommandBar.on) return @"the bar is still open";
+        BOOL hasShadow = overlay.panel.shadow != nil;
+        if (DPCommandBarShadow.on && !hasShadow) return @"the bar has no shadow";
+        if (!DPCommandBarShadow.on && hasShadow) return @"the bar still has a shadow";
         if (overlay.superview != window.contentView) return @"the bar is outside the content view, where hovering can't highlight suggestions";
         NSString *active = DPActiveTabID(window);
         if (overlay.openedTab && active && ![active isEqual:DPTabID(overlay.openedTab)] && ![active isEqual:DPTabID(overlay.returnTab)])
@@ -758,10 +779,12 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
 // Each sits under the heading of the option it tunes.
 static NSArray<NSView *> *DPCommandBarRows(void) {
     NSView *darkness = DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"), *radius = DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
-           *sidebar = DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey);
+           *sidebar = DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey),
+           *intensity = DPSliderRow(@"Shadow Intensity", DPShadowIntensityKey, 80, 100, @"%");
     darkness.identifier = @"Darken";
     radius.identifier = sidebar.identifier = @"Blur";
-    return @[ DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"), radius, sidebar, darkness ];
+    intensity.identifier = @"Shadow";
+    return @[ DPSliderRow(@"Space Above Bar", DPHeightKey, 50, 100, @"%"), radius, sidebar, darkness, intensity ];
 }
 
 static NSMenu *DPCommandBarPositions(void) {
@@ -818,9 +841,22 @@ DP_PATCH(DPCommandBarDarken) {
     .apply = DPApplyCommandBar,
 };
 
+DP_PATCH(DPCommandBarShadow) {
+    .key = @"commandBarShadow",
+    .defaultOn = YES,
+    .order = 90,
+    .title = @"Shadow Behind Bar",
+    .detail = @"Add a shadow behind the command bar so it stands out when Blur and Darken are off, like Arc.",
+    .symbol = @"shadow rectangle.fill.on.rectangle.fill",
+    .tint = @"systemOrangeColor",
+    .requires = @"commandBar",
+    .section = @"Shadow",
+    .apply = DPApplyCommandBar,
+};
+
 DP_PATCH(DPCommandBarKeepText) {
     .key = @"commandBarKeepText",
-    .order = 90,
+    .order = 91,
     .title = @"Remember What You Typed",
     .detail = @"Bring back what you typed when you open the bar again after Escape, selected so you can carry on or type over it.",
     .symbol = @"text.cursor",
