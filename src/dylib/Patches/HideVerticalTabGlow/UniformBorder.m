@@ -1,8 +1,6 @@
 #import "HideVerticalTabGlow.h"
 
 static char DPColorsKey;
-static NSHashTable<CAGradientLayer *> *DPBorders;
-static NSMapTable<CAGradientLayer *, NSView *> *DPBorderOwners;
 
 static CAGradientLayer *DPBorderIn(NSView *shape) {
     void **slot = DPIvar(shape, "$__lazy_storage_$_gradientBorderLayer");
@@ -22,51 +20,34 @@ static NSArray *DPUniformColors(NSArray *colors) {
     return flat;
 }
 
-static void DPBorder_setColors(CAGradientLayer *self, SEL _cmd, NSArray *colors) {
-    if (DPGet(self, &DPColorsKey)) {
-        DPSet(self, &DPColorsKey, colors ?: NSNull.null);
-        if (DPHideVerticalTabGlow.on && DPIsVerticalTab([DPBorderOwners objectForKey:self])) colors = DPUniformColors(colors);
-    }
-    DPCallOriginal(DPBorder_setColors, self, colors);
+static id DPColorsOf(CAGradientLayer *border) { return border.colors ?: NSNull.null; }
+
+static void DPSetColors(CAGradientLayer *border, id colors) {
+    if (![DPColorsOf(border) isEqual:colors]) border.colors = colors == NSNull.null ? nil : colors;
 }
 
 void DPStyleUniformTabBorder(NSView *shape) {
     CAGradientLayer *border = DPBorderIn(shape);
     if (!border) return;
     if (!DPHideVerticalTabGlow.on || !DPIsVerticalTab(shape)) return DPRestoreTabBorder(shape);
-    id saved = DPGet(border, &DPColorsKey);
-    if (!saved) {
-        if (!DPBorders) {
-            DPBorders = [NSHashTable weakObjectsHashTable];
-            DPBorderOwners = [NSMapTable weakToWeakObjectsMapTable];
-        }
-        DPSet(border, &DPColorsKey, saved = border.colors ?: NSNull.null);
-        [DPBorders addObject:border];
-        DPHookClass(border.class, @selector(setColors:), (IMP)DPBorder_setColors);
-    }
-    [DPBorderOwners setObject:shape forKey:border];
-    border.colors = saved == NSNull.null ? nil : saved;
+    id dia = DPDiaValue(border, &DPColorsKey, DPColorsOf(border));
+    id ours = dia == NSNull.null ? dia : DPUniformColors(dia);
+    DPOverride(border, &DPColorsKey, dia, ours);
+    DPSetColors(border, ours);
 }
 
-static void DPRestoreBorder(CAGradientLayer *border) {
-    id saved = DPGet(border, &DPColorsKey);
-    if (!saved) return;
+void DPRestoreTabBorder(NSView *shape) {
+    CAGradientLayer *border = DPBorderIn(shape);
+    if (!DPGet(border, &DPColorsKey)) return;
+    id dia = DPDiaValue(border, &DPColorsKey, DPColorsOf(border));
     DPSet(border, &DPColorsKey, nil);
-    [DPBorders removeObject:border];
-    [DPBorderOwners removeObjectForKey:border];
-    border.colors = saved == NSNull.null ? nil : saved;
-}
-
-void DPRestoreTabBorder(NSView *shape) { DPRestoreBorder(DPBorderIn(shape)); }
-
-void DPRestoreTabBorders(void) {
-    for (CAGradientLayer *border in DPBorders.allObjects) DPRestoreBorder(border);
+    DPSetColors(border, dia);
 }
 
 NSString *DPVerifyUniformTabBorder(NSView *shape, BOOL on) {
     CAGradientLayer *border = DPBorderIn(shape);
     id saved = DPGet(border, &DPColorsKey);
-    if (on && border && !saved) return @"a tab's border isn't watched";
+    if (on && border && !saved) return @"a tab's border isn't flattened";
     if (on && border.colors.count && ![border.colors isEqual:DPUniformColors(border.colors)]) return @"a tab's border still fades";
     return !on && saved ? @"a tab border wasn't restored" : nil;
 }

@@ -3,6 +3,8 @@
 static const char *const DPDecorationIvars[] = { "$__lazy_storage_$_shadowLayer", "rimHighlightView", NULL };
 
 static void DPStyleTab(NSView *shape) {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     BOOL active = DPHideVerticalTabGlow.on && DPIsVerticalTab(shape);
     for (const char *const *name = DPDecorationIvars; *name; name++) {
         id part = DPTabDecoration(shape, *name);
@@ -11,24 +13,16 @@ static void DPStyleTab(NSView *shape) {
     }
     DPFlattenTabMaterial(shape, shape);
     DPStyleUniformTabBorder(shape);
+    [CATransaction commit];
 }
 
-static void DPTabShape_layout(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPTabShape_layout, self);
-    DPStyleTab(self);
-}
-
-static void DPTabShape_didMove(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPTabShape_didMove, self);
+static void DPTabShape_restyle(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPTabShape_restyle, self);
     DPStyleTab(self);
 }
 
 static void DPApplyHideVerticalTabGlow(DPPatch *patch) {
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    if (patch->on) for (NSView *shape in DPFindViews(DPDiaTabShape)) DPStyleTab(shape);
-    else { DPRestoreTabDecorations(); DPRestoreTabBorders(); }
-    [CATransaction commit];
+    for (NSView *shape in DPFindViews(DPDiaTabShape)) DPStyleTab(shape);
 }
 
 static NSString *DPVerifyHideVerticalTabGlow(DPPatch *patch) {
@@ -47,16 +41,16 @@ static NSString *DPVerifyHideVerticalTabGlow(DPPatch *patch) {
 }
 
 static void DPInstallHideVerticalTabGlow(void) {
-    DPInstallTabDecorations();
-    DPHook(DPDiaTabShape, @selector(layout), (IMP)DPTabShape_layout);
-    DPHook(DPDiaTabShape, @selector(viewDidMoveToSuperview), (IMP)DPTabShape_didMove);
-    DPHook(DPDiaTabShape, @selector(viewDidMoveToWindow), (IMP)DPTabShape_didMove);
+    DPHook(DPDiaTabShape, @selector(layout), (IMP)DPTabShape_restyle);
+    DPHook(DPDiaTabShape, @selector(viewDidChangeEffectiveAppearance), (IMP)DPTabShape_restyle);
+    DPHook(DPDiaTabShape, @selector(viewDidMoveToSuperview), (IMP)DPTabShape_restyle);
+    DPHook(DPDiaTabShape, @selector(viewDidMoveToWindow), (IMP)DPTabShape_restyle);
     DPInstallFlatTabMaterial();
 }
 
 DP_PATCH(DPHideVerticalTabGlow) {
     .key = @"hideVerticalTabGlow",
-    .order = 82,
+    .order = 77,
     .title = @"Hide Vertical Tab Glow",
     .detail = @"Remove the selected sidebar tab's glow and glass highlights, with a uniform border.",
     .symbol = @"sun.max",
