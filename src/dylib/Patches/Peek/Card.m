@@ -133,11 +133,11 @@ static id DPWatchKeys(DPPeekCard *card) {
         BOOL command = mods == NSEventModifierFlagCommand, control = mods == NSEventModifierFlagControl, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
         if (DPPeekCopyURL(peek, event)) return nil;
         if (command && event.keyCode == kVK_ANSI_O) [peek close:DPPeekTab];
-        // Dia's menu would go back, forward or reload the tab behind the card.
-        else if (command && event.keyCode == kVK_ANSI_LeftBracket) DPPeekNavigate(peek.page, DPPeekBack);
-        else if (command && event.keyCode == kVK_ANSI_RightBracket) DPPeekNavigate(peek.page, DPPeekForward);
-        else if (command && event.keyCode == kVK_ANSI_R) DPPeekNavigate(peek.page, DPPeekReload);
-        else if (command && event.keyCode == kVK_ANSI_L && peek.toolbar) DPPeekEditToolbarAddress(peek);
+        // Dia's menu would go back, forward or reload the tab behind the card. Without the toolbar, the card stays stock.
+        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_LeftBracket) DPPeekNavigate(peek.page, DPPeekBack);
+        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_RightBracket) DPPeekNavigate(peek.page, DPPeekForward);
+        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_R) DPPeekNavigate(peek.page, DPPeekReload);
+        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_L) DPPeekEditToolbarAddress(peek);
         else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
         else if (!((command && event.keyCode == kVK_ANSI_S) || (control && DPIsDigitKey(event))) || ![NSApp.mainMenu performKeyEquivalent:event]) return event;
         return nil;
