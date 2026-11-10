@@ -3,6 +3,9 @@
 
 static const CGFloat DPPeekShadowRoom = 48;
 
+// A hairline of the page's own light, so a dark card reads against a dark page. On a light page it's white on white and unseen.
+static const CGFloat DPPeekEdgeAlpha = 0.12;
+
 static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(area) * 0.09, MAX(10, NSHeight(area) * 0.012)); }
 
 @implementation DPPeekCard
@@ -25,6 +28,8 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     self.dim.frame = self.bounds;
     self.card.frame = NSInsetRect(card, -DPPeekShadowRoom, -DPPeekShadowRoom);
     self.clip.frame = self.shade.frame = NSInsetRect(self.card.bounds, DPPeekShadowRoom, DPPeekShadowRoom);
+    // Fades out as the card fills the page, which has no edge to mark, so the tab it becomes doesn't lose a border all at once.
+    self.clip.layer.borderColor = [NSColor colorWithWhite:1 alpha:DPPeekEdgeAlpha * (1 - self.grown)].CGColor;
     self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card) + 4}, self.controls.frame.size};
     // Outside the sidebar slide's animation. The page redraws at its new size at once, so while the pane moves it covers
     // both the old and new card and is cropped, rather than leaving a blank strip. And the rebuilt hints would fade in.
@@ -172,6 +177,8 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
         view.layer.cornerRadius = 10;
         view.layer.cornerCurve = kCACornerCurveContinuous;
     }
+    // Drawn above the page, inside the clip, so it follows the corners and the genie's corner animation.
+    peek.clip.layer.borderWidth = 1 / (window.backingScaleFactor ?: 2);
     peek.controls = DPPeekControls(peek, @selector(control:));
     [peek.clip addSubview:host];
     [peek.card addSubview:peek.shade];
