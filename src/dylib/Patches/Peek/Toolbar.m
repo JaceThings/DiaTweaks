@@ -1,26 +1,17 @@
 #import "Patches/Peek/Peek.h"
+#import "Patches/LittleDia/LittleDia.h"
 
-// A bar across the top of the card, like Little Dia's: back, forward, reload, and the page's site and title.
+// A bar across the top of the card, built from Little Dia's own parts so the two look and behave alike: its buttons,
+// its divider and its page color, with the Peek's address and Dia's loading glow.
 const CGFloat DPPeekToolbarHeight = 38;
+static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30;  // Little Dia's.
 
 @interface DPPeekToolbar : NSView
 @property (nonatomic, weak) id page;
-@property (nonatomic, strong) NSButton *back, *forward, *reload;
-@property (nonatomic, strong) NSView *address;
-@property (nonatomic, strong) CALayer *line;
+@property (nonatomic, strong) NSView *row, *divider, *address, *glow;
+@property (nonatomic, strong) NSArray<NSButton *> *buttons;  // back, forward, reload
 @property (nonatomic, strong) NSTimer *watch;
-@property (nonatomic) BOOL loading;
 @end
-
-static NSButton *DPPeekBarButton(NSString *symbol, NSString *label, id target, SEL action) {
-    NSImage *image = [[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:label]
-                      imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium]];
-    NSButton *button = [NSButton buttonWithImage:image target:target action:action];
-    button.bordered = NO;
-    button.contentTintColor = NSColor.secondaryLabelColor;
-    button.toolTip = label;
-    return button;
-}
 
 @implementation DPPeekToolbar
 - (BOOL)wantsUpdateLayer { return YES; }
@@ -32,34 +23,40 @@ static NSButton *DPPeekBarButton(NSString *symbol, NSString *label, id target, S
     self.page = page;
     self.wantsLayer = YES;
     self.layer.masksToBounds = YES;
-    self.line = [CALayer layer];
-    [self.layer addSublayer:self.line];
-    self.back = DPPeekBarButton(@"chevron.left", @"Back", self, @selector(goBack));
-    self.forward = DPPeekBarButton(@"chevron.right", @"Forward", self, @selector(goForward));
-    self.reload = DPPeekBarButton(@"arrow.clockwise", @"Reload", self, @selector(reloadOrStop));
+    // Little Dia colors the row it sits in; this one sits on the card's own background, so the bar stays opaque.
+    self.row = [NSView new];
+    __weak DPPeekToolbar *weak = self;
+    self.buttons = @[
+        DPMakeBarButton(@"chevron.left", @"Back", nil, ^{ DPPeekNavigate(weak.page, DPPeekBack); }),
+        DPMakeBarButton(@"chevron.right", @"Forward", nil, ^{ DPPeekNavigate(weak.page, DPPeekForward); }),
+        DPMakeBarButton(@"arrow.clockwise", @"Reload", nil, ^{ DPPeekNavigate(weak.page, DPPeekReload); }),
+    ];
     self.address = DPPeekAddressFor(page);
-    for (NSView *view in @[self.back, self.forward, self.reload, self.address]) [self addSubview:view];
+    self.glow = DPPeekGlowFor(page);
+    self.divider = DPMakeDivider();
+    NSArray<NSView *> *parts = [(NSArray<NSView *> *)self.buttons arrayByAddingObjectsFromArray:@[self.address, self.glow, self.divider]];
+    for (NSView *view in parts) [self.row addSubview:view];
+    [self addSubview:self.row];
     [self refresh];
     return self;
 }
 
-- (void)updateLayer {
-    self.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
-    self.line.backgroundColor = NSColor.separatorColor.CGColor;
-}
+- (void)updateLayer { self.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor; }
 
 - (void)layout {
     [super layout];
-    CGFloat h = NSHeight(self.bounds), side = 26, x = 10, mid = DPPeekToolbarHeight / 2;
-    // Pinned to the top while the bar shrinks away as the card grows into a tab.
-    CGFloat y = h - mid - side / 2;
-    for (NSButton *button in @[self.back, self.forward, self.reload]) {
-        button.frame = NSMakeRect(x, y, side, side);
-        x += side + 4;
+    // Laid out at full height from the top, so the bar is cropped, not squeezed, as it shrinks into a tab.
+    CGFloat h = NSHeight(self.bounds), full = DPPeekToolbarHeight;
+    self.row.frame = NSMakeRect(0, h - full, NSWidth(self.bounds), full);
+    CGFloat mid = full / 2, x = DPInset;
+    for (NSButton *button in self.buttons) {
+        button.frame = NSMakeRect(x, round(mid - DPButton / 2), DPButton, DPButton);
+        x += DPButton + DPGap;
     }
-    x += 4;
-    self.address.frame = NSMakeRect(x, h - mid - 14, MAX(0, NSWidth(self.bounds) - x - 10), 28);
-    self.line.frame = CGRectMake(0, 0, NSWidth(self.bounds), 1 / MAX(1, self.window.backingScaleFactor));
+    x += DPInset - DPGap;
+    self.address.frame = NSMakeRect(x, round(mid - DPAddressHeight / 2), MAX(0, NSWidth(self.row.bounds) - x - DPInset), DPAddressHeight);
+    self.divider.frame = NSMakeRect(0, 0, NSWidth(self.row.bounds), 1 / MAX(1, self.window.backingScaleFactor));
+    self.glow.frame = NSMakeRect(0, 0, NSWidth(self.row.bounds), MIN(full, 24));
 }
 
 - (void)viewDidMoveToWindow {
@@ -71,27 +68,14 @@ static NSButton *DPPeekBarButton(NSString *symbol, NSString *label, id target, S
     self.watch = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) { [weak refresh]; }];
 }
 
+// As Little Dia's bar does: the page has no change notifications that reach here.
 - (void)refresh {
     NSObject *page = self.page;
     if (!page) return;
-    self.back.enabled = [[page valueForKey:@"canGoBack"] boolValue];
-    self.forward.enabled = [[page valueForKey:@"canGoForward"] boolValue];
-    BOOL loading = [[page valueForKey:@"isLoading"] boolValue];
-    if (loading != self.loading) {
-        self.loading = loading;
-        NSString *label = loading ? @"Stop" : @"Reload";
-        self.reload.image = [[NSImage imageWithSystemSymbolName:loading ? @"xmark" : @"arrow.clockwise" accessibilityDescription:label]
-                             imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium]];
-        self.reload.toolTip = label;
-    }
+    self.buttons[0].enabled = [[page valueForKey:@"canGoBack"] boolValue];
+    self.buttons[1].enabled = [[page valueForKey:@"canGoForward"] boolValue];
     DPPeekRefreshAddress(self.address);
-}
-
-- (void)goBack { DPPeekNavigate(self.page, DPPeekBack); }
-- (void)goForward { DPPeekNavigate(self.page, DPPeekForward); }
-- (void)reloadOrStop {
-    DPPeekNavigate(self.page, self.loading ? DPPeekStop : DPPeekReload);
-    [self refresh];
+    DPMatchPage(self.row, page);
 }
 @end
 

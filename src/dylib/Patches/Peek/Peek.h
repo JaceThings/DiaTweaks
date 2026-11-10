@@ -52,6 +52,7 @@ void DPPeekPlaceToolbar(DPPeekCard *peek);
 void DPPeekNavigate(id page, DPPeekStep step);
 NSView *DPPeekToolbarAddress(NSView *toolbar);
 NSView *DPPeekAddressFor(id page);
+NSView *DPPeekGlowFor(id page);
 void DPPeekRefreshAddress(NSView *address);
 void DPPeekEditAddress(NSView *address);
 BOOL DPPeekEditingAddress(NSView *address);
