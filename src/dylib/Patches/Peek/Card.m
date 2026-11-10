@@ -115,17 +115,22 @@ static NSView *DPLayerView(void) {
     return view;
 }
 
-// A focused peek page swallows ⌘S, which Dia's tabs pass on to the menu.
+static BOOL DPIsDigitKey(NSEvent *event) {
+    NSString *key = event.charactersIgnoringModifiers;
+    return key.length == 1 && [key characterAtIndex:0] >= '1' && [key characterAtIndex:0] <= '9';
+}
+
+// A focused peek page swallows ⌘S and ⌃1–9 (switch profile), which Dia's tabs pass on to the menu.
 static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         DPPeekCard *peek = weak;
         if (!peek || event.window != peek.window) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
-        BOOL command = mods == NSEventModifierFlagCommand, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
+        BOOL command = mods == NSEventModifierFlagCommand, control = mods == NSEventModifierFlagControl, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
         if (command && event.keyCode == kVK_ANSI_O) [peek close:DPPeekTab];
         else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
-        else if (!(command && event.keyCode == kVK_ANSI_S && [NSApp.mainMenu performKeyEquivalent:event])) return event;
+        else if (!((command && event.keyCode == kVK_ANSI_S) || (control && DPIsDigitKey(event))) || ![NSApp.mainMenu performKeyEquivalent:event]) return event;
         return nil;
     }];
 }
