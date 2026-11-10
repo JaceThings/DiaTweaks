@@ -56,6 +56,7 @@ check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-t
 	build/mouse-back-forward
 	build/vertical-tab-glow
 	tests/sidebar-grain
+	tests/agent-transport
 	scripts/check-patches
 
 test: build/DiaPatches.dylib
