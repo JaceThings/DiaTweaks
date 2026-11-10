@@ -77,6 +77,7 @@ static BOOL DPPeekCanReveal(DPPeekBarZone *zone) { return DPHideToolbar.on && DP
         self.pinned = pinned;
         peek.needsLayout = YES;
     }
+    if (self.hidden != (!DPPeekCanReveal(self) || peek.grown > 0)) peek.needsLayout = YES;  // Hover to reveal was switched.
     // Revealed for ⌘L stays until the typing ends, then hides unless the pointer is over it.
     BOOL editing = DPPeekEditing(self);
     if (editing && !pinned) self.revealed = YES;
