@@ -30,7 +30,7 @@ static BOOL DPCatalogLinked(void) {
 }
 
 static void DPApplyAppIcon(DPPatch *patch) {
-    if (patch->on != DPSavedOn(patch)) return;  // the self-test flips patches without saving
+    if (DPTesting) return;  // the self-test flips patches without saving, and turning one off again isn't a switch
     if (!DPCatalogLinked()) {
         if (patch->on) DPLinkCatalog();
         return;
