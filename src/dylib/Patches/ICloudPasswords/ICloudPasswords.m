@@ -38,15 +38,15 @@ static NSString *DPICloudPasswordsProblem(DPPatch *patch) {
     return DPRelayProblem() ?: DPHostProblem(DPHostManifestPath(), @"com.apple.passwordmanager");
 }
 
-// The relay's original Dia outlives this one by seconds, and Dia refuses to start while it runs. This runs before Dia checks.
+// A hand-off's original Dia outlives this one by seconds, and Dia refuses to start while it runs. This runs before Dia checks.
 static void DPStopOriginalDia(void) {
     char path[PROC_PIDPATHINFO_MAXSIZE];
-    NSArray<NSString *> *originals = @[ DPAppSupport(@"DiaPatches/pristine/Dia.app/Contents/MacOS/Dia").stringByResolvingSymlinksInPath, @"/Applications/.DiaTweaks/Dia.app/Contents/MacOS/Dia" ];
+    NSString *pristine = DPAppSupport(@"DiaPatches/pristine/Dia.app/Contents/MacOS/Dia").stringByResolvingSymlinksInPath;
     int capacity = proc_listallpids(NULL, 0) + 64;
     pid_t pids[capacity];
     int count = proc_listallpids(pids, capacity * (int)sizeof *pids);
     for (int i = 0; i < count; i++) {
-        if (proc_pidpath(pids[i], path, sizeof path) <= 0 || ![originals containsObject:@(path)]) continue;
+        if (proc_pidpath(pids[i], path, sizeof path) <= 0 || (strcmp(path, pristine.fileSystemRepresentation) && ![@(path) hasPrefix:@"/Applications/.DiaTweaks/"])) continue;
         kill(pids[i], SIGKILL);
         for (int tries = 0; tries < 50 && kill(pids[i], 0) == 0; tries++) usleep(20000);
     }

@@ -471,6 +471,22 @@ static BOOL stageTweaks(void) {
     return ok && say(@"DiaTweaks %@ is ready to install", latest[@"tag"]);
 }
 
+static NSString *agentPlist(void) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents/com.diapatches.passwords.plist"];
+}
+
+static NSString *agentService(void) { return [NSString stringWithFormat:@"gui/%d/com.diapatches.passwords", getuid()]; }
+
+// Allow 1Password used to run a relay under this launch agent, with a copy of Dia of its own.
+// bootout returns before a busy job has exited, and the relay would keep using its copy.
+static void removeRelay(void) {
+    run(@[ @"/bin/launchctl", @"bootout", agentService() ], NULL);
+    for (int i = 0; i < 100 && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0; i++) usleep(100000);
+    removeTree(agentPlist());
+    for (NSString *name in @[ @"passwords-helper", @"passwords.sock", @"onepassword.sock" ]) removeTree(inHome(name));
+    removeTree(DPCopyFolder);
+}
+
 static BOOL applyTweaks(void) {
     // A release staged a while ago may since have been replaced, or overtaken by what's installed.
     NSString *problem;
@@ -480,6 +496,7 @@ static BOOL applyTweaks(void) {
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
     NSDictionary<NSString *, NSString *> *targets = tweaksTargets();
+    removeRelay();
     BOOL ok = makeDir(inHome(@"bin")) && unquarantine(gStagedTweaks);
     for (NSString *name in targets) ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:name], targets[name]);
     ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:@"release.plist"], inHome(@"release.plist"));
@@ -514,6 +531,7 @@ static BOOL install(BOOL relaunch) {
             && verifyOfficial(copy) && moveBundle(copy, gPristine);
         if (!adopted) return removeTree(copy), NO;
     }
+    removeRelay();
     DPForgetApp(gPristine);  // also clears a copy registered before diapatch did this
     if (!build(gPristine)) return NO;
     if (appRunning() && relaunch) {
@@ -552,47 +570,6 @@ static BOOL update(void) {
 
 #pragma mark - iCloud Passwords
 
-static NSString *agentPlist(void) {
-    return [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/LaunchAgents/%@.plist", DPPasswordsAgent]];
-}
-
-static NSString *agentService(void) { return [NSString stringWithFormat:@"gui/%d/%@", getuid(), DPPasswordsAgent]; }
-
-// bootout returns before a busy job has exited, and bootstrapping it again before then fails with an I/O error.
-static void removeAgent(void) {
-    run(@[ @"/bin/launchctl", @"bootout", agentService() ], NULL);
-    for (int i = 0; i < 100 && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0; i++) usleep(100000);
-    removeTree(agentPlist());
-}
-
-static NSDictionary *agent(void) {
-    NSMutableDictionary *environment = [NSMutableDictionary dictionary];
-    for (NSString *name in @[ @"DIAPATCH_HOME", @"DIAPATCH_APP" ]) environment[name] = env(name.UTF8String);
-    return DPPasswordsAgentPlist(gHome, inHome(@"bin/diapatch"), environment);
-}
-
-static BOOL installAgent(void) {
-    if (env("DIAPATCH_NO_AGENT")) return YES;
-    NSError *error;
-    removeAgent();
-    return makeDir(agentPlist().stringByDeletingLastPathComponent)
-        && ([agent() writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
-        && (removexattr(agentPlist().fileSystemRepresentation, "com.apple.quarantine", 0), YES)  // launchd refuses a quarantined agent
-        && check(@[ @"/bin/launchctl", @"bootstrap", [NSString stringWithFormat:@"gui/%d", getuid()], agentPlist() ]);
-}
-
-static BOOL agentCurrent(void) {
-    return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()] && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0;
-}
-
-// The diapatch that applies a self-update is the old one, so the new one's first host updates the agent.
-static void refreshAgent(void) {
-    if (agentCurrent()) return;
-    FILE *lock = fopen(inHome(@"diapatch.log").fileSystemRepresentation, "a");
-    if (lock && flock(fileno(lock), LOCK_EX | LOCK_NB) == 0 && !agentCurrent()) installAgent();
-    if (lock) fclose(lock);
-}
-
 // Another app's override of Apple's host isn't ours to remove.
 static void removePasswordsHost(void) {
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"];
@@ -625,7 +602,7 @@ static BOOL purge(void) {
 
 static BOOL uninstall(BOOL purgeFiles) {
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch uninstall`");
-    removeAgent();
+    removeRelay();
     removePasswordsHost();  // the official Dia reaches iCloud Passwords itself
     if (!removeTree(DPCopyFolder)) return NO;
     if (!claimsOfficial(gApp)) {
@@ -708,10 +685,8 @@ static const char kUsage[] =
     "  uninstall [--wait PID] [--relaunch] [--purge]\n"
     "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
-    "  passwords-relay  what launchd runs when the patched Dia's iCloud Passwords extension connects\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
-    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch),\n"
-    "  DIAPATCH_NO_AGENT (install leaves the iCloud Passwords relay's launchd job alone)\n";
+    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
@@ -727,10 +702,8 @@ int main(int argc, const char *argv[]) {
         // Started by Dia as a native messaging host.
         if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) {
             if (!DPIsPasswordsOrigin(argv[1])) return DPRunPasskeyHost(gHome);
-            refreshAgent();
             return DPRunPasswordsHost(gHome, gApp, argc, argv);
         }
-        if (argc > 1 && !strcmp(argv[1], "passwords-relay")) return DPRunPasswordsRelay(gHome, gApp);
 
         NSString *command = argc > 1 ? @(argv[1]) : @"";
         NSArray<NSString *> *allowed = @{
@@ -766,7 +739,7 @@ int main(int argc, const char *argv[]) {
             flock(fileno(gLog), LOCK_EX);
         }
         removeTree(inHome(@".trash"));  // what a run stopped mid-delete left
-        BOOL ok = [command isEqualToString:@"install"] ? install([flags containsObject:@"--relaunch"]) && installAgent()
+        BOOL ok = [command isEqualToString:@"install"] ? install([flags containsObject:@"--relaunch"])
             : [command isEqualToString:@"set-icon"]    ? switchIcon()
             : [command isEqualToString:@"build"]       ? build(gPristine) && say(@"staged patched Dia %@", versionOf(gStaged))
             : [command isEqualToString:@"update"]      ? update()
