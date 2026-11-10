@@ -352,6 +352,7 @@ check: build/diapatch build/diapatch-tests build/group-tabs build/mouse-back-for
 	build/view-reuse-layout
 	build/combinatorial-stability
 	tests/sidebar-grain
+	tests/agent-transport
 	scripts/check-patches
 
 test: build/DiaPatches.dylib
