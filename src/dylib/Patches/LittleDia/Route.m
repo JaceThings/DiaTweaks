@@ -48,6 +48,10 @@ static void DPOpenURLEvents_handle(id self, SEL _cmd, NSAppleEventDescriptor *ev
     DPOpenWhenReady(url, ^{ DPCallOriginal(DPOpenURLEvents_handle, self, event, [NSAppleEventDescriptor nullDescriptor]); }, 40);
 }
 
+void DPOpenLinkInLittleDia(NSURL *url) {
+    DPOpenInLittleDia(url, ^{ NSBeep(); });
+}
+
 void DPInstallLittleDiaRoute(void) {
     DPHook(DPDiaOpenURLEvents, @selector(handleEvent:withReplyEvent:), (IMP)DPOpenURLEvents_handle);
 }
