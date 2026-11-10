@@ -17,6 +17,7 @@ static NSString *const kSparkle = @"http://www.andymatuschak.org/xml-namespaces/
 static NSString *const kLocalIdentity = @"DiaPatches Local Signing";
 static NSString *const kReleases = @"https://api.github.com/repos/JaceThings/DiaTweaks/releases/latest";
 static NSString *const kReleaseAsset = @"DiaTweaks.zip";
+static NSString *const kCompare = @"https://api.github.com/repos/JaceThings/DiaTweaks/compare";
 static NSString *const kDiaReleaseNotes = @"https://www.diabrowser.com/release-notes/latest";
 
 static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
@@ -438,9 +439,37 @@ static NSDictionary *latestTweaks(int seconds, NSString **problem) {
               @"releaseNotes" : release[@"html_url"] ?: @"", @"url" : asset[@"browser_download_url"] };
 }
 
-static BOOL tweaksAvailable(NSDictionary *latest) {
+// The commit this build came from; make records it. A release install is told apart by its release.plist.
+static NSString *sourceCommit(void) {
+#ifdef DIATWEAKS_COMMIT
+    NSString *commit = env("DIAPATCH_COMMIT") ?: @DIATWEAKS_COMMIT;
+#else
+    NSString *commit = env("DIAPATCH_COMMIT");
+#endif
+    NSPredicate *hex = [NSPredicate predicateWithFormat:@"SELF MATCHES %@", @"[0-9a-f]{7,40}"];
+    return !installedRelease()[@"tag"] && [hex evaluateWithObject:commit] ? commit : nil;
+}
+
+// Whether a source build is at or past the release's tag, so the release would only take it back. GitHub's compare
+// says "ahead" or "identical" for that. A commit it doesn't know (unpushed work), or no network, leaves the release on offer.
+static NSString *sourceNotOlder(NSDictionary *latest) {
+    NSString *commit = sourceCommit();
+    if (!commit || ![latest[@"tag"] isKindOfClass:NSString.class]) return nil;
+    NSString *base = env("DIAPATCH_COMPARE") ?: kCompare, *output;
+    NSString *tag = [latest[@"tag"] stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
+    // per_page keeps the answer small: it would otherwise list every commit and file between the two.
+    NSString *url = [NSString stringWithFormat:@"%@/%@...%@%@", base, tag, commit, [base hasPrefix:@"https:"] ? @"?per_page=1" : @""];
+    if (fetch(url, 10, nil, &output) != 0) return nil;
+    NSDictionary *compared = [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
+    NSString *status = [compared isKindOfClass:NSDictionary.class] ? compared[@"status"] : nil;
+    return [@[ @"ahead", @"identical" ] containsObject:status] ? [commit substringToIndex:7] : nil;
+}
+
+static BOOL tweaksDiffer(NSDictionary *latest) {
     return latest && ![installedRelease()[@"digest"] isEqual:latest[@"digest"]] && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
 }
+
+static BOOL tweaksAvailable(NSDictionary *latest) { return tweaksDiffer(latest) && !sourceNotOlder(latest); }
 
 // Dia quarantines what it and its children write, so Gatekeeper refuses the unnotarized diapatch a Dia-started run installs.
 static BOOL unquarantine(NSString *path) { return check(@[ @"/usr/bin/xattr", @"-dr", @"com.apple.quarantine", path ]); }
@@ -450,7 +479,9 @@ static BOOL stageTweaks(void) {
     NSDictionary *latest = latestTweaks(30, &problem);
     if (!latest) return fail(@"%@", problem);
     if ([stagedRelease()[@"digest"] isEqual:latest[@"digest"]]) return say(@"DiaTweaks %@ is ready to install", latest[@"tag"]);
-    if (!tweaksAvailable(latest)) return say(@"DiaTweaks %@ is up to date", latest[@"tag"]);
+    if (!tweaksDiffer(latest)) return say(@"DiaTweaks %@ is up to date", latest[@"tag"]);
+    NSString *source = sourceNotOlder(latest);
+    if (source) return say(@"DiaTweaks %@ is older than the source build %@ installed, so it isn't offered", latest[@"tag"], source);
 
     NSString *work = [gCache stringByAppendingPathComponent:@"release"], *zip = [work stringByAppendingPathComponent:kReleaseAsset];
     NSString *building = [gStagedTweaks stringByAppendingString:@".building"];
@@ -463,7 +494,7 @@ static BOOL stageTweaks(void) {
     BOOL ok = ([sha256(zip) isEqual:latest[@"digest"]] || fail(@"the DiaTweaks %@ download doesn't match its digest", latest[@"tag"]))
         && removeTree(building) && makeDir(building) && check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, building ]) && unquarantine(building);
     for (NSString *name in tweaksTargets())
-        ok = ok && (exists([building stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@", latest[@"tag"], name));
+        ok = ok && (exists([building stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@, so it can't replace this install", latest[@"tag"], name));
     ok = ok && [@{ @"digest" : latest[@"digest"], @"tag" : latest[@"tag"] } writeToFile:[building stringByAppendingPathComponent:@"release.plist"] atomically:YES]
         && removeTree(gStagedTweaks) && moveBundle(building, gStagedTweaks);
     removeTree(work);
@@ -686,7 +717,7 @@ static const char kUsage[] =
     "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
-    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n";
+    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIAPATCH_COMMIT (the source commit installed), DIAPATCH_COMPARE, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
