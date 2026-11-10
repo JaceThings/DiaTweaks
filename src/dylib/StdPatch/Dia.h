@@ -1,5 +1,6 @@
 // DPHook logs what it can't find: `log stream --predicate 'process == "Dia"'` shows which class Dia renamed.
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
+#define DPDiaToolbarController  "_TtC13NavigationBar27NavigationBarViewController"  // Owns the Site menu.
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
 #define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"
