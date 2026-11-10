@@ -353,6 +353,7 @@ check: build/diapatch build/diapatch-tests build/group-tabs build/mouse-back-for
 	build/combinatorial-stability
 	tests/sidebar-grain
 	tests/agent-transport
+	tests/chat-models
 	scripts/check-patches
 
 test: build/DiaPatches.dylib
