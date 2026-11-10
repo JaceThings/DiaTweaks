@@ -11,6 +11,7 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
 @property (nonatomic, strong) NSView *row, *divider, *address, *glow;
 @property (nonatomic, strong) NSArray<NSButton *> *buttons;  // back, forward, reload
 @property (nonatomic, strong) NSTimer *watch;
+@property (nonatomic, strong) id clicks;
 @end
 
 @implementation DPPeekToolbar
@@ -42,6 +43,7 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
 }
 
 - (void)updateLayer { self.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor; }
+- (void)resetCursorRects { [self addCursorRect:self.bounds cursor:NSCursor.arrowCursor]; }  // Not Dia's text cursor from under the card.
 
 - (void)layout {
     [super layout];
@@ -63,9 +65,32 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
     [super viewDidMoveToWindow];
     [self.watch invalidate];
     self.watch = nil;
+    if (self.clicks) [NSEvent removeMonitor:self.clicks];
+    self.clicks = nil;
     if (!self.window) return;
     __weak DPPeekToolbar *weak = self;
     self.watch = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) { [weak refresh]; }];
+    // Dia's own toolbar lies under the top of the card and takes clicks there by where they land, whatever is on top,
+    // opening the address of the tab behind. A click on this bar goes straight to this bar.
+    self.clicks = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *event) {
+        DPPeekToolbar *bar = weak;
+        NSView *clip = bar.superview;
+        if (!bar || event.window != bar.window || bar.hiddenOrHasHiddenAncestor || bar.closing) return event;
+        NSPoint inClip = [clip convertPoint:event.locationInWindow fromView:nil];
+        if (!NSPointInRect(inClip, clip.bounds) || !NSPointInRect(inClip, bar.frame)) return event;
+        [[bar hitTest:inClip] ?: bar mouseDown:event];
+        return nil;
+    }];
+}
+
+- (BOOL)closing {
+    for (NSView *view = self.superview; view; view = view.superview)
+        if ([view isKindOfClass:DPPeekCard.class]) return ((DPPeekCard *)view).closing;
+    return YES;
+}
+
+- (void)dealloc {
+    if (_clicks) [NSEvent removeMonitor:_clicks];
 }
 
 // As Little Dia's bar does: the page has no change notifications that reach here.
