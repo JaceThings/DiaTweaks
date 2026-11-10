@@ -28,12 +28,15 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     self.controls.frame = (NSRect){{NSMaxX(card) + 12, NSMinY(card) + 4}, self.controls.frame.size};
     // Outside the sidebar slide's animation. The page redraws at its new size at once, so while the pane moves it covers
     // both the old and new card and is cropped, rather than leaving a blank strip. And the rebuilt hints would fade in.
-    NSSize page = self.clip.bounds.size;
+    CGFloat bar = DPPeekToolbarInset(self);
+    NSSize page = NSMakeSize(NSWidth(self.clip.bounds), MAX(0, NSHeight(self.clip.bounds) - bar));
     if (self.paneMoves) page = NSMakeSize(MAX(page.width, NSWidth(self.host.frame)), MAX(page.height, NSHeight(self.host.frame)));
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         context.allowsImplicitAnimation = NO;
-        self.host.frame = (NSRect){{0, self.clip.isFlipped ? 0 : NSHeight(self.clip.bounds) - page.height}, page};
+        BOOL flipped = self.clip.isFlipped;
+        self.host.frame = (NSRect){{0, flipped ? bar : NSHeight(self.clip.bounds) - bar - page.height}, page};
+        DPPeekPlaceToolbar(self);
         DPPeekLayoutHints(self.controls, NSWidth(self.bounds) - NSMaxX(self.controls.frame) - 8);
     }];
 }
@@ -129,6 +132,11 @@ static id DPWatchKeys(DPPeekCard *card) {
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
         BOOL command = mods == NSEventModifierFlagCommand, control = mods == NSEventModifierFlagControl, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
         if (command && event.keyCode == kVK_ANSI_O) [peek close:DPPeekTab];
+        // Dia's menu would go back, forward or reload the tab behind the card.
+        else if (command && event.keyCode == kVK_ANSI_LeftBracket) DPPeekNavigate(peek.page, DPPeekBack);
+        else if (command && event.keyCode == kVK_ANSI_RightBracket) DPPeekNavigate(peek.page, DPPeekForward);
+        else if (command && event.keyCode == kVK_ANSI_R) DPPeekNavigate(peek.page, DPPeekReload);
+        else if (command && event.keyCode == kVK_ANSI_L && peek.toolbar) DPPeekEditToolbarAddress(peek);
         else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
         else if (!((command && event.keyCode == kVK_ANSI_S) || (control && DPIsDigitKey(event))) || ![NSApp.mainMenu performKeyEquivalent:event]) return event;
         return nil;
@@ -174,6 +182,7 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     }
     peek.controls = DPPeekControls(peek, @selector(control:));
     [peek.clip addSubview:host];
+    if (DPPeekShowsToolbar()) DPPeekAddToolbar(peek);
     [peek.card addSubview:peek.shade];
     [peek.card addSubview:peek.clip];
     for (NSView *view in @[peek.dim, peek.card, peek.controls]) [peek addSubview:view];
