@@ -58,6 +58,7 @@ void DPPeekEditAddress(NSView *address);
 BOOL DPPeekEditingAddress(NSView *address);
 void DPPeekEditToolbarAddress(DPPeekCard *peek);  // ⌘L: shows the toolbar if it's hidden, and edits its address.
 NSURL *DPPeekSearchURL(id page, NSString *text);
+BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event);  // Copy URL's shortcut, for the Peek's page. YES: handled.
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
 CATransform3D DPPeekScaled(NSView *view, CGFloat scale);
 CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio);
