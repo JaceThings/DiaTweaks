@@ -25,13 +25,19 @@ NSArray<NSView *> *DPLittleDiaRows(void);
 // Route.m
 void DPInstallLittleDiaRoute(void);
 void DPOpenLinkInLittleDia(NSURL *url);  // A link from Dia's own page, in the current profile.
+void DPOpenBlankLittleDia(void);         // A blank page, with its address ready to type.
 
 // LinkMenu.m: Open Link in Little Dia, in the menu for a link in a page.
 void DPInstallLittleDiaLinkMenu(void);
 NSString *DPLittleDiaLinkMenuProblem(void);
 
+// NewWindow.m: New Little Dia Window in the File menu, there while Little Dia is on and ready.
+void DPInstallLittleDiaNewWindow(void);
+void DPRefreshLittleDiaNewWindow(void);
+NSString *DPLittleDiaNewWindowProblem(void);
+
 // Window.m: which popups are Little Dia's, their page, and their title bar.
-void DPExpectLittleDiaWindow(NSRect frame, void (^missed)(void));  // A popup in the next 3 seconds is this link's; else `missed` runs.
+void DPExpectLittleDiaWindow(NSRect frame, void (^missed)(void), void (^claimed)(NSWindow *window));  // A popup in the next 3 seconds is this link's, and `claimed` gets it; else `missed` runs.
 BOOL DPIsLittleDiaWindow(NSWindow *window);  // Opened by Little Dia, whether or not it's still on.
 id DPLittleDiaPage(NSWindow *window);        // Its ArcWebContents, once Chromium has handed it over.
 void DPInstallLittleDiaWindows(void);
@@ -57,6 +63,7 @@ void DPRelayoutLittleDiaBars(void);
 // Address.m: the address as Dia's main window shows it. Click it, or press ⌘L, to type another.
 NSView *DPMakeAddressView(NSView *title);
 void DPRefreshAddressView(NSView *view);
+void DPEditLittleDiaAddress(NSWindow *window);  // As ⌘L does, once the window has its address.
 
 // Navigate.m: the page's own navigation.
 NSString *DPLittleDiaURL(NSWindow *window);                   // The page's address, or @"" before it has one.

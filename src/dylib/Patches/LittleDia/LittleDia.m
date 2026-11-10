@@ -9,10 +9,12 @@ static void DPInstallLittleDia(void) {
     DPInstallLittleDiaRoute();
     DPInstallLittleDiaWindows();
     DPInstallLittleDiaLinkMenu();
+    DPInstallLittleDiaNewWindow();
 }
 
 static void DPApplyLittleDia(DPPatch *patch) {
     DPRefreshLittleDiaWindows();
+    DPRefreshLittleDiaNewWindow();
     if (patch->on && !gLoadedOn) DPWriteLittleDiaExtension(YES);
     if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch) || DPLittleDiaExtensionProblem()) return;  // the self-test flips patches without saving
     NSAlert *alert = [NSAlert new];
@@ -34,7 +36,7 @@ static NSString *DPVerifyLittleDia(DPPatch *patch) {
         if (!patch->on && button) return @"Open in Dia button still showing";
         if (patch->on && little && bar.window.titleVisibility != NSWindowTitleHidden) return @"title bar still showing";
     }
-    return patch->on ? DPLittleDiaLinkMenuProblem() : nil;
+    return DPLittleDiaNewWindowProblem() ?: (patch->on ? DPLittleDiaLinkMenuProblem() : nil);
 }
 
 DP_PATCH(DPLittleDia) {
