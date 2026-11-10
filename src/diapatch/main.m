@@ -276,7 +276,7 @@ static BOOL sign(NSString *app) {
             codesign = [codesign arrayByAddingObjectsFromArray:@[ identity, @"--keychain", keychain ]];
         } else {
             codesign = [codesign arrayByAddingObject:@"-"];
-            say(@"warning: signing ad hoc, so Dia will ask for keychain access again after every update");
+            say(@"warning: signing ad hoc, so Dia will ask for keychain access and screen sharing again after every update");
         }
     }
     // Entitlements tied to The Browser Company's profile make AMFI refuse to launch a re-signed Dia.
@@ -536,6 +536,28 @@ static BOOL applyTweaks(void) {
 
 #pragma mark - Commands
 
+// What macOS matches a Screen Recording grant against. Stock Dia's names its Team ID, the patched one's names the signing
+// certificate (or its code hash if signed ad hoc), so a grant made to one is ignored by the other.
+static NSString *signatureOf(NSString *app) {
+    NSString *output;
+    if (run(@[ @"/usr/bin/codesign", @"-dr", @"-", app ], &output) != 0) return nil;
+    NSRange range = [output rangeOfString:@"designated => "];
+    return range.location == NSNotFound ? nil : [[output substringFromIndex:NSMaxRange(range)]
+                                                    stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+}
+
+// A grant that no longer matches stays switched on in System Settings, so Dia keeps asking for it without macOS ever
+// prompting again. Clearing it lets macOS ask once for the new signature. Only a different signature needs this: Dia and
+// DiaTweaks updates keep the same certificate, so they keep the grant.
+static void forgetScreenRecordingIfResigned(NSString *before) {
+    NSString *bundleID = infoOf(gApp)[@"CFBundleIdentifier"];
+    if (env("DIAPATCH_APP") || !bundleID || [before isEqual:signatureOf(gApp)]) return;
+    // If this fails there is nothing to clear, and macOS behaves as it always did.
+    if (run(@[ @"/usr/bin/tccutil", @"reset", @"ScreenCapture", bundleID ], NULL) == 0)
+        say(@"Dia's signature changed, so macOS asks again before Dia can share your screen: allow Dia under System Settings > "
+            @"Privacy & Security > Screen & System Audio Recording, then reopen Dia");
+}
+
 static BOOL apply(void) {
     if (!exists(gStaged)) return YES;
     if (!stagedReady()) return unstage() && fail(@"deleted %@: a stopped run left it there; run `diapatch build` to stage Dia again", gStaged);
@@ -543,7 +565,10 @@ static BOOL apply(void) {
     // An official Dia that isn't the pristine copy was put there by hand, so the staged build is older.
     if (claimsOfficial(gApp) && ![buildOf(gApp) isEqual:buildOf(gPristine)])
         return unstage() && say(@"kept the official Dia %@ at %@; run `diapatch install` to patch it", versionOf(gApp), gApp);
-    return moveBundle(gStaged, gApp) && removeTree(gReady) && say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
+    NSString *signature = signatureOf(gApp);
+    if (!(moveBundle(gStaged, gApp) && removeTree(gReady))) return NO;
+    forgetScreenRecordingIfResigned(signature);
+    return say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
 }
 
 static BOOL applyChosen(BOOL dia, BOOL tweaks) {
@@ -636,11 +661,13 @@ static BOOL uninstall(BOOL purgeFiles) {
     removeRelay();
     removePasswordsHost();  // the official Dia reaches iCloud Passwords itself
     if (!removeTree(DPCopyFolder)) return NO;
+    NSString *signature = signatureOf(gApp);
     if (!claimsOfficial(gApp)) {
         NSString *copy = [gPristine stringByAppendingString:@".restore"];
         if (!exists(gPristine)) return fail(@"no official Dia at %@; reinstall Dia from https://www.diabrowser.com", gPristine);
         if (!removeTree(copy) || !clone(gPristine, copy) || !moveBundle(copy, gApp)) return removeTree(copy), NO;
     }
+    forgetScreenRecordingIfResigned(signature);
     say(@"%@ is the official Dia %@", gApp, versionOf(gApp));
     return unstage() && (!purgeFiles || purge());
 }
@@ -717,7 +744,8 @@ static const char kUsage[] =
     "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
-    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIAPATCH_COMMIT (the source commit installed), DIAPATCH_COMPARE, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n";
+    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIAPATCH_COMMIT (the source commit installed), DIAPATCH_COMPARE, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n"
+    "  DIAPATCH_APP (also keeps apply and uninstall from clearing Dia's Screen Recording permission)\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
