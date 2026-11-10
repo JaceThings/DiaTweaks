@@ -1,6 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners;
+extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners, DPKeepSidebarPadding;
 extern const CGFloat DPWindowPadding;
 extern NSHashTable<NSView *> *DPContainers;
 static const CACornerMask DPLeftCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
@@ -19,6 +19,8 @@ void DPRoundCornerControls(NSView *container);
 CGPathRef DPReshapeSetPath(CALayer *layer, BOOL shadow, CGPathRef path);
 CAAnimation *DPReshapeDiaAnimation(CALayer *layer, CAAnimation *animation);
 BOOL DPBesideSidebar(NSView *container);
+BOOL DPKeepsSidebarPadding(void);
+BOOL DPSteppedAside(NSView *container);  // Beside the sidebar with edge-to-edge off for it, so the page keeps Dia's padding.
 BOOL DPCornersRound(CALayer *layer, BOOL right);
 BOOL DPFullScreen(NSView *container);
 CGFloat DPWindowCornerGrowth(NSWindow *window);

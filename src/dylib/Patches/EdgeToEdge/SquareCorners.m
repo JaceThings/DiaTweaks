@@ -94,9 +94,14 @@ BOOL DPBesideSidebar(NSView *container) {
     return NSMinX(container.frame) > DPWindowPadding + 1 && !DPChatCard(container);
 }
 
+BOOL DPSteppedAside(NSView *container) {
+    return DPBesideSidebar(container) && DPKeepsSidebarPadding();
+}
+
 // A full screen window has square corners, so the page squares the ones it shares with the screen.
+// Where edge-to-edge steps aside the page keeps its padding and its corners stay round.
 BOOL DPFullScreen(NSView *container) {
-    return (container.window.styleMask & NSWindowStyleMaskFullScreen) && !DPChatCard(container);
+    return (container.window.styleMask & NSWindowStyleMaskFullScreen) && !DPChatCard(container) && !DPSteppedAside(container);
 }
 
 // `base` is Dia's radius, `grow` how much rounder the page is, `left` and `right` how far each side has gone square.
