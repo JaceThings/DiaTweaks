@@ -141,7 +141,10 @@ static id DPWatchKeys(DPPeekCard *card) {
         DPPeekCard *peek = weak;
         if (!peek || event.window != peek.window) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad);
-        BOOL command = mods == NSEventModifierFlagCommand, control = mods == NSEventModifierFlagControl, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
+        // A page's field is Chromium's view, not an NSText. Escape there cancels an input method's composition.
+        id responder = peek.window.firstResponder;
+        BOOL command = mods == NSEventModifierFlagCommand, control = mods == NSEventModifierFlagControl;
+        BOOL editing = [responder isKindOfClass:NSText.class] || ([responder conformsToProtocol:@protocol(NSTextInputClient)] && [responder hasMarkedText]);
         if (DPPeekCopyURL(peek, event)) return nil;
         if (command && DPIsKey(event, 'o', kVK_ANSI_O)) [peek close:DPPeekTab];
         // Dia's menu would go back, forward or reload the tab behind the card. Without the toolbar, the card stays stock.
