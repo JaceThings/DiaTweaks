@@ -33,6 +33,11 @@ static void DPSwapItem(NSMenuItem *item) {
     item.keyEquivalentModifierMask = to;
 }
 
+static BOOL DPInMainMenu(NSMenu *menu) {
+    while (menu.supermenu) menu = menu.supermenu;
+    return menu == NSApp.mainMenu;
+}
+
 static void DPApplyProfileShortcuts(DPPatch *patch) {
     DPFindItem(NSApp.mainMenu, ^BOOL(NSMenuItem *item) {
         DPSwapItem(item);
@@ -58,7 +63,14 @@ static void DPInstallProfileShortcuts(void) {
         DPApplyProfileShortcuts(&DPProfileShortcuts);
         __block BOOL pending = NO;
         void (^changed)(NSNotification *) = ^(NSNotification *note) {
-            if (pending || !DPProfileShortcuts.on) return;
+            if (!DPProfileShortcuts.on) return;
+            // An item Dia rebuilds with ⌃ must have ⌘ before AppKit matches the next key, which can be before the re-apply below.
+            // A ⌘ item waits for it: Dia may be about to set ⌃ on an item it added with the default ⌘.
+            NSMenu *menu = note.object;
+            NSNumber *index = note.userInfo[@"NSMenuItemIndex"];
+            NSMenuItem *item = [menu isKindOfClass:NSMenu.class] && index && index.integerValue >= 0 && index.integerValue < menu.numberOfItems ? [menu itemAtIndex:index.integerValue] : nil;
+            if (item && DPIsDigitShortcut(item, NSEventModifierFlagControl) && DPInMainMenu(menu)) DPSwapItem(item);
+            if (pending) return;
             pending = YES;
             dispatch_async(dispatch_get_main_queue(), ^{
                 pending = NO;
@@ -72,8 +84,12 @@ static void DPInstallProfileShortcuts(void) {
 
 static NSString *DPVerifyProfileShortcuts(DPPatch *patch) {
     NSMenuItem *item = DPFindItem(NSApp.mainMenu, ^BOOL(NSMenuItem *candidate) { return [candidate.title isEqualToString:@"Go to Sidebar Item 1"]; });
-    if (!item || DPIsDigitShortcut(item, patch->on ? NSEventModifierFlagControl : NSEventModifierFlagCommand)) return nil;
-    return patch->on ? @"the sidebar items keep ⌘ and a number" : @"the sidebar items didn't get ⌘ back";
+    if (item && !DPIsDigitShortcut(item, patch->on ? NSEventModifierFlagControl : NSEventModifierFlagCommand))
+        return patch->on ? @"the sidebar items keep ⌘ and a number" : @"the sidebar items didn't get ⌘ back";
+    // The swap does nothing for profiles if Dia gave them no ⌃ and a number.
+    if (patch->on && !DPFindItem(NSApp.mainMenu, ^BOOL(NSMenuItem *candidate) { return DPIsDigitShortcut(candidate, NSEventModifierFlagCommand) && ![candidate.title hasPrefix:@"Go to Sidebar Item"]; }))
+        return @"no profile has ⌘ and a number";
+    return nil;
 }
 
 DP_PATCH(DPProfileShortcuts) {
