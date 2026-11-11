@@ -5,6 +5,7 @@
 #import "LaunchServices.h"
 #import "Passkeys.h"
 #import "Passwords.h"
+#import "../dylib/Patches/TidyNames/DownloadBridge.h"
 #include <libproc.h>
 #include <mach-o/loader.h>
 #include <sys/clonefile.h>
@@ -650,7 +651,8 @@ static BOOL purge(void) {
         say(@"deleted %@", link);
     }
     for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"release.plist", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
-                              @".diatweaks.lock", @".incoming", @"icons", @"app-icons", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch" ])
+                              @".diatweaks.lock", @".incoming", @"icons", @"app-icons", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch",
+                              DPTidyDownloadExtensionFolder ])
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
         if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
@@ -664,6 +666,8 @@ static BOOL uninstall(BOOL purgeFiles) {
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch uninstall`");
     removeRelay();
     removePasswordsHost();  // the official Dia reaches iCloud Passwords itself
+    NSString *tidyHost = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/" DPTidyDownloadManifest];
+    if (DPTidyDownloadManifestOwned(tidyHost, inHome(@"bin/diapatch")) && !removeTree(tidyHost)) return NO;
     if (!removeTree(DPCopyFolder)) return NO;
     NSString *signature = signatureOf(gApp);
     if (!claimsOfficial(gApp)) {
@@ -763,6 +767,7 @@ int main(int argc, const char *argv[]) {
         gReady = inHome(@"staged/ready");
         gStagedTweaks = inHome(@"staged/DiaTweaks");
         // Started by Dia as a native messaging host.
+        if (argc > 1 && !strcmp(argv[1], DPTidyDownloadExtensionOrigin)) return DPRunTidyDownloadHost();
         if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) {
             if (!DPIsPasswordsOrigin(argv[1])) return DPRunPasskeyHost(gHome);
             return DPRunPasswordsHost(gHome, gApp, argc, argv);
