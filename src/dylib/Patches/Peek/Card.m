@@ -144,7 +144,14 @@ static BOOL DPIsKey(NSEvent *event, unichar letter, unsigned short code) {
     return key.length == 1 && [key characterAtIndex:0] < 128 ? [key characterAtIndex:0] == letter : event.keyCode == code;
 }
 
+// The application menu (Hide, Quit, Settings) and the Window menu (Minimize). Not the others: they act on the tab behind the card.
+static BOOL DPPerformAppShortcut(NSEvent *event, NSEventModifierFlags mods) {
+    if (!(mods & (NSEventModifierFlagCommand | NSEventModifierFlagControl))) return NO;
+    return [NSApp.mainMenu.itemArray.firstObject.submenu performKeyEquivalent:event] || [NSApp.windowsMenu performKeyEquivalent:event];
+}
+
 // A focused peek page swallows ⌘S and ⌃1–9 (switch profile), which Dia's tabs pass on to the menu. The keypad's digits count too.
+// It swallows the application and Window menus' shortcuts as well, such as ⌘H.
 static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
@@ -163,7 +170,7 @@ static id DPWatchKeys(DPPeekCard *card) {
         else if (command && peek.toolbar && DPIsKey(event, 'r', kVK_ANSI_R)) DPPeekNavigate(peek.page, DPPeekReload);
         else if (command && peek.toolbar && DPIsKey(event, 'l', kVK_ANSI_L)) DPPeekEditToolbarAddress(peek);
         else if ((command && DPIsKey(event, 'w', kVK_ANSI_W)) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
-        else if (!((command && DPIsKey(event, 's', kVK_ANSI_S)) || (control && DPIsDigitKey(event))) || ![NSApp.mainMenu performKeyEquivalent:event]) return event;
+        else if (!DPPerformAppShortcut(event, mods) && !(((command && DPIsKey(event, 's', kVK_ANSI_S)) || (control && DPIsDigitKey(event))) && [NSApp.mainMenu performKeyEquivalent:event])) return event;
         return nil;
     }];
 }
