@@ -1,27 +1,37 @@
 #import "StdPatch/StdPatch.h"
 #import <libkern/OSCacheControl.h>
 #import <mach-o/dyld.h>
+#import <mach-o/getsect.h>
 #import <mach/mach_vm.h>
 
 extern DPPatch DPNarrowerSidebar;
 
-// Dia 1.56 (90312) clamps the sidebar to 190 points in its resize delegate, at this offset in __TEXT:
+// Dia clamps the sidebar to 190 points in its resize delegate:
 //     mov  x8, #0xc00000000000
 //     movk x8, #0x4067, lsl #48   ; 190.0
 //     fmov d1, x8
 //     fmaxnm d0, d0, d1           ; width = max(width, 190)
 // The first two words make the double, so 0x4064 and 0x8000 make it 164, as narrow as Arc. The last two are the same.
-// A Dia update that moves this code fails the check rather than patching something else.
-static const uintptr_t DPSidebarClampOffset = 0x5f5dd08;
+// It moves between Dia builds, so it's found by those four words, and only used if they're there exactly once.
 static const uint32_t DPSidebarClampWide[4] = { 0xd2d80008, 0xf2e80ce8, 0x9e670101, 0x1e616800 };
 static const uint32_t DPSidebarClampNarrow[4] = { 0xd2d00008, 0xf2e80c88, 0x9e670101, 0x1e616800 };
 
 static uint32_t *DPSidebarClamp(void) {
-    return (uint32_t *)((uint8_t *)_dyld_get_image_header(0) + DPSidebarClampOffset);
+    static uint32_t *site;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        unsigned long size = 0;
+        uint32_t *text = (uint32_t *)getsectiondata((const struct mach_header_64 *)_dyld_get_image_header(0), "__TEXT", "__text", &size);
+        NSUInteger found = 0;
+        for (NSUInteger i = 0; text && i + 4 <= size / 4; i++)
+            if (!memcmp(text + i, DPSidebarClampWide, sizeof DPSidebarClampWide)) found++, site = text + i;
+        if (found != 1) site = NULL;
+    });
+    return site;
 }
 
 static BOOL DPIsSidebarClamp(const uint32_t words[4]) {
-    return memcmp(DPSidebarClamp(), words, 4 * sizeof(uint32_t)) == 0;
+    return DPSidebarClamp() && memcmp(DPSidebarClamp(), words, 4 * sizeof(uint32_t)) == 0;
 }
 
 // __TEXT is read-only. VM_PROT_COPY gives the process its own writable copy of the page, and the copy stays patched after
