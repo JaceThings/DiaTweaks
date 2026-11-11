@@ -41,6 +41,7 @@ static CAShapeLayer *DPStroke(CGPathRef path, NSColor *color, NSArray *dashes) {
 }
 
 @interface DPOutlineView : NSView
+@property (nonatomic) BOOL open;
 @end
 
 @implementation DPOutlineView
@@ -62,27 +63,28 @@ static CGFloat DPWidthAt(CGPathRef path, CGFloat y) {
 }
 
 // At the top, the tab flares into the toolbar, so that edge stays open.
-static CGPathRef DPCopyClipPath(NSView *tab, CGPathRef path) {
-    if (!DPInTabStrip(tab)) return CGPathRetain(path);
+static CGPathRef DPCopyClipPath(CGPathRef path, BOOL open) {
+    if (!open) return CGPathRetain(path);
     CGRect box = CGPathGetBoundingBox(path);
     BOOL flaresAtMin = DPWidthAt(path, CGRectGetMinY(box) + 1) > DPWidthAt(path, CGRectGetMaxY(box) - 1);
-    CGRect open = box;
-    open.size.height -= DPOutlineWidth;
-    if (flaresAtMin) open.origin.y += DPOutlineWidth;
-    CGPathRef rect = CGPathCreateWithRect(open, NULL), clip = CGPathCreateCopyByIntersectingPath(path, rect, NO);
+    CGRect kept = box;
+    kept.size.height -= DPOutlineWidth;
+    if (flaresAtMin) kept.origin.y += DPOutlineWidth;
+    CGPathRef rect = CGPathCreateWithRect(kept, NULL), clip = CGPathCreateCopyByIntersectingPath(path, rect, NO);
     CGPathRelease(rect);
     return clip;
 }
 
-static NSView *DPMakeOutline(NSView *tab, CGPathRef path) {
-    NSView *view = [DPOutlineView new];
+static DPOutlineView *DPMakeOutline(CGPathRef path, BOOL open) {
+    DPOutlineView *view = [DPOutlineView new];
+    view.open = open;
     view.layer = [CALayer layer];
     view.wantsLayer = YES;
     view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [view.layer addSublayer:DPStroke(path, [NSColor colorWithSRGBRed:0.16 green:0.13 blue:0.02 alpha:1], nil)];
     [view.layer addSublayer:DPStroke(path, [NSColor colorWithSRGBRed:0.98 green:0.78 blue:0.04 alpha:1], @[ @(DPDash), @(DPDash) ])];
     CAShapeLayer *inside = [CAShapeLayer layer];
-    CGPathRef clip = DPCopyClipPath(tab, path);
+    CGPathRef clip = DPCopyClipPath(path, open);
     inside.path = clip;
     CGPathRelease(clip);
     view.layer.mask = inside;
@@ -91,12 +93,13 @@ static NSView *DPMakeOutline(NSView *tab, CGPathRef path) {
 
 static void DPUpdateTab(NSView *tab) {
     NSView *shape = DPShapeIn(tab);
-    NSView *outline = DPGet(tab, &DPOutlineKey);
+    DPOutlineView *outline = DPGet(tab, &DPOutlineKey);
     CGPathRef path = shape && DPTabMarked(tab) ? DPShapePath(shape) : NULL;
     if (!path) return [outline removeFromSuperview];
-    if (!outline || !CGPathEqualToPath(path, ((CAShapeLayer *)outline.layer.sublayers.firstObject).path)) {
+    BOOL open = DPInTabStrip(tab);
+    if (!outline || outline.open != open || !CGPathEqualToPath(path, ((CAShapeLayer *)outline.layer.sublayers.firstObject).path)) {
         [outline removeFromSuperview];
-        DPSet(tab, &DPOutlineKey, outline = DPMakeOutline(tab, path));
+        DPSet(tab, &DPOutlineKey, outline = DPMakeOutline(path, open));
     }
     if (outline.superview != shape || shape.subviews.lastObject != outline) [shape addSubview:outline positioned:NSWindowAbove relativeTo:nil];
     if (!NSEqualRects(outline.frame, shape.bounds)) outline.frame = shape.bounds;
