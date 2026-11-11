@@ -42,7 +42,17 @@ static BOOL DPTidyTitlesEnabled(void) {
 }
 
 static NSDictionary *DPTidyOutline(NSView *list) {
-    return DPTidyTabLocations(list);
+    NSDictionary *locations = DPTidyTabLocations(list);
+    if (!locations || !DPIsKind(list, DPTidyStrip)) return locations;
+    NSMutableDictionary *result = locations.mutableCopy;
+    DPFindView(list.window.contentView, ^BOOL(NSView *view) {
+        if (DPIsKind(view, DPDiaPinnedTab) && !view.hiddenOrHasHiddenAncestor) {
+            NSString *identifier = DPTidyTabIdentifier(view);
+            if (identifier.length) result[identifier] = @"favorites";
+        }
+        return NO;
+    });
+    return result;
 }
 
 static void DPTidyScheduleScan(NSView *surface);
@@ -60,7 +70,7 @@ static id DPTidyScriptTab(NSWindow *window, NSString *identifier) {
 
 static NSView *DPTidyTabRow(NSView *list, NSString *identifier, BOOL favorite) {
     const char *className = favorite ? DPDiaPinnedTab : DPDiaTabView;
-    return DPFindView(list, ^BOOL(NSView *view) {
+    return DPFindView(favorite ? list.window.contentView : list, ^BOOL(NSView *view) {
         return DPIsKind(view, className) && !view.hiddenOrHasHiddenAncestor &&
             [DPTidyTabIdentifier(view) isEqualToString:identifier];
     });
@@ -288,8 +298,11 @@ static void DPTidyInnerLayout(NSView *self, SEL _cmd) {
     for (NSView *ancestor = self.superview; ancestor; ancestor = ancestor.superview)
         if (DPIsKind(ancestor, DPDiaTabList) || DPIsKind(ancestor, DPTidyStrip)) {
             DPTidyScheduleScan(ancestor);
-            break;
+            return;
         }
+    // Horizontal Favorites live beside the strip rather than inside it.
+    for (NSView *strip in DPFindViews(DPTidyStrip))
+        if (strip.window == self.window) DPTidyScheduleScan(strip);
 }
 
 static void DPTidyResumeWindow(NSWindow *window) {
