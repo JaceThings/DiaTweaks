@@ -28,13 +28,13 @@ static BOOL DPOpenInLittleDia(NSURL *url, void (^missed)(void), void (^claimed)(
     CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame) - NSMaxY(frame);  // Chromium measures down from the top.
     NSDictionary *request = @{@"action" : @"open", @"url" : url.absoluteString, @"left" : @(NSMinX(frame)), @"top" : @(top),
                               @"width" : @(NSWidth(frame)), @"height" : @(NSHeight(frame))};
-    DPNoteStackForLink();
     if (!DPSendToLittleDia(request)) return NO;
     DPExpectLittleDiaWindow(frame, missed, claimed);
     return YES;
 }
 
-// A link that opens Dia arrives before its extensions have loaded, so it waits for them, up to 10 seconds.
+// A link that opens Dia arrives before its extensions have loaded, so it waits for them, up to 10 seconds. The stack is
+// noted once, when the link arrives: noted again later, it would find Dia in front.
 static void DPOpenWhenReady(NSURL *url, void (^fallback)(void), int tries) {
     if (DPOpenInLittleDia(url, fallback, nil)) return;
     if (tries <= 0 || !DPLittleDiaStarting()) return fallback();
@@ -45,12 +45,19 @@ static void DPOpenURLEvents_handle(id self, SEL _cmd, NSAppleEventDescriptor *ev
     NSURL *url = DPLittleDia.on ? DPLittleDiaLink(event) : nil;
     if (!url) return DPCallOriginal(DPOpenURLEvents_handle, self, event, reply);
     DPLinkArrived();
+    DPNoteStackForLink();
     DPOpenWhenReady(url, ^{ DPCallOriginal(DPOpenURLEvents_handle, self, event, [NSAppleEventDescriptor nullDescriptor]); }, 40);
 }
 
-void DPOpenLinkInLittleDia(NSURL *url) { DPOpenInLittleDia(url, ^{ NSBeep(); }, nil); }
+void DPOpenLinkInLittleDia(NSURL *url) {
+    DPNoteStackForLink();
+    DPOpenInLittleDia(url, ^{ NSBeep(); }, nil);
+}
 
-void DPOpenBlankLittleDia(void) { DPOpenInLittleDia([NSURL URLWithString:@"about:blank"], ^{ NSBeep(); }, ^(NSWindow *window) { DPEditLittleDiaAddress(window); }); }
+void DPOpenBlankLittleDia(void) {
+    DPNoteStackForLink();
+    DPOpenInLittleDia([NSURL URLWithString:@"about:blank"], ^{ NSBeep(); }, ^(NSWindow *window) { DPEditLittleDiaAddress(window); });
+}
 
 void DPInstallLittleDiaRoute(void) {
     DPHook(DPDiaOpenURLEvents, @selector(handleEvent:withReplyEvent:), (IMP)DPOpenURLEvents_handle);
