@@ -465,8 +465,17 @@ static NSString *sourceNotOlder(NSDictionary *latest) {
     return [@[ @"ahead", @"identical" ] containsObject:status] ? [commit substringToIndex:7] : nil;
 }
 
+// An updater only installs the files it knows about, so one older than a file leaves it out: v1.1.0 updating to v1.1.1
+// dropped app-icons. Offering the release again lets the new updater put the missing files in place.
+static BOOL tweaksInstalled(NSDictionary *latest) {
+    if (![installedRelease()[@"digest"] isEqual:latest[@"digest"]]) return NO;
+    for (NSString *path in tweaksTargets().allValues)
+        if (!exists(path)) return NO;
+    return YES;
+}
+
 static BOOL tweaksDiffer(NSDictionary *latest) {
-    return latest && ![installedRelease()[@"digest"] isEqual:latest[@"digest"]] && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
+    return latest && !tweaksInstalled(latest) && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
 }
 
 static BOOL tweaksAvailable(NSDictionary *latest) { return tweaksDiffer(latest) && !sourceNotOlder(latest); }
@@ -522,7 +531,7 @@ static BOOL applyTweaks(void) {
     // A release staged a while ago may since have been replaced, or overtaken by what's installed.
     NSString *problem;
     NSDictionary *latest = stagedRelease() ? latestTweaks(15, &problem) : nil;
-    if ([installedRelease()[@"digest"] isEqual:latest[@"digest"]]) removeTree(gStagedTweaks);
+    if (latest && tweaksInstalled(latest)) removeTree(gStagedTweaks);
     else if (tweaksAvailable(latest)) stageTweaks();  // if this fails, the staged release still installs
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
