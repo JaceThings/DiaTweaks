@@ -45,8 +45,8 @@ int main(void) {
             @"Never let the model reverse a brand");
         NSCAssert([DPTidySectionTitle(@"Members | Another Family", [NSURL URLWithString:@"https://anotherfamily.example/members"])
             isEqualToString:@"Another Family Members"], @"Keep the brand and identify the section");
-        NSCAssert([DPTidySectionTitle(@"Another Phamily", [NSURL URLWithString:@"https://phamily.in/members"])
-            isEqualToString:@"Another Phamily Members"], @"Use a meaningful route when the title contains only the brand");
+        NSCAssert([DPTidySectionTitle(@"Example Community", [NSURL URLWithString:@"https://community.example/members"])
+            isEqualToString:@"Example Community Members"], @"Use a meaningful route when the title contains only the brand");
         NSCAssert([DPTidyFallbackTitle(@"The Lisbon Walking Tours and Historic Neighborhoods Guide | Travel")
             isEqualToString:@"Lisbon Walking Tours"], @"Use the page title if the model is unavailable");
         NSCAssert(!DPTidyFallbackTitle(@"404 | Example Site"), @"Avoid making up a title for an error page");
@@ -70,8 +70,8 @@ int main(void) {
         NSCAssert(!DPTidyCleanImageFilename(@"IMG_1234.JPG"), @"An image counter is not a subject");
         NSCAssert([DPTidyImageFilename([NSURL URLWithString:@"https://medlineplus.gov/encyclopedia.html"], @"m_logo.png")
             isEqualToString:@"Medlineplus Logo.png"], @"Keep logo as the role and use the site name as a fallback");
-        NSCAssert([DPTidyImageFilename([NSURL URLWithString:@"https://bircheshealth.com/"], @"_.avif")
-            isEqualToString:@"Bircheshealth Image.avif"], @"Use the same rule for an opaque image from another site");
+        NSCAssert([DPTidyImageFilename([NSURL URLWithString:@"https://example.net/"], @"_.avif")
+            isEqualToString:@"Example Image.avif"], @"Use the same rule for an opaque image from another site");
         NSCAssert([DPTidyImageFilename([NSURL URLWithString:@"https://www.new-site.co.uk/assets"], @"logo.png")
             isEqualToString:@"New Site Logo.png"], @"Handle an unfamiliar hyphenated domain and country suffix");
         NSCAssert([DPTidyFallbackFilename([NSURL URLWithString:@"https://example.com/media/sunset-over-lisbon.jpg"], @"_.jpeg")
