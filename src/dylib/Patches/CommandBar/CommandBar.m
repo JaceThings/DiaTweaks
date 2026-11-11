@@ -50,11 +50,12 @@ static NSMenuItem *DPMenuItemTitled(NSMenu *menu, NSString *title) {
     return nil;
 }
 
+static const NSEventModifierFlags DPShortcutMods = NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagControl;
+
 static BOOL DPIsShortcut(NSEvent *event, NSString *menuTitle) {
     if (event.type != NSEventTypeKeyDown && event.type != NSEventTypeKeyUp) return NO;
     NSMenuItem *item = DPMenuItemTitled(NSApp.mainMenu, menuTitle);
-    NSEventModifierFlags mods = NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagControl;
-    return item.keyEquivalent.length && (event.modifierFlags & mods) == item.keyEquivalentModifierMask
+    return item.keyEquivalent.length && (event.modifierFlags & DPShortcutMods) == item.keyEquivalentModifierMask
         && [event.charactersIgnoringModifiers caseInsensitiveCompare:item.keyEquivalent] == NSOrderedSame;
 }
 
@@ -360,8 +361,9 @@ static id DPWatchKeys(DPCommandBarOverlay *overlay) {
             return event;
         }
         BOOL escape = event.keyCode == 53;
-        BOOL close = (event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand
-                     && [event.charactersIgnoringModifiers isEqualToString:@"w"];
+        // Caps Lock sets a modifier bit and capitalises the character; ⌘W stands in if the menu has no Close Tab.
+        BOOL close = DPMenuItemTitled(NSApp.mainMenu, @"Close Tab") ? DPIsShortcut(event, @"Close Tab")
+                                                                       : (event.modifierFlags & DPShortcutMods) == NSEventModifierFlagCommand && event.keyCode == 13;
         if (!escape && !close) return event;
         NSRect bar = [overlay.host convertRectToScreen:[overlay.panel convertRect:overlay.panel.bounds toView:nil]];
         for (NSWindow *child in overlay.host.childWindows)  // The @ menu, which Escape closes first.
