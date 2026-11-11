@@ -27,9 +27,11 @@ static CGFloat DPRowHeight(NSArray<NSCollectionViewLayoutAttributes *> *all) {
     return row.doubleValue;
 }
 
+static char DPMovesKey;  // On the layout: each item's frame, shortened, then as Dia laid it out.
+
 static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     DPCallOriginal(DPLayout_prepareLayout, self);
-    if (!DPCompactTabRows.on) return;
+    if (!DPCompactTabRows.on) return DPSet(self, &DPMovesKey, nil);
     double *contentHeight = DPIvar(self, "contentHeight");  // Dia's layout hands out the attributes it keeps, so changing them changes it.
     NSArray<NSCollectionViewLayoutAttributes *> *all = DPKeptAttributes(self);
     CGFloat height = DPRowHeight(all), cut = height - DPOldRowHeight;
@@ -39,6 +41,7 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     for (NSCollectionViewLayoutAttributes *a in all)
         if (a.representedElementCategory == NSCollectionElementCategoryItem && NSHeight(a.frame) >= height - 0.5)
             [rows addObject:[NSValue valueWithRect:NSMakeRect(NSMinX(a.frame), NSMinY(a.frame), NSWidth(a.frame), height)]];
+    NSMutableArray<NSArray<NSValue *> *> *moves = [NSMutableArray new];
     for (NSCollectionViewLayoutAttributes *a in all) {
         NSRect frame = a.frame;
         for (NSValue *value in rows) {
@@ -47,10 +50,63 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
             if (NSMaxY(row) <= NSMinY(a.frame) + 3.5) frame.origin.y -= cut;
             else if (NSMinY(row) >= NSMinY(a.frame) - 0.5 && NSMaxY(row) <= NSMaxY(a.frame) + 0.5) frame.size.height -= cut;
         }
+        if (a.representedElementCategory == NSCollectionElementCategoryItem)
+            [moves addObject:@[ [NSValue valueWithRect:frame], [NSValue valueWithRect:a.frame] ]];
         a.frame = frame;
     }
     *contentHeight -= cut * rows.count;
+    DPSet(self, &DPMovesKey, moves);
 }
+
+#pragma mark Dragging
+
+// Dia works out where a dragged tab lands from the rows as it laid them out, so the pointer goes back to the same spot
+// in those: through the innermost item under it, or past the nearest one above it. Collapse Pinned Tabs, whose hooks
+// install after these and so run first, has already taken its header out of the point.
+static CGFloat DPDiaY(NSArray<NSArray<NSValue *> *> *moves, CGFloat y) {
+    NSArray<NSValue *> *inside = nil, *above = nil;
+    for (NSArray<NSValue *> *move in moves) {
+        NSRect now = move[0].rectValue;
+        if (y >= NSMinY(now) && y < NSMaxY(now) && (!inside || NSHeight(now) < NSHeight(inside[0].rectValue))) inside = move;
+        if (NSMaxY(now) <= y && (!above || NSMaxY(now) > NSMaxY(above[0].rectValue))) above = move;
+    }
+    if (inside) {
+        NSRect now = inside[0].rectValue, then = inside[1].rectValue;
+        return NSMinY(then) + (y - NSMinY(now)) * NSHeight(then) / NSHeight(now);
+    }
+    return above ? y - NSMaxY(above[0].rectValue) + NSMaxY(above[1].rectValue) : y;
+}
+
+@interface DPCompactDrag : NSProxy
+@property (nonatomic, strong) id<NSDraggingInfo> info;
+@property (nonatomic) NSPoint location;
+@end
+
+@implementation DPCompactDrag
+- (NSPoint)draggingLocation { return self.location; }
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)sel { return [(NSObject *)self.info methodSignatureForSelector:sel]; }
+- (void)forwardInvocation:(NSInvocation *)invocation { [invocation invokeWithTarget:self.info]; }
+- (BOOL)respondsToSelector:(SEL)sel { return [(NSObject *)self.info respondsToSelector:sel]; }
+- (BOOL)conformsToProtocol:(Protocol *)protocol { return [(NSObject *)self.info conformsToProtocol:protocol]; }
+- (BOOL)isKindOfClass:(Class)cls { return [(NSObject *)self.info isKindOfClass:cls]; }
+@end
+
+static id<NSDraggingInfo> DPDiaDrag(NSView *tabList, id<NSDraggingInfo> info) {
+    NSCollectionView *list = (NSCollectionView *)DPFindView(tabList, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabListCollection); });
+    NSArray *moves = DPGet(list.collectionViewLayout, &DPMovesKey);
+    if (!moves) return info;
+    NSPoint point = [list convertPoint:info.draggingLocation fromView:nil];
+    point.y = DPDiaY(moves, point.y);
+    DPCompactDrag *drag = [DPCompactDrag alloc];
+    drag.info = info;
+    drag.location = [list convertPoint:point toView:nil];
+    return (id<NSDraggingInfo>)drag;
+}
+
+static NSDragOperation DPTabList_entered(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_entered, self, DPDiaDrag(self, info)); }
+static NSDragOperation DPTabList_updated(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_updated, self, DPDiaDrag(self, info)); }
+static BOOL DPTabList_prepare(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_prepare, self, DPDiaDrag(self, info)); }
+static BOOL DPTabList_perform(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_perform, self, DPDiaDrag(self, info)); }
 
 // An open folder lays its header out at the new height, so its title would sit low over the shorter header. It moves up
 // to the middle of the old one.
@@ -67,6 +123,10 @@ static void DPGroupCell_layout(NSView *self, SEL _cmd) {
 static void DPInstallCompactTabRows(void) {
     DPHook(DPDiaTabListLayout, @selector(prepareLayout), (IMP)DPLayout_prepareLayout);
     DPHook(DPDiaTabGroupCell, @selector(layout), (IMP)DPGroupCell_layout);
+    DPHook(DPDiaTabList, @selector(draggingEntered:), (IMP)DPTabList_entered);
+    DPHook(DPDiaTabList, @selector(draggingUpdated:), (IMP)DPTabList_updated);
+    DPHook(DPDiaTabList, @selector(prepareForDragOperation:), (IMP)DPTabList_prepare);
+    DPHook(DPDiaTabList, @selector(performDragOperation:), (IMP)DPTabList_perform);
 }
 
 static void DPApplyCompactTabRows(DPPatch *patch) { DPRelayoutTabList(); }
@@ -87,7 +147,7 @@ DP_PATCH(DPCompactTabRows) {
     .detail = @"Make the sidebar's tabs and folders as short as before Dia 1.57, so more fit.",
     .symbol = @"rectangle.compress.vertical",
     .tint = @"systemTealColor",
-    .classes = DPClasses(DPDiaTabListLayout, DPDiaTabListCollection, DPDiaTabGroupCell, DPDiaTabGroupBackground),
+    .classes = DPClasses(DPDiaTabListLayout, DPDiaTabListCollection, DPDiaTabList, DPDiaTabGroupCell, DPDiaTabGroupBackground),
     .install = DPInstallCompactTabRows,
     .apply = DPApplyCompactTabRows,
     .verify = DPVerifyCompactTabRows,
