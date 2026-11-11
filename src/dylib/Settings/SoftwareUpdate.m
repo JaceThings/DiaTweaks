@@ -193,7 +193,14 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     DPUpdates *updates = DPUpdates.shared;
     NSArray<NSString *> *parts = self.shown;
     __block NSUInteger left = parts.count;
-    void (^ready)(void) = ^{ if (--left == 0) [updates installAndRelaunch:parts]; };
+    // A part whose download failed shows why on the page, and quitting for it would only relaunch the same Dia.
+    void (^ready)(void) = ^{
+        if (--left != 0) return;
+        NSMutableArray<NSString *> *staged = [NSMutableArray new];
+        for (NSString *part in parts)
+            if ([updates staged:part]) [staged addObject:part];
+        if (staged.count) [updates installAndRelaunch:staged];
+    };
     for (NSString *part in parts) {
         if ([updates staged:part]) ready();
         else [updates download:part then:ready];

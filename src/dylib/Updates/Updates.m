@@ -227,7 +227,24 @@ static void DPShowUpdateAlert(void) {
         if ([alert runModal] != NSAlertFirstButtonReturn) return;
         __block NSUInteger left = parts.count;
         for (NSString *part in parts)
-            [updates download:part then:^{ if (--left == 0) [updates installAndRelaunch:parts]; }];
+            [updates download:part then:^{
+                if (--left != 0) return;
+                // A download that failed leaves nothing to install, and quitting for it would only relaunch the same Dia.
+                NSMutableArray<NSString *> *staged = [NSMutableArray new], *missing = [NSMutableArray new], *reasons = [NSMutableArray new];
+                for (NSString *each in parts) {
+                    if ([updates staged:each]) {
+                        [staged addObject:each];
+                        continue;
+                    }
+                    [missing addObject:DPPartName(each)];
+                    if ([updates failure:each]) [reasons addObject:[updates failure:each]];
+                }
+                if (staged.count) return [updates installAndRelaunch:staged];
+                NSAlert *failed = [NSAlert new];
+                failed.messageText = [@"Couldn’t download " stringByAppendingString:[missing componentsJoinedByString:@" and "]];
+                failed.informativeText = [reasons componentsJoinedByString:@"\n"];
+                [failed runModal];
+            }];
     }];
 }
 
