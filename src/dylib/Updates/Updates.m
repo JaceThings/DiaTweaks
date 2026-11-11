@@ -125,6 +125,14 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     return found;
 }
 
+// diapatch exits 0 even when it couldn't reach a feed, and says so in that part's "error" instead.
+- (NSString *)checkProblem {
+    NSMutableArray<NSString *> *names = [NSMutableArray new];
+    for (NSString *part in @[DPDia, DPTweaks])
+        if ([_found[part][@"error"] isKindOfClass:NSString.class]) [names addObject:DPPartName(part)];
+    return names.count == 2 ? @"Couldn’t check for updates" : names.count ? [NSString stringWithFormat:@"Couldn’t check for %@ updates", names[0]] : nil;
+}
+
 - (BOOL)available:(NSString *)part { return [self.found[part][@"available"] boolValue]; }
 - (BOOL)staged:(NSString *)part { return [self.found[part][@"staged"] isKindOfClass:NSString.class]; }
 - (BOOL)downloading:(NSString *)part { return _whenDownloaded[part] != nil; }
@@ -215,7 +223,7 @@ static void DPShowUpdateAlert(void) {
         }
         NSAlert *alert = [NSAlert new];
         if (!parts.count) {
-            alert.messageText = updates.found ? @"Dia and DiaTweaks are up to date" : @"Couldn’t check for updates";
+            alert.messageText = !updates.found ? @"Couldn’t check for updates" : updates.checkProblem ?: @"Dia and DiaTweaks are up to date";
             [alert runModal];
             return;
         }

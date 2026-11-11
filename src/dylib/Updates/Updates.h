@@ -19,6 +19,7 @@ extern NSNotificationName const DPUpdatesDidChangeNotification;
 + (instancetype)shared;
 @property (nonatomic, readonly) NSDictionary *found;
 @property (nonatomic, readonly) BOOL checking;
+@property (nonatomic, readonly) NSString *checkProblem;  // why the last check missed Dia, DiaTweaks or both, worded for the UI; nil if it covered both
 - (void)check:(void (^)(void))done;
 - (BOOL)available:(NSString *)part;
 - (BOOL)staged:(NSString *)part;
