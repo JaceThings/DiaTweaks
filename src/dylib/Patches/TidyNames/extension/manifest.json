@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "DiaTweaks Tidy Downloads",
+  "version": "1",
+  "description": "Suggest descriptive filenames for downloads using on-device Apple Intelligence.",
+  "incognito": "not_allowed",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsgOd+lQgXKfcxQ+UyCqqFtbPL1qkJBjD43vbuLhgkb0EdKBklxHF+2DyZIW7bUbiK0uHQ9QFurABfcQH98XrFwGwK/B2Vv7pcQ1OB3Y2L6mUxYYzSsO8tJFPzXOahesm8FQHnzXco8B1FIqnykhX2mPt1q6NFWvl1LZyhymW1Tt33momCe8m4R6FG2VOZgB2xzmqJDsuVLF30X4uJCJ5H7qcZAuxMGP9QC5P/djQvWdjjkB4LQ9VofeJm5c7RfUgrQu8XWb5wMbSc6JbNVvy2ZIaYtfpFjJQGX74gQU+/WOGRhAlm7Awy4arBa/myFkZU26Ros0+otb0j4GEEKMrlQIDAQAB",
+  "permissions": [
+    "downloads",
+    "nativeMessaging",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "worker.js"
+  }
+}

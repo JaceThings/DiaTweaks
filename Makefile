@@ -9,7 +9,11 @@ FOUNDATION_MODELS := $(if $(wildcard $(SDK)/System/Library/Frameworks/Foundation
 SWIFTFLAGS := -target arm64-apple-macos14.0 -O -parse-as-library -wmo -module-name DiaPatchesSwift \
 	-Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
 PASSKEYS := src/dylib/Patches/Passkeys/extension
+TIDY_NAMES := src/dylib/Patches/TidyNames
+TIDY_EXTENSION := $(TIDY_NAMES)/extension
 EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectcreate,__TEXT,__pk_$(basename $(file)),$(PASSKEYS)/$(file))
+
+EXTENSION += $(foreach file,manifest.json worker.js,-Wl,-sectcreate,__TEXT,__td_$(basename $(file)),$(TIDY_EXTENSION)/$(file))
 
 # diapatch records the commit it was built from, to tell a source build that is newer than the latest release from one that isn't.
 COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
@@ -21,13 +25,16 @@ build/commit: FORCE | build
 
 FORCE:
 
-build/diapatch: $(wildcard src/diapatch/*.[hm]) build/commit | build
-	clang $(CFLAGS) -DDIATWEAKS_COMMIT='"$(COMMIT)"' -framework AppKit -framework CoreGraphics -framework Security -o $@ $(filter %.m,$^)
+build/diapatch: $(wildcard src/diapatch/*.[hm]) $(TIDY_NAMES)/Names.m $(TIDY_NAMES)/DownloadBridge.h build/TidyDownloadModel.o build/commit | build
+	clang $(CFLAGS) -DDIATWEAKS_COMMIT='"$(COMMIT)"' -framework AppKit -framework CoreGraphics -framework Security -L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
+
+build/TidyDownloadModel.o: $(TIDY_NAMES)/TidyNameModel.swift | build
+	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
 build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
-build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) | build
+build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/* $(TIDY_EXTENSION)/*) | build
 	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
 
@@ -49,10 +56,18 @@ build/mouse-back-forward: tests/mouse-back-forward.m src/dylib/Patches/MouseBack
 build/vertical-tab-glow: tests/vertical-tab-glow.m $(wildcard src/dylib/Patches/HideVerticalTabGlow/*.[hm]) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $<
 
+build/tidy-names-checks: tests/tidy-names.m $(TIDY_NAMES)/Names.m $(TIDY_NAMES)/Names.h $(TIDY_NAMES)/DownloadBridge.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework Foundation -o $@ $(filter %.m,$^)
+
+build/tidy-tab-outline-checks: tests/tidy-tab-outline.swift $(TIDY_NAMES)/TabOutline.swift | build
+	swiftc -parse-as-library -o $@ $^
+
 # Checks that need no Dia: grouping, the DiaTweaks update decision, mouse navigation, Hide Vertical Tab Glow, the Sidebar Grain textures, and that Settings shows each tweak like its neighbours.
-check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/patches.json
+check: build/tidy-names-checks build/tidy-tab-outline-checks build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/patches.json
 	tests/tweaks-update
 	build/group-tabs
+	build/tidy-names-checks
+	build/tidy-tab-outline-checks
 	build/mouse-back-forward
 	build/vertical-tab-glow
 	tests/sidebar-grain
