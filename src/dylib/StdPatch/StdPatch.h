@@ -60,6 +60,7 @@ BOOL DPWriteManifest(NSString *path);  // Reads no settings.
 NSString *DPAppSupport(NSString *path);
 NSString *DPRelayProblem(void);  // nil if diapatch and the original Dia it starts are in place.
 NSString *DPHostProblem(NSString *manifest, NSString *name);  // nil if the native host manifest at that path sends `name` to diapatch.
+NSString *DPWriteProblem(NSString *path, NSError *error);  // What went wrong writing `path`, and how to fix a folder Dia may not write to.
 extern NSNotificationName const DPPatchesDidChangeNotification;
 #define DPLeadingOption @"DPLeadingOption"  // A row's identifier that puts it first under Options, above the options.
 extern BOOL DPTesting;  // Under make test, which saves nothing and has no one to answer an alert.

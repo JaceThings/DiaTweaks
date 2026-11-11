@@ -54,7 +54,7 @@ static NSString *DPICloudPasswordsProblem(DPPatch *patch) {
     NSDictionary *apple = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:kAppleHost] ?: NSData.data options:0 error:nil];
     if (![apple isKindOfClass:NSDictionary.class] || ![apple[@"path"] isKindOfClass:NSString.class] || ![NSFileManager.defaultManager isExecutableFileAtPath:apple[@"path"]])
         return @"This Mac doesn’t have Apple’s iCloud Passwords helper, which comes with macOS 14 and later.";
-    if (gWriteError) return [NSString stringWithFormat:@"Couldn’t set up iCloud Passwords: %@", gWriteError.localizedDescription];
+    if (gWriteError) return DPWriteProblem(DPHostManifestPath(@"com.apple.passwordmanager"), gWriteError);
     return DPRelayProblem() ?: DPHostProblem(DPHostManifestPath(@"com.apple.passwordmanager"), @"com.apple.passwordmanager");
 }
 
