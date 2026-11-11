@@ -128,6 +128,12 @@ static BOOL DPIsDigitKey(NSEvent *event) {
     return key.length == 1 && [key characterAtIndex:0] >= '1' && [key characterAtIndex:0] <= '9';
 }
 
+// The key's letter, so a shortcut follows the layout. Where that isn't ASCII (Russian, Greek, Hebrew), the key's place on a US keyboard.
+static BOOL DPIsKey(NSEvent *event, unichar letter, unsigned short code) {
+    NSString *key = event.charactersIgnoringModifiers.lowercaseString;
+    return key.length == 1 && [key characterAtIndex:0] < 128 ? [key characterAtIndex:0] == letter : event.keyCode == code;
+}
+
 // A focused peek page swallows ⌘S and ⌃1–9 (switch profile), which Dia's tabs pass on to the menu. The keypad's digits count too.
 static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
@@ -137,14 +143,14 @@ static id DPWatchKeys(DPPeekCard *card) {
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad);
         BOOL command = mods == NSEventModifierFlagCommand, control = mods == NSEventModifierFlagControl, editing = [peek.window.firstResponder isKindOfClass:NSText.class];
         if (DPPeekCopyURL(peek, event)) return nil;
-        if (command && event.keyCode == kVK_ANSI_O) [peek close:DPPeekTab];
+        if (command && DPIsKey(event, 'o', kVK_ANSI_O)) [peek close:DPPeekTab];
         // Dia's menu would go back, forward or reload the tab behind the card. Without the toolbar, the card stays stock.
-        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_LeftBracket) DPPeekNavigate(peek.page, DPPeekBack);
-        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_RightBracket) DPPeekNavigate(peek.page, DPPeekForward);
-        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_R) DPPeekNavigate(peek.page, DPPeekReload);
-        else if (command && peek.toolbar && event.keyCode == kVK_ANSI_L) DPPeekEditToolbarAddress(peek);
-        else if ((command && event.keyCode == kVK_ANSI_W) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
-        else if (!((command && event.keyCode == kVK_ANSI_S) || (control && DPIsDigitKey(event))) || ![NSApp.mainMenu performKeyEquivalent:event]) return event;
+        else if (command && peek.toolbar && DPIsKey(event, '[', kVK_ANSI_LeftBracket)) DPPeekNavigate(peek.page, DPPeekBack);
+        else if (command && peek.toolbar && DPIsKey(event, ']', kVK_ANSI_RightBracket)) DPPeekNavigate(peek.page, DPPeekForward);
+        else if (command && peek.toolbar && DPIsKey(event, 'r', kVK_ANSI_R)) DPPeekNavigate(peek.page, DPPeekReload);
+        else if (command && peek.toolbar && DPIsKey(event, 'l', kVK_ANSI_L)) DPPeekEditToolbarAddress(peek);
+        else if ((command && DPIsKey(event, 'w', kVK_ANSI_W)) || (!mods && event.keyCode == kVK_Escape && !editing)) [peek close:DPPeekClose];
+        else if (!((command && DPIsKey(event, 's', kVK_ANSI_S)) || (control && DPIsDigitKey(event))) || ![NSApp.mainMenu performKeyEquivalent:event]) return event;
         return nil;
     }];
 }
