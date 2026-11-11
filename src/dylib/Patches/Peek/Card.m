@@ -104,11 +104,21 @@ DPPeekCard *DPPeekCardIn(NSWindow *window) {
     });
 }
 
-static NSView *DPPeekPane(NSWindow *window) {
-    NSView *pane = nil;
-    for (NSView *candidate in DPFindViews(DPDiaContentPane))
-        if (candidate.window == window && NSWidth(candidate.bounds) * NSHeight(candidate.bounds) > NSWidth(pane.bounds) * NSHeight(pane.bounds)) pane = candidate;
-    return pane;
+// The pane the link is in, so a split's card covers the side the click was on. `area` is the link, or the pointer, on screen.
+// Failing that, the largest.
+static NSView *DPPeekPane(NSWindow *window, NSRect area) {
+    NSView *pane = nil, *under = nil;
+    CGFloat overlap = 0;
+    for (NSView *candidate in DPFindViews(DPDiaContentPane)) {
+        if (candidate.window != window) continue;
+        NSRect hit = NSIntersectionRect([window convertRectToScreen:[candidate convertRect:candidate.bounds toView:nil]], area);
+        if (!candidate.isHiddenOrHasHiddenAncestor && NSWidth(hit) * NSHeight(hit) > overlap) {
+            under = candidate;
+            overlap = NSWidth(hit) * NSHeight(hit);
+        }
+        if (NSWidth(candidate.bounds) * NSHeight(candidate.bounds) > NSWidth(pane.bounds) * NSHeight(pane.bounds)) pane = candidate;
+    }
+    return under ?: pane;
 }
 
 static NSView *DPPeekHolder(NSWindow *window, NSView *pane) {
@@ -160,7 +170,7 @@ static id DPWatchKeys(DPPeekCard *card) {
 
 // Below the page area, so it paints unseen at the card's size.
 NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
-    NSView *host = [page createPaneHostView], *pane = DPPeekPane(window);
+    NSView *host = [page createPaneHostView], *pane = DPPeekPane(window, (NSRect){NSEvent.mouseLocation, {1, 1}});
     if (!host || !pane) return nil;
     NSView *holder = DPPeekHolder(window, pane);
     NSRect area = [holder convertRect:pane.bounds fromView:pane];
@@ -171,7 +181,7 @@ NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
 }
 
 DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink) {
-    NSView *host = warmHost ?: [page createPaneHostView], *pane = DPPeekPane(window);
+    NSView *host = warmHost ?: [page createPaneHostView], *pane = DPPeekPane(window, screenLink);
     if (!window || !host || DPPeekCardIn(window)) return nil;
     NSView *holder = DPPeekHolder(window, pane);
     DPPeekCard *peek = [[DPPeekCard alloc] initWithFrame:pane ? [holder convertRect:pane.bounds fromView:pane] : holder.bounds];
