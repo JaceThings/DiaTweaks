@@ -62,6 +62,7 @@ static BOOL DPTabIsTop(NSView *tab) {
 @property (nonatomic, copy) NSString *contentKey;
 @property (nonatomic) BOOL pinned;
 @property (nonatomic, strong) NSTrackingArea *tabTracking;
+@property (nonatomic, weak) NSView *trackedTab;  // Where tabTracking was added, which isn't its owner.
 @property (nonatomic, strong) NSTimer *watch;
 @property (nonatomic) NSInteger misses;
 @end
@@ -71,12 +72,13 @@ static BOOL DPTabIsTop(NSView *tab) {
 
 - (void)viewDidMoveToSuperview {
     [super viewDidMoveToSuperview];
-    [self.tabTracking.owner removeTrackingArea:self.tabTracking];
+    [self.trackedTab removeTrackingArea:self.tabTracking];
     self.tabTracking = nil;
     if (!self.superview || self.pinned) return;
     self.tabTracking = [[NSTrackingArea alloc] initWithRect:self.superview.bounds
         options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect owner:self userInfo:nil];
     [self.superview addTrackingArea:self.tabTracking];
+    self.trackedTab = self.superview;
 }
 
 - (void)mouseEntered:(NSEvent *)event { if (!self.pinned) self.hidden = YES; }
