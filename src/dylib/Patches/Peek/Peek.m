@@ -5,7 +5,8 @@ static __weak id DPPeekHoveredPage, DPPeekHoveredDelegate;
 
 static BOOL DPPeekWanted(NSInteger disposition) {
     BOOL elsewhere = disposition == DPForegroundTab || disposition == DPBackgroundTab || disposition == DPPopup || disposition == DPNewWindow;
-    return DPPeek.on && elsewhere && (NSEvent.modifierFlags & NSEventModifierFlagShift);
+    NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad | NSEventModifierFlagFunction);
+    return DPPeek.on && elsewhere && mods == NSEventModifierFlagShift;  // ⌘⇧-click and ⌥⇧-click keep their meaning.
 }
 
 static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
