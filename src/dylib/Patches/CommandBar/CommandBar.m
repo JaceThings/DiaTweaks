@@ -351,15 +351,9 @@ static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
 
 static id DPWatchKeys(DPCommandBarOverlay *overlay) {
     __weak DPCommandBarOverlay *weak = overlay;
-    return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
+    return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
         DPCommandBarOverlay *overlay = weak;
         if (!overlay || event.window != overlay.host) return event;
-        // The page is under the bar, so a click closes it first and then lands on the page.
-        if (event.type == NSEventTypeLeftMouseDown) {
-            NSRect bar = [overlay.panel convertRect:overlay.panel.bounds toView:nil];
-            if (DPCommandBarInteractive.on && !NSMouseInRect(event.locationInWindow, bar, NO)) DPCancelCommandBar(overlay);
-            return event;
-        }
         if (event.type == NSEventTypeLeftMouseUp || event.keyCode == 36 || event.keyCode == 76) {
             overlay.picked = overlay.picked || DPBarText(overlay).string.length > 0;
             if (overlay.openedTab) DPWatchSoon(overlay, 60);
@@ -866,7 +860,7 @@ DP_PATCH(DPCommandBarInteractive) {
     .defaultOn = YES,
     .order = 91,
     .title = @"Scroll Page Behind",
-    .detail = @"Scroll the page behind the command bar while it's open, like Arc. The pointer doesn't highlight it; clicking closes the bar and acts on the page.",
+    .detail = @"Scroll the page behind the command bar while it's open, like Arc. The pointer doesn't highlight it, and clicking outside closes the bar without clicking the page.",
     .symbol = @"cursorarrow.rays",
     .tint = @"systemOrangeColor",
     .requires = @"commandBar",
