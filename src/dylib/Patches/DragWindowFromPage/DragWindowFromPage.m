@@ -2,6 +2,7 @@
 
 extern DPPatch DPDragWindowFromPage;
 static const CGFloat DPDragBand = 56, DPDragSlop = 3;
+static const NSEventModifierFlags DPDragKeys = NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl | NSEventModifierFlagShift;  // Not Caps Lock.
 static NSEvent *DPPressed;
 
 // Links and buttons show a hand and text an I-beam, so only the plain arrow drags.
@@ -23,7 +24,7 @@ static NSEvent *DPDragMouse(NSEvent *event) {
     switch (event.type) {
     case NSEventTypeLeftMouseDown:
         DPPressed = nil;
-        if (!DPDragWindowFromPage.on || event.clickCount != 1 || (event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) || !DPPageTopUnder(event)) return event;
+        if (!DPDragWindowFromPage.on || event.clickCount != 1 || (event.modifierFlags & DPDragKeys) || !DPPageTopUnder(event)) return event;
         DPPressed = event;
         return nil;
     case NSEventTypeLeftMouseDragged:
