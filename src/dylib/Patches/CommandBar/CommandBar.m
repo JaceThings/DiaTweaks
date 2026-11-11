@@ -382,6 +382,7 @@ static id DPWatchKeys(DPCommandBarOverlay *overlay) {
         BOOL close = DPMenuItemTitled(NSApp.mainMenu, @"Close Tab") ? DPIsShortcut(event, @"Close Tab")
                                                                        : (event.modifierFlags & DPShortcutMods) == NSEventModifierFlagCommand && event.keyCode == 13;
         if (!escape && !close) return event;
+        if (escape && DPBarText(overlay).hasMarkedText) return event;  // It cancels an input method's composition first.
         NSRect bar = [overlay.host convertRectToScreen:[overlay.panel convertRect:overlay.panel.bounds toView:nil]];
         for (NSWindow *child in overlay.host.childWindows)  // The @ menu, which Escape closes first.
             if (escape && child.visible && NSIntersectsRect(child.frame, bar)) return event;
