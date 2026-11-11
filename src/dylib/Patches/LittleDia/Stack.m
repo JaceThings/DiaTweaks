@@ -82,6 +82,9 @@ BOOL DPHideAgain(void) {
     if (!DPPutAway.count) return NO;
     for (NSWindow *window in NSApp.windows)
         if (DPIsLittleDiaWindow(window) && window.visible) return NO;
+    // A window shown or opened since is one the user is working in.
+    for (NSWindow *window in NSApp.windows)
+        if (window.visible && !window.miniaturized && window.level == NSNormalWindowLevel && window.canBecomeMainWindow) return NO;
     // Hiding notes which windows are showing, so they're shown first, behind everything, for unhiding to bring back.
     for (NSWindow *window in DPPutAway) [window orderBack:nil];
     [DPPutAway removeAllObjects];
