@@ -626,11 +626,15 @@ static BOOL update(void) {
 
 #pragma mark - iCloud Passwords
 
-// Another app's override of Apple's host isn't ours to remove.
+// Another app's host isn't ours to remove, and one the tweak kept aside goes back.
 static void removePasswordsHost(void) {
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"];
-    NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] ?: NSData.data options:0 error:NULL];
-    if ([host isKindOfClass:NSDictionary.class] && [host[@"path"] isEqual:inHome(@"bin/diapatch")]) removeTree(path);
+    for (NSString *file in @[ @"com.apple.passwordmanager.json", @"io.github.fanckush.betterpasswords.bridge.json" ]) {
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:[@"Library/Application Support/Google/Chrome/NativeMessagingHosts" stringByAppendingPathComponent:file]];
+        NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] ?: NSData.data options:0 error:NULL];
+        if (![host isKindOfClass:NSDictionary.class] || ![host[@"path"] isEqual:inHome(@"bin/diapatch")]) continue;
+        removeTree(path);
+        [NSFileManager.defaultManager moveItemAtPath:inHome(file) toPath:path error:NULL];
+    }
 }
 
 // Deletes only what DiaPatches creates, in case DIAPATCH_HOME points somewhere shared.

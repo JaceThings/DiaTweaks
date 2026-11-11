@@ -6,8 +6,10 @@
 
 static NSString *const kAppleHost = @"/Library/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json";
 
+// Apple's two iCloud Passwords extensions, and Better Passwords, which talks to Apple's helper too.
 static const char *const kAppleOrigins[] = { "chrome-extension://pejdijmoenmkgeppbflobdenhhabjlaj/",
-                                             "chrome-extension://mfbcdcnpokpoajjciilocoachedjkima/" };
+                                             "chrome-extension://mfbcdcnpokpoajjciilocoachedjkima/",
+                                             "chrome-extension://ocongmkplhijgajnipnhhggfcjfdilgj/" };
 
 static NSDictionary *hostAt(NSString *manifest) {
     NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:manifest] ?: NSData.data options:0 error:nil];
@@ -30,7 +32,11 @@ BOOL DPIsOnePasswordOrigin(const char *origin) {
     return [origins isKindOfClass:NSArray.class] && [origins containsObject:@(origin)];
 }
 
-BOOL DPIsPasswordsOrigin(const char *origin) { return !strcmp(origin, kAppleOrigins[0]) || !strcmp(origin, kAppleOrigins[1]) || DPIsOnePasswordOrigin(origin); }
+BOOL DPIsPasswordsOrigin(const char *origin) {
+    for (size_t i = 0; i < sizeof kAppleOrigins / sizeof *kAppleOrigins; i++)
+        if (!strcmp(origin, kAppleOrigins[i])) return YES;
+    return DPIsOnePasswordOrigin(origin);
+}
 
 static void waitForExit(pid_t pid) {
     int queue = kqueue();
