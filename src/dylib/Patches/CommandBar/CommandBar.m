@@ -412,6 +412,7 @@ static CGFloat DPStyleAsNewTab(NSView *panel) {
     *top = 21;
     bar.needsLayout = YES;  // So a tweak measuring it while the panel sizes sees it styled.
     [bar layoutSubtreeIfNeeded];
+    [text scrollRangeToVisible:text.selectedRange];  // The layout scrolls a long URL back to its start.
     return grown;
 }
 
