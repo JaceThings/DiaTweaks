@@ -307,7 +307,9 @@ static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
     else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
-    BOOL nowhereToGo = !overlay.returnTab;
+    // A return tab that has since closed leaves nowhere to go once the new tab is all that's left.
+    NSWindow *host = overlay.host;
+    BOOL nowhereToGo = !overlay.returnTab || (!DPScriptTab(host, DPTabID(overlay.returnTab)) && [[DPScriptWindow(host) valueForKey:@"appleScriptTabs"] count] < 2);
     id tab = DPDismissCommandBar(overlay);
     if (!tab) return;
     // Closing a window's only tab would close the window, and Dia with it.
@@ -331,6 +333,11 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
     if (active && ![active isEqual:DPTabID(tab)] && ![active isEqual:DPTabID(overlay.returnTab)]) {
         DPDismissCommandBar(overlay);
         return DPCloseTab(tab);
+    }
+    // The tab the bar was opened over closed, so its own bar is shown rather than a second one over it.
+    if (overlay.returnTab && !DPScriptTab(window, DPTabID(overlay.returnTab))) {
+        DPDismissCommandBar(overlay);
+        return DPFocusTab(tab);
     }
     // A chat loads no page; Dia empties the bar once it has taken what was typed.
     BOOL taken = overlay.picked && !DPBarText(overlay).string.length;
