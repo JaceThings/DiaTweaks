@@ -7,6 +7,12 @@ extern DPPatch DPCompactTabRows;
 
 static const CGFloat DPOldRowHeight = 37;
 
+// The attributes Dia keeps, not the moved copies Collapse Pinned Tabs hands out.
+static NSArray<NSCollectionViewLayoutAttributes *> *DPKeptAttributes(NSCollectionViewLayout *layout) {
+    NSArray *(*elements)(id, SEL, NSRect) = (void *)DPDiaIMP(objc_getClass(DPDiaTabListLayout), @selector(layoutAttributesForElementsInRect:));
+    return elements(layout, @selector(layoutAttributesForElementsInRect:), NSMakeRect(-1e5, -1e5, 2e5, 1e7));
+}
+
 static void DPRelayoutTabList(void) {
     for (NSView *view in DPFindViews(DPDiaTabListCollection)) [((NSCollectionView *)view).collectionViewLayout invalidateLayout];
 }
@@ -25,7 +31,7 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     DPCallOriginal(DPLayout_prepareLayout, self);
     if (!DPCompactTabRows.on) return;
     double *contentHeight = DPIvar(self, "contentHeight");  // Dia's layout hands out the attributes it keeps, so changing them changes it.
-    NSArray<NSCollectionViewLayoutAttributes *> *all = [self layoutAttributesForElementsInRect:NSMakeRect(-1e5, -1e5, 2e5, 1e7)];
+    NSArray<NSCollectionViewLayoutAttributes *> *all = DPKeptAttributes(self);
     CGFloat height = DPRowHeight(all), cut = height - DPOldRowHeight;
     if (!contentHeight || cut < 0.5) return;
     // A row is an item of the row height, or the header at the top of anything taller, such as an open folder.
@@ -67,7 +73,7 @@ static void DPApplyCompactTabRows(DPPatch *patch) { DPRelayoutTabList(); }
 
 static NSString *DPVerifyCompactTabRows(DPPatch *patch) {
     for (NSView *view in DPFindViews(DPDiaTabListCollection)) {
-        NSArray *all = [((NSCollectionView *)view).collectionViewLayout layoutAttributesForElementsInRect:NSMakeRect(-1e5, -1e5, 2e5, 1e7)];
+        NSArray *all = DPKeptAttributes(((NSCollectionView *)view).collectionViewLayout);
         if (patch->on && DPRowHeight(all) > DPOldRowHeight + 0.5) return @"tab rows are taller than 37 pt";
     }
     return nil;

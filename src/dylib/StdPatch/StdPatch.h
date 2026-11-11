@@ -69,6 +69,7 @@ extern BOOL DPTesting;  // Under make test, which saves nothing and has no one t
 // Two patches may hook one method: each DPCallOriginal calls what was there when it was installed.
 void DPHook(const char *className, SEL sel, IMP replacement);
 void DPHookClass(Class cls, SEL sel, IMP replacement);
+IMP DPDiaIMP(Class cls, SEL sel);  // Dia's own method, under every patch's hook.
 IMP DPOriginalIMP(id object, SEL sel, IMP replacement);
 
 #define DPCallOriginal(hook, self, ...) \
