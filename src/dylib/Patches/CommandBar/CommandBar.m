@@ -1,5 +1,6 @@
 #import "StdPatch/StdPatch.h"
 #import "Patches/CommandBar/Tabs.h"
+#import "Patches/CompactCommandBar/CompactCommandBar.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarInteractive, DPCommandBarKeepText;
 static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey;
@@ -357,13 +358,22 @@ static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
         });
 }
 
+// Only a click on a suggestion or Go can submit what's typed; one in the text, to move the caret, can't.
+static BOOL DPClickSubmits(DPCommandBarOverlay *overlay, NSEvent *event) {
+    NSView *hit = [overlay hitTest:[overlay.superview convertPoint:event.locationInWindow fromView:nil]];
+    NSView *suggestions = DPCommandBarPart(overlay.panel, DPDiaCommandBarSuggestions), *go = DPGoButton(DPCommandBarPart(overlay.panel, DPDiaCommandBarToolbar));
+    return (suggestions && [hit isDescendantOf:suggestions]) || (go && [hit isDescendantOf:go]);
+}
+
 static id DPWatchKeys(DPCommandBarOverlay *overlay) {
     __weak DPCommandBarOverlay *weak = overlay;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
         DPCommandBarOverlay *overlay = weak;
         if (!overlay || event.window != overlay.host) return event;
-        if (event.type == NSEventTypeLeftMouseUp || event.keyCode == 36 || event.keyCode == 76) {
-            overlay.picked = overlay.picked || DPBarText(overlay).string.length > 0;
+        BOOL click = event.type == NSEventTypeLeftMouseUp;
+        if (click || event.keyCode == 36 || event.keyCode == 76) {
+            BOOL submits = click ? DPClickSubmits(overlay, event) : !DPBarText(overlay).hasMarkedText;  // Return can confirm an input method's text.
+            overlay.picked = overlay.picked || (submits && DPBarText(overlay).string.length > 0);
             if (overlay.openedTab) DPWatchSoon(overlay, 60);
             return event;
         }
