@@ -87,7 +87,7 @@ static BOOL DPEscapeCloses(NSEvent *event) {
     if (!DPLittleDia.on || !DPLittleDiaEscape.on || event.keyCode != 53 || mods || event.isARepeat || !window.isKeyWindow) return NO;
     if (!DPIsLittleDiaWindow(window) || (window.styleMask & NSWindowStyleMaskFullScreen)) return NO;
     if ([window.firstResponder isKindOfClass:NSText.class] && [(NSText *)window.firstResponder isFieldEditor]) return NO;
-    id<NSTextInputClient> typing = (id)window.firstResponder;
+    NSResponder<NSTextInputClient> *typing = (id)window.firstResponder;
     if ([typing conformsToProtocol:@protocol(NSTextInputClient)] && typing.hasMarkedText) return NO;
     [window performClose:nil];
     return YES;
