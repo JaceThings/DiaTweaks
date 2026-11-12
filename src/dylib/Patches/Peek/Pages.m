@@ -1,8 +1,8 @@
 #import "Patches/Peek/Peek.h"
+#import "Commands/GroupTabs/GroupTabs.h"
 #import <objc/message.h>
 
 static NSMapTable *DPPeekFactories;
-static NSMapTable<NSWindow *, id> *DPPeekBrowsers;
 static __weak id DPPeekLastFactory;
 static id DPPeekWarmPage;
 static NSView *DPPeekWarmView;
@@ -26,11 +26,6 @@ static id DPBrowser_create(id self, SEL _cmd, id configuration) {
     return page;
 }
 
-static void DPBrowser_setWindow(id self, SEL _cmd, NSWindow *window) {
-    DPCallOriginal(DPBrowser_setWindow, self, window);
-    if (window) [DPPeekBrowsers setObject:self forKey:window];
-}
-
 static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     for (NSWindow *window in NSApp.windows) {
         DPPeekCard *peek = (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
@@ -41,10 +36,10 @@ static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     DPCallOriginal(DPPage_attach, self, host);
 }
 
-// Restored tabs' pages skip the hooked createWebContents, so they fall back to the window's browser.
+// Restored tabs' pages skip the hooked createWebContents, so they fall back to the window's browser for the profile in front.
 static id DPPeekFactoryFor(id source, NSWindow *window) {
     if (!source) return nil;
-    return [DPPeekFactories objectForKey:source] ?: (window ? [DPPeekBrowsers objectForKey:window] : nil) ?: DPPeekLastFactory;
+    return [DPPeekFactories objectForKey:source] ?: DPBrowserOfWindow(window) ?: DPPeekLastFactory;
 }
 
 BOOL DPPeekCanOpen(id source) { return DPPeekFactoryFor(source, NSApp.keyWindow) != nil; }
@@ -225,8 +220,6 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
 
 void DPPeekInstallPages(void) {
     DPPeekFactories = [NSMapTable weakToWeakObjectsMapTable];
-    DPPeekBrowsers = [NSMapTable weakToWeakObjectsMapTable];
-    DPHook(DPDiaBrowser, @selector(setWindow:), (IMP)DPBrowser_setWindow);
     DPHook(DPDiaBrowserContext, @selector(createWebContents:), (IMP)DPContext_create);
     DPHook(DPDiaBrowser, @selector(createWebContents:), (IMP)DPBrowser_create);
     DPHook(DPDiaWebContents, @selector(attachToPaneHostView:), (IMP)DPPage_attach);
