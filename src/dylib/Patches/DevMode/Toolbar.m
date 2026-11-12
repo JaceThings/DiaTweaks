@@ -38,7 +38,7 @@ static void DPUpdateToolbar(NSView *bar) {
 
 void DPUpdateToolbars(void) {
     for (NSView *bar in DPFindViews(DPDiaToolbar)) DPUpdateToolbar(bar);
-    DPUpdateTabOutlines();
+    DPUpdateTabMarks();
 }
 
 static void DPToolbar_layout(NSView *self, SEL _cmd) {

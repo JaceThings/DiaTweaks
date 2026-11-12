@@ -1,7 +1,7 @@
 #import "DevMode.h"
 
 static const CGFloat DPOutlineWidth = 1.5, DPDash = 6.5;
-static char DPOutlineKey;
+static char DPMarkKey;
 
 static NSView *DPShapeIn(NSView *tab) { return DPFindView(tab, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabShape); }); }
 
@@ -40,12 +40,13 @@ static CAShapeLayer *DPStroke(CGPathRef path, NSColor *color, NSArray *dashes) {
     return stroke;
 }
 
-@interface DPOutlineView : NSView
-@property (nonatomic) BOOL open;
+@interface DPTabMark : NSView  // Flipped like the view whose mask path it takes.
+@property(nonatomic) id path;
+@property(nonatomic) BOOL striped;
 @end
 
-@implementation DPOutlineView
-- (BOOL)isFlipped { return YES; }  // Like the view whose mask path it strokes.
+@implementation DPTabMark
+- (BOOL)isFlipped { return YES; }
 - (NSView *)hitTest:(NSPoint)point { return nil; }
 @end
 
@@ -54,58 +55,48 @@ static BOOL DPInTabStrip(NSView *view) {
     return view != nil;
 }
 
-static CGFloat DPWidthAt(CGPathRef path, CGFloat y) {
-    CGPathRef strip = CGPathCreateWithRect(CGRectMake(-1e4, y - 1, 2e4, 2), NULL), slice = CGPathCreateCopyByIntersectingPath(path, strip, NO);
-    CGFloat width = CGPathIsEmpty(slice) ? 0 : CGRectGetWidth(CGPathGetBoundingBox(slice));
-    CGPathRelease(strip);
-    CGPathRelease(slice);
-    return width;
-}
-
-// At the top, the tab flares into the toolbar, so that edge stays open.
-static CGPathRef DPCopyClipPath(CGPathRef path, BOOL open) {
-    if (!open) return CGPathRetain(path);
-    CGRect box = CGPathGetBoundingBox(path);
-    BOOL flaresAtMin = DPWidthAt(path, CGRectGetMinY(box) + 1) > DPWidthAt(path, CGRectGetMaxY(box) - 1);
-    CGRect kept = box;
-    kept.size.height -= DPOutlineWidth;
-    if (flaresAtMin) kept.origin.y += DPOutlineWidth;
-    CGPathRef rect = CGPathCreateWithRect(kept, NULL), clip = CGPathCreateCopyByIntersectingPath(path, rect, NO);
-    CGPathRelease(rect);
-    return clip;
-}
-
-static DPOutlineView *DPMakeOutline(CGPathRef path, BOOL open) {
-    DPOutlineView *view = [DPOutlineView new];
-    view.open = open;
-    view.layer = [CALayer layer];
-    view.wantsLayer = YES;
-    view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [view.layer addSublayer:DPStroke(path, [NSColor colorWithSRGBRed:0.16 green:0.13 blue:0.02 alpha:1], nil)];
-    [view.layer addSublayer:DPStroke(path, [NSColor colorWithSRGBRed:0.98 green:0.78 blue:0.04 alpha:1], @[ @(DPDash), @(DPDash) ])];
+// At the top the tab joins the striped toolbar, so it takes the stripes. In the sidebar it's outlined.
+static DPTabMark *DPMakeMark(CGPathRef path, BOOL striped) {
+    DPTabMark *mark = [DPTabMark new];
+    mark.path = (__bridge id)path;
+    mark.striped = striped;
+    mark.layer = [CALayer layer];
+    mark.wantsLayer = YES;
+    mark.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     CAShapeLayer *inside = [CAShapeLayer layer];
-    CGPathRef clip = DPCopyClipPath(path, open);
-    inside.path = clip;
-    CGPathRelease(clip);
-    view.layer.mask = inside;
-    return view;
+    inside.path = path;
+    mark.layer.mask = inside;
+    if (striped) {
+        [mark addSubview:DPMakeStripes()];
+        return mark;
+    }
+    [mark.layer addSublayer:DPStroke(path, [NSColor colorWithSRGBRed:0.16 green:0.13 blue:0.02 alpha:1], nil)];
+    [mark.layer addSublayer:DPStroke(path, [NSColor colorWithSRGBRed:0.98 green:0.78 blue:0.04 alpha:1], @[ @(DPDash), @(DPDash) ])];
+    return mark;
 }
 
 static void DPUpdateTab(NSView *tab) {
     NSView *shape = DPShapeIn(tab);
-    DPOutlineView *outline = DPGet(tab, &DPOutlineKey);
+    DPTabMark *mark = DPGet(tab, &DPMarkKey);
     CGPathRef path = shape && DPTabMarked(tab) ? DPShapePath(shape) : NULL;
-    if (!path) return [outline removeFromSuperview];
-    BOOL open = DPInTabStrip(tab);
-    if (!outline || outline.open != open || !CGPathEqualToPath(path, ((CAShapeLayer *)outline.layer.sublayers.firstObject).path)) {
-        [outline removeFromSuperview];
-        DPSet(tab, &DPOutlineKey, outline = DPMakeOutline(path, open));
+    BOOL striped = path && DPInTabStrip(tab);
+    NSAppearance *appearance = striped ? DPProfileAppearance(tab.window) : nil;
+    // Dia gives the tab the site's appearance. Striped, its title takes the profile's, as the toolbar does.
+    if (striped || mark.striped) {
+        NSView *content = DPFindView(tab, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabContentView); });
+        if (content.appearance != appearance) content.appearance = appearance;
     }
-    if (outline.superview != shape || shape.subviews.lastObject != outline) [shape addSubview:outline positioned:NSWindowAbove relativeTo:nil];
-    if (!NSEqualRects(outline.frame, shape.bounds)) outline.frame = shape.bounds;
+    if (!path) return [mark removeFromSuperview];
+    if (!mark || mark.striped != striped || !CGPathEqualToPath(path, (__bridge CGPathRef)mark.path)) {
+        [mark removeFromSuperview];
+        DPSet(tab, &DPMarkKey, mark = DPMakeMark(path, striped));
+    }
+    if (mark.superview != shape || shape.subviews.lastObject != mark) [shape addSubview:mark positioned:NSWindowAbove relativeTo:nil];
+    if (!NSEqualRects(mark.frame, shape.bounds)) mark.frame = shape.bounds;
+    if (mark.appearance != appearance) mark.appearance = appearance;
 }
 
-void DPUpdateTabOutlines(void) {
+void DPUpdateTabMarks(void) {
     for (NSView *tab in DPFindViews(DPDiaTabView)) DPUpdateTab(tab);
 }
 
@@ -116,13 +107,23 @@ static void DPShape_layout(NSView *self, SEL _cmd) {
     if (tab) DPUpdateTab(tab);
 }
 
-void DPInstallTabOutlines(void) { DPHook(DPDiaTabShape, @selector(layout), (IMP)DPShape_layout); }
+// A tab sliding along the strip doesn't lay out, but its stripes have to stay in step with the toolbar's.
+static void DPTab_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
+    DPCallOriginal(DPTab_setFrameOrigin, self, origin);
+    DPTabMark *mark = DPGet(self, &DPMarkKey);
+    if (mark.striped) mark.subviews.firstObject.needsLayout = YES;
+}
 
-NSString *DPVerifyTabOutlines(void) {
+void DPInstallTabMarks(void) {
+    DPHook(DPDiaTabShape, @selector(layout), (IMP)DPShape_layout);
+    DPHook(DPDiaTabView, @selector(setFrameOrigin:), (IMP)DPTab_setFrameOrigin);
+}
+
+NSString *DPVerifyTabMarks(void) {
     for (NSView *tab in DPFindViews(DPDiaTabView)) {
         NSView *shape = DPShapeIn(tab);
         if (!shape || !DPShapePath(shape)) continue;
-        BOOL shown = [DPGet(tab, &DPOutlineKey) superview] != nil;
+        BOOL shown = [DPGet(tab, &DPMarkKey) superview] != nil;
         BOOL wanted = DPTabMarked(tab);
         if (shown != wanted) return wanted ? @"the selected Developer Mode tab isn't marked" : @"a tab outside Developer Mode is marked";
     }

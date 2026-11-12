@@ -140,7 +140,7 @@ static NSView *DPWindowTint(NSWindow *window) {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     // The toolbar takes the profile's appearance too, so its buttons and address stay readable.
-    if (!self.plain && self.alphaValue > 0 && tint) {
+    if (!self.plain && self.alphaValue > 0 && tint && DPIsKind(self.superview, DPDiaToolbar)) {
         DPSetBarAppearance(self.superview, tint.effectiveAppearance);
         DPHoldFill([self watchFill], tint.effectiveAppearance);
     }
@@ -155,9 +155,11 @@ static NSView *DPWindowTint(NSWindow *window) {
     self.profile.startPoint = gradient.startPoint;
     self.profile.endPoint = gradient.endPoint;
     self.profile.frame = tint ? [self convertRect:tint.bounds fromView:tint] : self.bounds;
-    CGFloat height = NSHeight(self.bounds);
+    // Placed by the window, so a tab's stripes run on from the toolbar's.
+    NSPoint origin = [self convertPoint:NSZeroPoint toView:nil];
+    CGFloat height = NSHeight(self.bounds), step = (DPStripeWidth + DPStripeSpacing) * M_SQRT2;
     CGMutablePathRef path = CGPathCreateMutable();
-    for (CGFloat x = -height; x < NSWidth(self.bounds) + height; x += (DPStripeWidth + DPStripeSpacing) * M_SQRT2) {
+    for (CGFloat x = -height - step - fmod(origin.x + origin.y, step); x < NSWidth(self.bounds) + height; x += step) {
         CGPathMoveToPoint(path, NULL, x, height);
         CGPathAddLineToPoint(path, NULL, x + height, 0);
     }
@@ -181,6 +183,12 @@ NSAppearance *DPProfileAppearance(NSWindow *window) { return DPWindowTint(window
 NSView *DPMakeProfileBackground(void) {
     DPStripesView *view = [DPStripesView new];
     view.plain = YES;
+    view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    return view;
+}
+
+NSView *DPMakeStripes(void) {
+    DPStripesView *view = [DPStripesView new];
     view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     return view;
 }

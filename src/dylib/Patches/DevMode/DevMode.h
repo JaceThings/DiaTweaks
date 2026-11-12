@@ -17,6 +17,7 @@ NSView *DPMakeDevButtons(void);
 void DPInstallToolbar(void);
 void DPShowStripes(NSView *bar, BOOL shown);
 void DPInstallStripes(void);
+NSView *DPMakeStripes(void);
 NSView *DPMakeProfileBackground(void);  // The profile's color over the window's material, as Dia's toasts have.
 NSAppearance *DPProfileAppearance(NSWindow *window);
 void DPInstallMenuItems(void);
@@ -24,9 +25,9 @@ void DPInstallSiteMenu(void);
 void DPUpdateMenuItems(void);
 NSString *DPVerifyMenuItems(void);
 void DPUpdateToolbars(void);
-void DPInstallTabOutlines(void);
-void DPUpdateTabOutlines(void);
-NSString *DPVerifyTabOutlines(void);
+void DPInstallTabMarks(void);
+void DPUpdateTabMarks(void);
+NSString *DPVerifyTabMarks(void);
 NSString *DPVerifyToolbars(DPPatch *patch);
 
 typedef NS_ENUM(NSInteger, DPPortraitBackground) { DPPortraitHue = 1, DPPortraitWallpaper, DPPortraitBlack };

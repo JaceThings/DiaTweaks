@@ -8,7 +8,7 @@ static void DPInstallDevMode(void) {
     DPInstallPages();
     DPInstallStripes();
     DPInstallToolbar();
-    DPInstallTabOutlines();
+    DPInstallTabMarks();
     DPInstallMenuItems();
     DPInstallSiteMenu();
 }
@@ -18,7 +18,7 @@ static void DPApplyDevMode(DPPatch *patch) {
     DPUpdateMenuItems();
 }
 
-static NSString *DPVerifyDevMode(DPPatch *patch) { return DPVerifyToolbars(patch) ?: DPVerifyTabOutlines() ?: DPVerifyMenuItems(); }
+static NSString *DPVerifyDevMode(DPPatch *patch) { return DPVerifyToolbars(patch) ?: DPVerifyTabMarks() ?: DPVerifyMenuItems(); }
 
 DP_PATCH(DPDevMode) {
     .key = @"devMode",
