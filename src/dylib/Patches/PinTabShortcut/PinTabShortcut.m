@@ -4,7 +4,6 @@ extern DPPatch DPPinTabShortcut;
 
 // Dia's Pin as Tab puts a tab at the bottom of the pinned tabs, and Unpin puts it back at the top of the rest. Dia only
 // offers them in a tab's right-click menu; its Pin/Unpin Tab shortcut pins to the favorites at the top instead.
-static NSString *const DPPinTitles[] = {@"Pin as Tab", @"Unpin"};
 
 // ⌘D, as in Arc. Dia uses it for Bookmark This Page, which keeps it whenever there’s no tab to pin.
 static NSDictionary *DPDefaultPinShortcut(void) { return @{ @"keyCode" : @2, @"modifiers" : @(NSEventModifierFlagCommand), @"key" : @"D" }; }
@@ -30,8 +29,8 @@ static BOOL DPPinTab(NSView *tab, BOOL run) {
     NSEvent *click = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
                                     windowNumber:tab.window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
     NSMenu *menu = [tab menuForEvent:click];
-    for (NSUInteger i = 0; i < sizeof(DPPinTitles) / sizeof(DPPinTitles[0]); i++) {
-        NSMenuItem *item = [menu itemWithTitle:DPPinTitles[i]];
+    for (NSString *title in @[ @"Pin as Tab", @"Unpin" ]) {
+        NSMenuItem *item = [menu itemWithTitle:title];
         if (!item || item.hidden || !item.enabled) continue;
         if (run) [menu performActionForItemAtIndex:[menu indexOfItem:item]];
         return YES;
