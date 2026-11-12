@@ -31,7 +31,8 @@ static void DPContent_layout(NSView *self, SEL _cmd) {
     if (!dia) return;
     BOOL minus = DPMinusOn() && DPMinusController(self);
     if (minus) DPOverride(button, &DPDiaImageKey, dia, DPMinus);
-    if (button.image != (minus ? DPMinus : dia)) button.image = minus ? DPMinus : dia;
+    NSImage *shown = minus ? DPMinus : dia;
+    if (button.image != shown) button.image = shown;
 }
 
 // The button's icon decides, so a click does what it showed. Keeping the tab is the safe guess if the tab changed since.
