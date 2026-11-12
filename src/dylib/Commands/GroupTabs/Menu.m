@@ -23,8 +23,6 @@ static BOOL DPIsNewGroupTitle(NSString *title) {
     return [title hasPrefix:@"New Group with "] && ([title hasSuffix:@" Tab"] || [title hasSuffix:@" Tabs"]);
 }
 
-extern DPPatch DPGroupTabs;
-
 static NSMenuItem *DPCommandItem(NSString *title, NSInteger tag, NSString *symbol, void (^action)(void)) {
     NSMenuItem *item = DPMenuItem(title, action);
     item.tag = tag;

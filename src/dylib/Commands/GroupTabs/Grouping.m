@@ -1,8 +1,6 @@
 #import "GroupTabs.h"
 #import <objc/message.h>
 
-extern DPPatch DPGroupTabsMergeSubdomains;
-
 static void DPCollectPinned(NSMutableSet<NSNumber *> *sessions, NSMutableSet<NSString *> *pinnedURLs, NSMutableSet<NSString *> *openURLs) {
     id app = NSApp.delegate;
     if (![app respondsToSelector:@selector(appleScriptWindows)]) return;

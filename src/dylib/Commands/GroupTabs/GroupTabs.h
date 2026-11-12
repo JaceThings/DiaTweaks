@@ -1,5 +1,7 @@
 #import "StdPatch/StdPatch.h"
 
+extern DPPatch DPGroupTabs, DPGroupTabsMergeSubdomains;
+
 void DPInstallGroupTabs(void);
 
 id DPCommandBrowser(void);
