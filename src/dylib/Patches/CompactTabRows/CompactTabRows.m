@@ -13,10 +13,6 @@ static NSArray<NSCollectionViewLayoutAttributes *> *DPKeptAttributes(NSCollectio
     return elements(layout, @selector(layoutAttributesForElementsInRect:), NSMakeRect(-1e5, -1e5, 2e5, 1e7));
 }
 
-static void DPRelayoutTabList(void) {
-    for (NSView *view in DPFindViews(DPDiaTabListCollection)) [((NSCollectionView *)view).collectionViewLayout invalidateLayout];
-}
-
 // The most common item height is a row's. Nothing to do when rows are already the old height, or a kept layout still has ours.
 static CGFloat DPRowHeight(NSArray<NSCollectionViewLayoutAttributes *> *all) {
     NSCountedSet<NSNumber *> *heights = [NSCountedSet set];
@@ -131,7 +127,9 @@ static void DPInstallCompactTabRows(void) {
     DPHook(DPDiaTabList, @selector(performDragOperation:), (IMP)DPTabList_perform);
 }
 
-static void DPApplyCompactTabRows(DPPatch *patch) { DPRelayoutTabList(); }
+static void DPApplyCompactTabRows(DPPatch *patch) {
+    for (NSView *view in DPFindViews(DPDiaTabListCollection)) [((NSCollectionView *)view).collectionViewLayout invalidateLayout];
+}
 
 static NSString *DPVerifyCompactTabRows(DPPatch *patch) {
     for (NSView *view in DPFindViews(DPDiaTabListCollection)) {
