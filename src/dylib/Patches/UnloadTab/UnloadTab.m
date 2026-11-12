@@ -40,7 +40,7 @@ static id DPPageOf(id content) {
 
 static BOOL DPTabOpen(NSView *tab) {
     NSString *state = [DPSwiftValue(DPSwiftValue(DPSwiftValue(tab, @"viewModel"), @"stateSubject"), @"currentValue") description];
-    NSString *style = [[state componentsSeparatedByString:@"selectionStyle: "].lastObject substringToIndex:5];
+    NSString *style = [state componentsSeparatedByString:@"selectionStyle: "].lastObject;
     return ![style hasPrefix:@"nil"] && ![style hasPrefix:@"none"] && ![style hasPrefix:@"above"] && ![style hasPrefix:@"below"];
 }
 
