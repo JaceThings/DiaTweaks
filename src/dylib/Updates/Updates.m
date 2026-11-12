@@ -68,7 +68,7 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
 @implementation DPUpdates {
     NSMutableDictionary<NSString *, NSMutableArray *> *_whenDownloaded;
     NSMutableArray *_checked;
-    NSMutableDictionary<NSString *, NSString *> *_failed;  // part → why its download failed, or @"" if unknown
+    NSMutableDictionary<NSString *, NSString *> *_failed;  // part → why its download or patch failed, or @"" if unknown
     NSTimer *_progress;
     NSDictionary *_found;
     NSMutableDictionary<NSString *, id> *_pretend;  // part → @"available", the NSDate its download started, or @"staged"
@@ -100,6 +100,9 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     DPRunCLI(@[@"check", @"--json"], ^(NSString *output) {
         id found = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
         self->_found = [found isKindOfClass:NSDictionary.class] ? found : nil;
+        // diapatch remembers a Dia that it couldn't patch, so that it isn't downloaded again, and says why here.
+        NSString *unpatchable = self->_found[DPDia][@"unpatchable"];
+        if ([unpatchable isKindOfClass:NSString.class] && !self->_failed[DPDia] && !self->_whenDownloaded[DPDia]) self->_failed[DPDia] = unpatchable;
         self->_checking = NO;
         NSArray *waiting = [self->_checked copy];
         [self->_checked removeAllObjects];
@@ -311,7 +314,7 @@ void DPInstallUpdates(void) {
         DPUpdates *updates = DPUpdates.shared;
         [updates check:^{
             for (NSString *part in @[DPDia, DPTweaks])
-                if (DPAutoLevelOf(part) >= DPAutoDownload && [updates available:part]) [updates download:part then:nil];
+                if (DPAutoLevelOf(part) >= DPAutoDownload && [updates available:part] && ![updates failed:part]) [updates download:part then:nil];
         }];
     });
     DPOnQuit(^{ DPInstallOnQuit(); });

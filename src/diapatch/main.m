@@ -23,6 +23,7 @@ static NSString *const kDiaReleaseNotes = @"https://www.diabrowser.com/release-n
 static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
 static const char *gCommand;
 static FILE *gLog;
+static NSString *gFailure;  // the last thing fail() said
 
 #pragma mark - Output
 
@@ -32,6 +33,7 @@ static BOOL emit(FILE *out, NSString *format, ...) {
     va_start(args, format);
     NSString *line = [[NSString alloc] initWithFormat:format arguments:args];
     va_end(args);
+    if (out == stderr) gFailure = line;
     if (gLog) {
         char stamp[20];
         time_t now = time(NULL);
@@ -643,6 +645,25 @@ static BOOL install(BOOL relaunch) {
                inHome(@"bin/diapatch"));
 }
 
+// A Dia build that couldn't be patched is offered again on every launch, and downloaded again if updates are automatic. So
+// it's remembered with the diapatch that failed on it; any other diapatch tries it afresh.
+static NSString *unpatchableFile(void) { return inHome(@"unpatchable.plist"); }
+
+static NSString *ownDigest(void) { return sha256(NSBundle.mainBundle.executablePath); }
+
+static void rememberUnpatchable(Release *release) {
+    NSString *line = [gFailure componentsSeparatedByString:@"\n"].firstObject;
+    note(@"Dia %@ can't be patched by this DiaTweaks, so it isn't downloaded automatically again", release.version);
+    [@{ @"build" : release.build, @"diapatch" : ownDigest() ?: @"", @"reason" : [@"Couldn’t patch this version: " stringByAppendingString:line ?: @"unknown error"] }
+        writeToFile:unpatchableFile() atomically:YES];
+}
+
+static NSString *unpatchableReason(Release *release) {
+    NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:unpatchableFile()];
+    NSString *reason = saved[@"reason"];
+    return release && [saved[@"build"] isEqual:release.build] && [saved[@"diapatch"] isEqual:ownDigest()] && [reason isKindOfClass:NSString.class] ? reason : nil;
+}
+
 static BOOL update(void) {
     NSString *channel, *problem, *output;
     Release *release = latest(60, &channel, &problem);
@@ -661,9 +682,13 @@ static BOOL update(void) {
     }
     BOOL ok = check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, work ]) && check(@[ @"/usr/bin/xattr", @"-cr", work ])
         && ([buildOf(app) isEqual:release.build] || fail(@"the download holds build %@, not %@", buildOf(app), release.build))
-        && verifyOfficial(app) && build(app) && makeDir(gPristine.stringByDeletingLastPathComponent) && moveBundle(app, gPristine)
-        && (DPForgetApp(gPristine), YES);
+        && verifyOfficial(app);
+    // Only a failed patch is remembered: a bad download or a full disk can pass.
+    BOOL built = ok && build(app);
+    if (ok && !built) rememberUnpatchable(release);
+    ok = built && makeDir(gPristine.stringByDeletingLastPathComponent) && moveBundle(app, gPristine) && (DPForgetApp(gPristine), YES);
     removeTree(work);
+    if (ok) removeTree(unpatchableFile());
     return ok && say(@"Dia %@ is staged; relaunch Dia or run `diapatch apply` to install it", release.version);
 }
 
@@ -694,7 +719,7 @@ static BOOL purge(void) {
     }
     for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"release.plist", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
                               @".diatweaks.lock", @".incoming", @"icons", @"app-icons", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch",
-                              @"passkey-helper", @"passkey-helper.lock", @"passkeys-extension" ])
+                              @"passkey-helper", @"passkey-helper.lock", @"passkeys-extension", @"unpatchable.plist" ])
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
         if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
@@ -762,6 +787,7 @@ static BOOL checkUpdates(void) {
             @"releaseNotes" : kDiaReleaseNotes,
             @"staged" : (stagedReady() ? versionOf(gStaged) : nil) ?: NSNull.null,
             @"available" : @((BOOL)(dia && newer(dia.build, buildOf(gPristine)) && !diaStaged)),
+            @"unpatchable" : unpatchableReason(dia) ?: NSNull.null,
             @"error" : dia ? NSNull.null : problem,
         },
         @"tweaks" : @{
