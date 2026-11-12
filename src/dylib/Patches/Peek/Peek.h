@@ -86,3 +86,4 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
 void DPPeekWarm(NSWindow *window, id source, NSURL *url);
 void DPPeekCool(void);
 void DPPeekOpenDragged(NSURL *url, NSPoint origin);
+BOOL DPPeekIsWeb(NSURL *url);

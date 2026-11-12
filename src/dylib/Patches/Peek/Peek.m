@@ -10,7 +10,7 @@ static BOOL DPPeekWanted(NSInteger disposition) {
     return DPPeek.on && !DPPeekGiving && elsewhere && mods == NSEventModifierFlagShift;  // ⌘⇧-click and ⌥⇧-click keep their meaning.
 }
 
-static BOOL DPPeekIsWeb(NSURL *url) { return [url isKindOfClass:NSURL.class] && [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]; }
+BOOL DPPeekIsWeb(NSURL *url) { return [url isKindOfClass:NSURL.class] && [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]; }
 
 static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
     DPPeekLookAheadTurn++;  // The link opens now; a look-ahead still waiting would load it again.

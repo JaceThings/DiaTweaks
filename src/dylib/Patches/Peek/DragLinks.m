@@ -208,7 +208,7 @@ static void DPShowZone(NSWindow *window, NSPoint pointer) {
 static NSDraggingSession *DPPage_beginDrag(NSView *self, SEL _cmd, NSArray<NSDraggingItem *> *items, NSEvent *event, id source) {
     NSDraggingSession *session = DPCallOriginal(DPPage_beginDrag, self, items, event, source);
     NSURL *url = DPPeek.on && DPPeekDragLinks.on ? [NSURL URLFromPasteboard:session.draggingPasteboard] : nil;
-    if (![@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]) return session;
+    if (!DPPeekIsWeb(url)) return session;
     DPShowZone(self.window, [self.window convertPointToScreen:event.locationInWindow]);
     return session;
 }
