@@ -1,5 +1,6 @@
 #import "StdPatch.h"
 #import <arpa/inet.h>
+#import <dlfcn.h>
 
 // Schemes kept as typed without "//", as Dia's own address bar keeps them. javascript: isn't one: a bar that only
 // navigates has nothing to run it on, so it is searched for.
@@ -19,17 +20,32 @@ static BOOL DPIsIPv4(NSArray<NSString *> *labels) {
     return YES;
 }
 
-// Whether the last label is a top-level domain. Foundation's link detector is the only list the system offers; it knows .com,
-// .io, .ai and the country codes, not every newer one (.dev, .app, .sh), which are then searched for, as Chromium does an
-// unknown one. Asked with a made-up first label, so only the ending counts.
+// Whether the last label is a top-level domain. CFNetwork's list is the system's own and kept current, so .dev, .app and
+// .sh count, and .js, .json and .14 don't. Some file extensions are country domains too (.md, .py, .rs), and are sites here as
+// they are in Chromium. Should the private call be gone, Foundation's link detector and the common newer domains stand in.
 static BOOL DPIsTopLevel(NSString *label) {
+    static Boolean (*system)(CFStringRef);
     static NSDataDetector *links;
+    static NSSet<NSString *> *newer;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ links = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink error:nil]; });
-    if (!links) return YES;
+    dispatch_once(&once, ^{
+        system = dlsym(RTLD_DEFAULT, "_CFHostIsDomainTopLevel");
+        if (system && system(CFSTR("com"))) return;
+        system = NULL;
+        links = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink error:nil];
+        newer = [NSSet setWithArray:[@"dev app page cloud shop blog live store sh gg im io ai xyz tech site online design tools run so to me tv fm co club new zip mov bot pro info biz wiki world today news team work games chat link fun art studio digital software systems network email finance money health edu gov mil int" componentsSeparatedByString:@" "]];
+    });
+    if (system) return system((__bridge CFStringRef)label);
     NSString *host = [@"foo." stringByAppendingString:label];
     NSTextCheckingResult *match = [links firstMatchInString:host options:0 range:NSMakeRange(0, host.length)];
-    return match && NSEqualRanges(match.range, NSMakeRange(0, host.length));
+    return [newer containsObject:label.lowercaseString] || (match && NSEqualRanges(match.range, NSMakeRange(0, host.length)));
+}
+
+// Names that only exist on a network of one's own, which speak plain HTTP like localhost does.
+static BOOL DPIsLocalName(NSString *name) {
+    if ([name isEqual:@"localhost"]) return YES;
+    for (NSString *suffix in @[ @".localhost", @".test", @".local", @".internal", @".lan", @".home.arpa" ]) if ([name hasSuffix:suffix]) return YES;
+    return NO;
 }
 
 static BOOL DPIsHostLabel(NSString *label) {
@@ -86,7 +102,7 @@ NSURL *DPAddressURL(NSString *typed) {
 
     // This machine or one on its network speaks plain HTTP, as does anything given a port. A name with a top-level domain is
     // a site, tried over HTTPS because nothing here can fall back to HTTP.
-    if (DPIsIPv4(labels) || [name isEqual:@"localhost"] || [name hasSuffix:@".localhost"] || port)
+    if (DPIsIPv4(labels) || DPIsLocalName(name) || port)
         return [NSURL URLWithString:[(port.integerValue == 443 ? @"https://" : @"http://") stringByAppendingString:text]];
     if (labels.count > 1 && ([name hasPrefix:@"www."] || DPIsTopLevel(labels.lastObject))) return [NSURL URLWithString:[@"https://" stringByAppendingString:text]];
     return nil;
