@@ -123,6 +123,6 @@ void DPApplyToolbar(NSView *pane) {
     }
 }
 
-void DPRelayoutPanes(void) {
-    DPRelayoutViews(DPPanes);
-}
+void DPRelayoutPanes(void) { DPRelayoutViews(DPPanes); }
+
+void DPApplyRelayoutPanes(DPPatch *patch) { DPRelayoutPanes(); }

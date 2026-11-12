@@ -27,6 +27,7 @@ NSString *DPVerifyKeptInPlace(DPPatch *patch);
 void DPApplyToolbar(NSView *pane);
 void DPApplyToolbarOpacity(DPToolbarHover *hover);
 void DPRelayoutPanes(void);
+void DPApplyRelayoutPanes(DPPatch *patch);
 void DPRepaintTabs(NSWindow *window);
 
 void DPShowCopyToast(NSView *pane, NSString *message);
