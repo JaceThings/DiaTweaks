@@ -191,7 +191,6 @@ static void DPReturnTo(NSWindow *window, NSString *originID, NSString *expectedF
 // Tracks which tab you're on. A tab opened from another stays tied to it while you're on either, so going back and
 // forth keeps it, and a command bar tab that sends you back while it waits for a search does too.
 static void DPNote(NSWindow *window) {
-    if (!DPNewTabNextToCurrent.on) return DPSet(window, &DPStateKey, nil);
     NSString *active = DPActiveTabID(window);
     NSArray<NSString *> *ids = DPTabIDs(window);
     DPNextTabs *state = DPGet(window, &DPStateKey);
