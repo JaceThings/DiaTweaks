@@ -28,15 +28,16 @@ id DPLittleDiaPage(NSWindow *window) { return DPGet(window, &DPPageKey); }
 // The content runs under the title bar, so Dia's popup bar, pinned to the top, is the top of the window.
 static void DPSetChrome(NSWindow *window, BOOL little) {
     NSView *titlebar = [window standardWindowButton:NSWindowCloseButton].superview.superview;
-    if (little && !DPGet(window, &DPChromeKey)) {
+    NSDictionary *saved = DPGet(window, &DPChromeKey);
+    if (little == (saved != nil)) return;
+    if (little) {
         DPSet(window, &DPChromeKey, @{@"mask" : @(window.styleMask), @"movable" : @(window.movableByWindowBackground)});
         window.styleMask |= NSWindowStyleMaskFullSizeContentView;
-    } else if (!little && DPGet(window, &DPChromeKey)) {
-        NSDictionary *saved = DPGet(window, &DPChromeKey);
+    } else {
         DPSet(window, &DPChromeKey, nil);
         window.styleMask = [saved[@"mask"] unsignedIntegerValue];
         window.movableByWindowBackground = [saved[@"movable"] boolValue];
-    } else return;
+    }
     window.titlebarAppearsTransparent = little;
     window.titleVisibility = little ? NSWindowTitleHidden : NSWindowTitleVisible;
     if (little) window.movableByWindowBackground = YES;
@@ -142,6 +143,18 @@ void DPRefreshLittleDiaWindows(void) {
     DPRelayoutLittleDiaBars();
 }
 
+static void DPWindowWillClose(NSWindow *window) {
+    if (!DPLittleDia.on || !DPIsLittleDiaWindow(window)) return;
+    pid_t source = [DPGet(window, &DPSourceKey) intValue];
+    BOOL key = window.isKeyWindow, promoted = [DPGet(window, &DPPromotedKey) boolValue];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (promoted) {
+            DPBringBackPutAway(nil);
+            DPShowMainWindow();
+        } else if (!DPHideAgain() && key && source) DPReturnToSource(source);
+    });
+}
+
 void DPInstallLittleDiaWindows(void) {
     DPExpected = [NSMutableArray array];
     DPPendingPages = [NSMutableArray array];
@@ -151,23 +164,9 @@ void DPInstallLittleDiaWindows(void) {
     DPOnLaunch(^{
         DPHook(DPDiaWebContent, @selector(webContents:decidePolicyForNavigationAction:), (IMP)DPPage_decidePolicy);
     });
-    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) { DPClaim(note.object); }];
-    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) {
-                                                    NSWindow *window = note.object;
-                                                    if (!DPLittleDia.on || !DPIsLittleDiaWindow(window)) return;
-                                                    pid_t source = [DPGet(window, &DPSourceKey) intValue];
-                                                    BOOL key = window.isKeyWindow;
-                                                    if ([DPGet(window, &DPPromotedKey) boolValue])
-                                                        dispatch_async(dispatch_get_main_queue(), ^{
-                                                            DPBringBackPutAway(nil);
-                                                            DPShowMainWindow();
-                                                        });
-                                                    else dispatch_async(dispatch_get_main_queue(), ^{
-                                                        if (!DPHideAgain() && key && source) DPReturnToSource(source);
-                                                    });
-                                                }];
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPClaim(note.object); }];
+    [center addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPWindowWillClose(note.object); }];
     DPInstallLittleDiaBar();
     DPInstallLittleDiaStack();
 }
