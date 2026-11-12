@@ -63,10 +63,7 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     }
 }
 
-// Dia lays the header and the view under it out as if the header still had its full height. Trimming them after that
-// pass makes Dia lay them out again, which puts the content back and makes it jump by DPHeaderTrim while the sidebar
-// opens or resizes. Rewriting the frames inside the setters leaves Dia's own layout with the trimmed values, so there
-// is nothing left to correct afterwards.
+// Rewritten in the setters, not after the pass: trimming afterwards makes Dia lay out again and put the content back, which jumps it by DPHeaderTrim.
 static void DPCompactFrame_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     if (DPCompactSidebarHeader.on && DPSidebars) {
         if (DPIsKind(self, DPDiaSidebarHeader)) {
