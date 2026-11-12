@@ -36,6 +36,8 @@ body:
         - Switch Profiles with ⌘1–9
         - Translucent Sidebar
         - Compact Sidebar Header
+        - Compact Sidebar
+        - Open Sidebar on Hover
         - Hide Pinned Tab Border
         - Hide Pinned Tab Card
         - Collapse Pinned Tabs

@@ -1,4 +1,5 @@
 #import "StdPatch/StdPatch.h"
+#import "Patches/CompactSidebar/CompactSidebar.h"
 
 extern DPPatch DPCompactSidebarHeader;
 static const CGFloat DPHeaderTrim = 10;
@@ -21,9 +22,11 @@ static NSRect DPCloseButtonInWindow(NSView *lights) {
 
 // With tabs at the top Dia moves the window buttons into the corner; the compact header puts them in the same spot. A
 // sidebar floating over the page has them elsewhere, so only buttons already near the corner move. In full screen macOS
-// slides the buttons in with the menu bar, laying the header out each frame, so they stay where Dia puts them.
+// slides the buttons in with the menu bar, laying the header out each frame, so they stay where Dia puts them. The
+// compact sidebar's strip places them itself, over the toolbar.
 static void DPHeader_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPHeader_layout, self);
+    if (DPStripPresent(self.window)) return;
     NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
     if (!lights || row == self || !DPMayAdjust(row)) return;
     NSRect laidOut = [DPDiaValue(row, &DPButtonsFrameKey, @(row.frame)) rectValue], frame = laidOut;
@@ -46,9 +49,10 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     row.frame = frame;
 }
 
+// The compact sidebar's strip lines the pinned tabs up with the page instead.
 static void DPCompactHeader(NSView *sidebar) {
     NSView *header = DPSubview(sidebar, DPDiaSidebarHeader);
-    if (!header || !DPMayAdjust(header)) return;
+    if (!header || !DPMayAdjust(header) || DPStripPresent(sidebar.window)) return;
     NSRect laidOut = DPLaidOutHeader(header), frame = laidOut;
     if (DPCompactSidebarHeader.on) frame.size.height = MAX(0, NSHeight(laidOut) - DPHeaderTrim);
     DPOverride(header, &DPHeaderFrameKey, @(laidOut), @(frame));
@@ -76,10 +80,11 @@ static void DPInstallCompactSidebarHeader(void) {
 
 static void DPApplyCompactSidebarHeader(DPPatch *patch) { DPRelayoutViews(DPSidebars); }
 
-// A sidebar that isn't open passes: with tabs at the top there's no header.
+// A sidebar that isn't open passes: with tabs at the top there's no header. So does the compact sidebar's strip, which
+// places the header itself.
 static NSString *DPVerifyCompactSidebarHeader(DPPatch *patch) {
     for (NSView *header in DPFindViews(DPDiaSidebarHeader)) {
-        if (header.hiddenOrHasHiddenAncestor || !header.superview.isFlipped) continue;
+        if (header.hiddenOrHasHiddenAncestor || !header.superview.isFlipped || DPStripPresent(header.window)) continue;
         CGFloat trimmed = NSHeight(DPLaidOutHeader(header)) - NSHeight(header.frame);
         if (fabs(trimmed - (patch->on ? DPHeaderTrim : 0)) > 0.5) return patch->on ? @"header is full height" : @"header is still trimmed";
         NSView *lights = DPFindView(header, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); });
