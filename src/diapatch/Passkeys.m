@@ -3,7 +3,6 @@
 #import <Foundation/Foundation.h>
 #import <pthread.h>
 #import <spawn.h>
-#import <stdatomic.h>
 #import <sys/file.h>
 #import <sys/wait.h>
 #import "LaunchServices.h"
