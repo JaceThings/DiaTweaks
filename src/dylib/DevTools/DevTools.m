@@ -47,7 +47,6 @@ static void DPScriptType(NSNotification *note) {
     id responder = (NSApp.keyWindow ?: NSApp.orderedWindows.firstObject).firstResponder;
     if (![responder isKindOfClass:NSTextView.class] || ![note.object isKindOfClass:NSString.class]) return;
     NSString *text = note.object;
-    // Some of Dia's commands read the key event that sent them, which a script has none of.
     if ([text hasPrefix:@"@"]) @try { [responder doCommandBySelector:NSSelectorFromString([text substringFromIndex:1])]; } @catch (NSException *e) {}
     else if ([text hasPrefix:@"="]) [responder insertText:[text substringFromIndex:1] replacementRange:NSMakeRange(0, [[responder string] length])];
     else [responder insertText:text replacementRange:[responder selectedRange]];

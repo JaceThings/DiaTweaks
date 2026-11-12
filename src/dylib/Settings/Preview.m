@@ -9,7 +9,6 @@
 
 static NSNotificationName const DPTabLayoutMayHaveChanged = @"DPTabLayoutMayHaveChanged";
 
-// The sidebar footer only exists with vertical tabs, so its arrival may mean the layout changed.
 static void DPSidebarFooter_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSidebarFooter_viewDidMoveToWindow, self);
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -36,7 +35,6 @@ static NSArray<NSString *> *DPPreviewNames(NSString *key, NSString *layout) {
     return names;
 }
 
-// A captive portal or proxy can answer with a page where the preview should be.
 static BOOL DPIsPreview(NSData *data, NSString *name) {
     if (data.length < 8) return NO;
     if ([name hasSuffix:@".mp4"]) return !memcmp((const char *)data.bytes + 4, "ftyp", 4);
@@ -145,7 +143,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
         size_t width = CGImageGetWidth(image), half = CGImageGetHeight(image) / 2;
         id off = (__bridge_transfer id)CGImageCreateWithImageInRect(image, CGRectMake(0, 0, width, half));
         id on = (__bridge_transfer id)CGImageCreateWithImageInRect(image, CGRectMake(0, half, width, half));
-        if (!off || !on) return [self show:nil];  // a file that didn't download whole, or isn't an image
+        if (!off || !on) return [self show:nil];
         _states = @[ off, on ];
         [self showState];
         [self updatePlayback];

@@ -53,7 +53,6 @@ static void DPEnsureReady(DPPatch *patch) {
         if (patch->apply) patch->apply(patch);
         problem = patch->ready(patch);
     }
-    // The test reports the problem itself; an alert would stop it until someone answers.
     if (!problem || DPTesting) return;
     NSLog(@"DiaPatches: %@ couldn't turn on: %@", patch->title, problem);
     patch->on = NO;
@@ -72,7 +71,7 @@ void DPSetPatch(DPPatch *patch, BOOL on, BOOL save) {
     if (patch->on == on) return;
     patch->on = on;
     if (save) [DPDefaults setBool:on forKey:patch->key];
-    if (DPSafeMode) return;  // Nothing is installed, so the choice waits until patches are turned back on.
+    if (DPSafeMode) return;
     if (patch->apply) patch->apply(patch);
     else DPAnimate();
     if (on && patch->ready) DPEnsureReady(patch);
@@ -89,7 +88,6 @@ NSString *DPRelayProblem(void) {
     return nil;
 }
 
-// A folder Dia may not write to was usually made by something running as root, and taking it back fixes it.
 NSString *DPWriteProblem(NSString *path, NSError *error) {
     path = error.userInfo[NSFilePathErrorKey] ?: path;
     NSString *problem = [NSString stringWithFormat:@"Couldn’t write %@: %@", path, error.localizedDescription];

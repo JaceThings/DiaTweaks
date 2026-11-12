@@ -139,14 +139,14 @@ static NSView *DPWideRow(NSView *view) {
             if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on && !DPSafeMode;
             return NO;
         });
-    // An appearing row fades in once there's room: its group grows from the bottom, so it would ride over the row above.
+    // Fade in after the group has grown, or the row rides over the one above.
     NSMutableArray<NSView *> *appeared = [NSMutableArray new];
     for (NSView *row in _optionChoices) {
         BOOL shown = ((DPPatch *)[DPGet(row, &DPChoicePatchKey) pointerValue])->on;
         if (row.hidden != shown) continue;
         NSArray<NSView *> *rows = ((NSStackView *)row.superview).arrangedSubviews;
         NSUInteger i = [rows indexOfObject:row];
-        NSArray<NSView *> *views = i != NSNotFound && i > 0 ? @[row, rows[i - 1]] : @[row];  // With its separator.
+        NSArray<NSView *> *views = i != NSNotFound && i > 0 ? @[row, rows[i - 1]] : @[row];
         // Hidden inside an animation, AppKit fades it out while it moves, which leaves a ghost behind.
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = 0;

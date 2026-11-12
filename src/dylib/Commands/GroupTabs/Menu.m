@@ -52,8 +52,7 @@ static NSInteger DPFollowersInPlace(NSMenu *menu, NSInteger index) {
     return n;
 }
 
-// Dia rebuilds the Tabs menu by adding tagged copies and later removes them itself, so keep the last item with a tag:
-// dropping Dia's copy crashes Dia when it removes it.
+// Dia removes the tagged copies it added, so keep the last item with a tag: dropping Dia's copy crashes Dia.
 static void DPPlaceFollowerItems(NSMenu *menu) {
     if (DPInserting || !menu) return;
     NSInteger group = NSNotFound, count = 0;

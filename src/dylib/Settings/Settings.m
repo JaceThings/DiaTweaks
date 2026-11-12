@@ -2,7 +2,7 @@
 
 static char DPSettingsKey, DPSearchItemKey;
 
-// Our rows follow Dia's. Dia never sees their indexes: its cell lookup traps past the end of its items.
+// Dia's cell lookup traps past its own rows, so it never sees our indexes.
 typedef NS_ENUM(NSInteger, DPSidebarRow) { DPDiaRow = -1, DPDividerRow, DPHomeRow, DPPatchesRow, DPOurRowCount };
 
 static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
@@ -10,7 +10,6 @@ static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
     return row >= 0 && ours >= 0 ? ours : DPDiaRow;
 }
 
-// Dia removes a pane's toolbar items only when another of its panes is selected, so the last pane's would stay beside ours.
 static void DPRemoveDiaPaneItems(NSToolbar *toolbar) {
     void **slot = DPIvar(toolbar.delegate, "paneToolbarItems");
     // A Swift array of objects is its storage, an NSArray; one bridged from Objective-C is tagged and left alone.
@@ -166,7 +165,6 @@ static __weak DPPaneView *DPShownPane;
         self.fixedHeight = window.frame.size.height;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
-        // Resizable enables zoom and full screen; Settings should only grow taller.
         window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) | NSWindowCollectionBehaviorFullScreenNone;
         [window standardWindowButton:NSWindowZoomButton].enabled = NO;
         window.contentMinSize = NSMakeSize(width, 400);
@@ -262,7 +260,6 @@ static NSEvent *DPSettings_findKey(NSEvent *event) {
     return nil;
 }
 
-// Dia's sidebar implements neither, so there's nothing to hook or call through to.
 static void DPAddSidebarMethod(SEL sel, IMP imp) {
     const char *types = protocol_getMethodDescription(@protocol(NSTableViewDelegate), sel, NO, YES).types;
     if (!class_addMethod(objc_getClass(DPDiaSettingsSidebar), sel, imp, types))

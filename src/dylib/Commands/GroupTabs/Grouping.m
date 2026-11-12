@@ -35,7 +35,6 @@ static id DPGroupProperties(NSString *title) {
     return props;
 }
 
-// Cleared by the next key press, so Command-Z only undoes right after.
 static void (^DPUndoGrouping)(void);
 
 BOOL DPCanUndoGrouping(void) { return DPUndoGrouping != nil; }

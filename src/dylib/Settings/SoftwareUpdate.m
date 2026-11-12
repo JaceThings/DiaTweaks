@@ -1,6 +1,5 @@
 #import "Settings.h"
 
-// App icons carry their own margin, so Dia's is drawn larger than the tile to look the same size.
 static NSView *DPPartIcon(NSString *part) {
     if ([part isEqual:DPTweaks]) return DPIconTileOfSize(@"wand.and.stars", NSColor.systemPurpleColor, 30);
     NSImageView *icon = [NSImageView imageViewWithImage:[NSWorkspace.sharedWorkspace iconForFile:NSBundle.mainBundle.bundlePath]];

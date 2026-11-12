@@ -71,10 +71,10 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
 @implementation DPUpdates {
     NSMutableDictionary<NSString *, NSMutableArray *> *_whenDownloaded;
     NSMutableArray *_checked;
-    NSMutableDictionary<NSString *, NSString *> *_failed;  // part → why its download or patch failed, or @"" if unknown
+    NSMutableDictionary<NSString *, NSString *> *_failed;
     NSTimer *_progress;
     NSDictionary *_found;
-    NSMutableDictionary<NSString *, id> *_pretend;  // part → @"available", the NSDate its download started, or @"staged"
+    NSMutableDictionary<NSString *, id> *_pretend;
 }
 
 + (instancetype)shared {
@@ -103,7 +103,6 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     DPRunCLI(@[@"check", @"--json"], ^(NSString *output) {
         id found = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
         self->_found = [found isKindOfClass:NSDictionary.class] ? found : nil;
-        // diapatch remembers a Dia that it couldn't patch, so that it isn't downloaded again, and says why here.
         NSString *unpatchable = self->_found[DPDia][@"unpatchable"];
         if ([unpatchable isKindOfClass:NSString.class] && !self->_failed[DPDia] && !self->_whenDownloaded[DPDia]) self->_failed[DPDia] = unpatchable;
         self->_checking = NO;
@@ -131,7 +130,6 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     return found;
 }
 
-// diapatch exits 0 even when it couldn't reach a feed, and says so in that part's "error" instead.
 - (NSString *)checkProblem {
     NSMutableArray<NSString *> *names = [NSMutableArray new];
     for (NSString *part in @[DPDia, DPTweaks])
@@ -217,7 +215,6 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
 @end
 
 static void DPInstallDownloaded(DPUpdates *updates, NSArray<NSString *> *parts) {
-    // A download that failed leaves nothing to install, and quitting for it would only relaunch the same Dia.
     NSMutableArray<NSString *> *staged = [NSMutableArray new], *missing = [NSMutableArray new], *reasons = [NSMutableArray new];
     for (NSString *each in parts) {
         if ([updates staged:each]) {
@@ -273,7 +270,6 @@ static void DPInstallOnQuit(void) {
     DPLaunchCLI(args);
 }
 
-// Dia's updater would put the official app over the patched one. Its feed (stable or Early Birds) is saved for diapatch.
 @protocol DPSparkleUpdater
 @property (nonatomic, readonly) NSURL *feedURL;
 @end
@@ -300,7 +296,7 @@ static void DPUpdater_checkForUpdatesInBackground(id self, SEL _cmd) {
 // Sparkle's own schedule skips the hooks above, and Dia's "Automatically update Dia" can turn it on.
 static BOOL DPUpdater_automaticallyChecksForUpdates(id self, SEL _cmd) { return NO; }
 
-// An older diapatch run from Dia quarantined its updates under Dia's name, so macOS won't run them; Dia can lift it.
+// Older diapatch runs from Dia left their files quarantined, so macOS won't run them.
 static void DPLiftQuarantine(void) {
     for (NSString *name in @[ @"bin/diapatch", @"bin/diatweaks", @"DiaPatches.dylib", @"patches.json" ])
         removexattr(DPSupport(name).fileSystemRepresentation, "com.apple.quarantine", 0);

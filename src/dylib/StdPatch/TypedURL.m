@@ -2,8 +2,7 @@
 #import <arpa/inet.h>
 #import <dlfcn.h>
 
-// Schemes kept as typed without "//", as Dia's own address bar keeps them. javascript: isn't one: a bar that only
-// navigates has nothing to run it on, so it is searched for.
+// javascript: is left out on purpose: a bar that only navigates has nothing to run it on, so it is searched for.
 static BOOL DPKeepsScheme(NSString *scheme) {
     return [@[ @"about", @"chrome", @"data", @"file", @"mailto", @"view-source" ] containsObject:scheme];
 }
@@ -20,9 +19,6 @@ static BOOL DPIsIPv4(NSArray<NSString *> *labels) {
     return YES;
 }
 
-// CFNetwork's list is the system's own and kept current: .dev, .app and .sh count, .js, .json and .14 don't. File extensions
-// that are country domains (.md, .py, .rs) are sites, as in Chromium. Without the private call, Foundation's link detector and
-// the common newer domains stand in.
 static BOOL DPIsTopLevel(NSString *label) {
     static Boolean (*system)(CFStringRef);
     static NSDataDetector *links;
@@ -91,14 +87,11 @@ NSURL *DPAddressURL(NSString *typed) {
         if (!DPIsPort(port)) return nil;
     }
 
-    // A name with an @ is an email address, and fails the check on its letters.
     NSString *name = host.lowercaseString;
     if ([name hasSuffix:@"."]) name = [name substringToIndex:name.length - 1];
     NSArray<NSString *> *labels = [name componentsSeparatedByString:@"."];
     for (NSString *label in labels) if (!DPIsHostLabel(label)) return nil;
 
-    // This machine or one on its network speaks plain HTTP, as does anything given a port. A name with a top-level domain is
-    // a site, tried over HTTPS because nothing here can fall back to HTTP.
     if (DPIsIPv4(labels) || DPIsLocalName(name) || port)
         return [NSURL URLWithString:[(port.integerValue == 443 ? @"https://" : @"http://") stringByAppendingString:text]];
     if (labels.count > 1 && ([name hasPrefix:@"www."] || DPIsTopLevel(labels.lastObject))) return [NSURL URLWithString:[@"https://" stringByAppendingString:text]];

@@ -41,7 +41,6 @@ NSURL *DPWikiURL(DPPatch *patch) {
     return self;
 }
 
-// Asking NSSwitch its size is most of laying out the overview.
 - (NSSize)intrinsicContentSize {
     static NSSize size;
     if (!size.width) size = [super intrinsicContentSize];
