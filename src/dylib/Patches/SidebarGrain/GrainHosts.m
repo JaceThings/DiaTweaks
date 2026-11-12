@@ -33,8 +33,7 @@ NSRect DPGrainHostBounds(NSView *host) {
     return NSIntersectionRect(bounds, chrome);
 }
 
-// Settings are read only when they may have changed: on a refresh, or when the texture first goes in.
-static void DPUpdateGrainHost(NSView *host, BOOL settings) {
+static void DPUpdateGrainHost(NSView *host, BOOL reloadSettings) {
     DPSidebarGrainView *grain = DPGet(host, &DPGrainViewKey);
     if (!DPSidebarGrain.on || !DPGrainHostAvailable(host)) {
         if (!grain) return;
@@ -50,14 +49,14 @@ static void DPUpdateGrainHost(NSView *host, BOOL settings) {
     }
     if (grain.superview != host) {
         [host addSubview:grain positioned:NSWindowBelow relativeTo:nil];
-        settings = YES;
+        reloadSettings = YES;
     }
     if (!NSEqualRects(grain.frame, bounds)) grain.frame = bounds;
-    if (settings) [grain reloadSettings];
+    if (reloadSettings) [grain reloadSettings];
 }
 
-static void DPUpdateGrainHosts(BOOL settings) {
-    for (NSView *host in DPGrainHosts) DPUpdateGrainHost(host, settings);
+static void DPUpdateGrainHosts(BOOL reloadSettings) {
+    for (NSView *host in DPGrainHosts) DPUpdateGrainHost(host, reloadSettings);
 }
 
 void DPTrackGrainHost(NSView *host) {

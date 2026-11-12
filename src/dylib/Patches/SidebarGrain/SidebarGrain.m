@@ -28,7 +28,6 @@ static void DPGrainDotDidUpdate(NSView *self, SEL _cmd) {
 }
 
 static void DPInstallSidebarGrain(void) {
-    DPGrainHosts = [NSHashTable weakObjectsHashTable];
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskRightMouseDown handler:^NSEvent *(NSEvent *event) {
         return DPGrainRightClick(event);
     }];

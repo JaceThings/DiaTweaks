@@ -13,6 +13,14 @@
 - (void)toggleShown:(NSButton *)button;
 @end
 
+static NSStackView *DPGrainLabeledRow(NSString *title, NSView *control) {
+    NSTextField *label = [NSTextField labelWithString:title];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSStackView *row = [NSStackView stackViewWithViews:@[ label, control ]];
+    row.distribution = NSStackViewDistributionFill;
+    return row;
+}
+
 @implementation DPGrainMenu
 - (void)chooseTexture:(NSPopUpButton *)picker {
     NSString *material = picker.selectedItem.representedObject;
@@ -54,10 +62,7 @@
     self.picker.controlSize = NSControlSizeSmall;
     self.picker.target = self;
     self.picker.action = @selector(chooseTexture:);
-    NSTextField *label = [NSTextField labelWithString:@"Texture"];
-    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-    NSStackView *texture = [NSStackView stackViewWithViews:@[ label, self.picker ]];
-    texture.distribution = NSStackViewDistributionFill;
+    NSStackView *texture = DPGrainLabeledRow(@"Texture", self.picker);
     self.shown = [NSButton checkboxWithTitle:@"Show grain in this profile" target:self action:@selector(toggleShown:)];
     self.rows = DPGrainRows();
     NSMutableArray<NSView *> *views = [@[ texture, self.shown ] arrayByAddingObjectsFromArray:self.rows].mutableCopy;
@@ -68,11 +73,7 @@
         scope.controlSize = NSControlSizeSmall;
         scope.target = self;
         scope.action = @selector(chooseScope:);
-        NSTextField *applies = [NSTextField labelWithString:@"Apply to"];
-        [applies setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-        NSStackView *row = [NSStackView stackViewWithViews:@[ applies, scope ]];
-        row.distribution = NSStackViewDistributionFill;
-        [views insertObject:row atIndex:0];
+        [views insertObject:DPGrainLabeledRow(@"Apply to", scope) atIndex:0];
     }
     [self reload];
     NSStackView *rows = [NSStackView stackViewWithViews:views];
@@ -136,11 +137,7 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
             if (iconSize.width > 0) item.image = [[NSImage alloc] initWithSize:iconSize];
         }
         if (index < 0) index = [menu indexOfItemWithTitle:@"Show Tabs in Sidebar"];
-        if (index >= 0) index++;
-        else {
-            index = [menu indexOfItemWithTitle:@"Close All Tabs"];
-            if (index < 0) index = 0;
-        }
+        index = index >= 0 ? index + 1 : MAX(0, [menu indexOfItemWithTitle:@"Close All Tabs"]);
         [menu insertItem:item atIndex:index];
         [NSMenu popUpContextMenu:menu withEvent:event forView:sidebar];
         [menu removeItem:item];

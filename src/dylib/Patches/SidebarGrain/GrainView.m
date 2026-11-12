@@ -29,19 +29,14 @@
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    for (NSString *name in @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
-         NSWindowDidBecomeMainNotification, NSWindowDidResignMainNotification,
-         NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification])
-        [center removeObserver:self name:name object:nil];
-    if (self.window && self.tracksWindowActivity) {
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidBecomeKeyNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidResignKeyNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidBecomeMainNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidResignMainNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSApplicationDidResignActiveNotification object:NSApp];
-        [self refreshActivity:nil];
-    }
+    NSArray<NSNotificationName> *windowNames = @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
+                                                 NSWindowDidBecomeMainNotification, NSWindowDidResignMainNotification];
+    NSArray<NSNotificationName> *appNames = @[NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification];
+    for (NSNotificationName name in [windowNames arrayByAddingObjectsFromArray:appNames]) [center removeObserver:self name:name object:nil];
+    if (!self.window || !self.tracksWindowActivity) return;
+    for (NSNotificationName name in windowNames) [center addObserver:self selector:@selector(refreshActivity:) name:name object:self.window];
+    for (NSNotificationName name in appNames) [center addObserver:self selector:@selector(refreshActivity:) name:name object:NSApp];
+    [self refreshActivity:nil];
 }
 
 - (void)reloadSettings {
