@@ -95,6 +95,8 @@ void DPApplyToolbar(NSView *pane) {
     for (NSView *view in bars) {
         NSRect laidOut = DPLaidOutFrame(view), frame = laidOut;
         frame.origin.y += pane.isFlipped ? -lift : lift;
+        CGFloat inset = DPToolbarInset(pane, laidOut);
+        frame.origin.x += inset, frame.size.width -= inset;
         DPAssignFrame(view, laidOut, frame);
     }
     NSMutableArray<NSView *> *stack = [NSMutableArray new];

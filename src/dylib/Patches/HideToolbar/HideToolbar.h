@@ -24,6 +24,8 @@ CGFloat DPBottom(NSView *pane, NSRect r);
 NSView *DPBookmarksUnder(NSView *pane, NSView *bar);
 BOOL DPKeptInPlace(NSView *pane);
 NSString *DPVerifyKeptInPlace(DPPatch *patch);
+// How far a bar laid out at `bar` moves in from the pane's left, to start where a floating sidebar over it ends.
+CGFloat DPToolbarInset(NSView *pane, NSRect bar);
 void DPApplyToolbar(NSView *pane);
 void DPApplyToolbarOpacity(DPToolbarHover *hover);
 void DPRelayoutPanes(void);
