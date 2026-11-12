@@ -10,6 +10,9 @@ static BOOL DPPeekWanted(NSInteger disposition) {
     return DPPeek.on && elsewhere && mods == NSEventModifierFlagShift;  // ⌘⇧-click and ⌥⇧-click keep their meaning.
 }
 
+// Peek shows web pages. A mailto: or tel: link has none, so it would leave an empty card.
+static BOOL DPPeekIsWeb(NSURL *url) { return [url isKindOfClass:NSURL.class] && [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]; }
+
 static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
     DPPeekLookAheadTurn++;  // The link opens now; a look-ahead still waiting would load it again.
     NSWindow *window = NSApp.keyWindow;
@@ -18,7 +21,7 @@ static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
 }
 
 static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebContent, NSURL *url, NSInteger disposition) {
-    if (!DPPeekWanted(disposition) || !(DPPeekShows(webContents) || DPPeekCanOpen(webContents)))
+    if (!DPPeekWanted(disposition) || !(DPPeekShows(webContents) || (DPPeekIsWeb(url) && DPPeekCanOpen(webContents))))
         return (void)DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, disposition);
     DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, (NSInteger)DPIgnoreAction);
     if (DPPeekShows(webContents)) return DPPeekLoad(webContents, url);
@@ -48,13 +51,15 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
             staying.action = action;
             leaves = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, staying) == DPForegroundTab;
         }
-        if (!leaves || !DPPeekCanOpen(webContents)) return policy;
-        DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
+        NSURL *url = [action valueForKey:@"url"];
+        if (!leaves || !DPPeekIsWeb(url) || !DPPeekCanOpen(webContents)) return policy;
+        DPPeekOpenLater(self, webContents, url);
         return DPIgnoreAction;
     }
     if (DPPeekShows(webContents)) return DPCurrentTab;
-    if (!DPPeekCanOpen(webContents)) return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
-    DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
+    NSURL *url = [action valueForKey:@"url"];
+    if (!DPPeekIsWeb(url) || !DPPeekCanOpen(webContents)) return DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
+    DPPeekOpenLater(self, webContents, url);
     return DPIgnoreAction;
 }
 
@@ -74,7 +79,7 @@ static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *tex
     DPCallOriginal(DPWebContent_status, self, webContents, text);
     NSURL *url = text.length ? [NSURL URLWithString:text] : nil;
     if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, the warm one included, clear their own.
-    DPPeekHovered = [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString] ? url : nil;
+    DPPeekHovered = DPPeekIsWeb(url) ? url : nil;
     DPPeekHoveredPage = webContents;
     DPPeekHoveredDelegate = self;
     DPPeekLookAhead();
