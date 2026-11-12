@@ -98,8 +98,8 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
     // Hidden by default, unlike Dia's own items. By name: CI's SDK predates macOS 27. 1 is NSMenuItemImageVisibilityVisible.
     if (@available(macOS 27, *)) [item setValue:@1 forKey:@"preferredImageVisibility"];
     item.enabled = pinned || !visible || before;  // A page on screen elsewhere, as in another window, stays.
-    NSUInteger close = [menu.itemArray indexOfObjectPassingTest:^BOOL(NSMenuItem *it, NSUInteger i, BOOL *stop) { return [it.title isEqual:@"Close"]; }];
-    [menu insertItem:item atIndex:close == NSNotFound ? (NSUInteger)menu.numberOfItems : close];
+    NSInteger close = [menu indexOfItemWithTitle:@"Close"];
+    [menu insertItem:item atIndex:close < 0 ? menu.numberOfItems : close];
     return menu;
 }
 
@@ -128,7 +128,8 @@ static NSString *DPVerifyUnloadTab(DPPatch *patch) {
         NSURL *url = DPSwiftValue(DPTabContent(tab), @"webContentURL");
         if (![url.scheme hasPrefix:@"http"] || [urls countForObject:url] > 1) continue;
         BOOL front = DPTabOpen(tab);
-        if (!front && (!DPPageAt(url) || [DPDiscarded containsObject:DPPageAt(url)])) continue;
+        id page = DPPageAt(url);
+        if (!front && (!page || [DPDiscarded containsObject:page])) continue;
         if (!item) return front ? @"tab in front has no Unload Tab" : @"loaded tab has no Unload Tab";
         if (front && !item.enabled && [[DPScriptWindow(tab.window) valueForKey:@"appleScriptTabs"] count] > 1)
             return @"Unload Tab can't leave the tab in front";
