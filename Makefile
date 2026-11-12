@@ -3,15 +3,13 @@ DYLIB_SOURCES := $(shell find src/dylib -name '*.[hm]')
 DYLIB_SWIFT := $(shell find src/dylib -name '*.swift')
 SDK := $(shell xcrun --show-sdk-path)
 SWIFT_LIB := $(SDK)/usr/lib/swift
-# FoundationModels only exists on macOS 26+, so it's weak-linked and Swift's automatic link is turned off. An older SDK has
-# none; Tidy Tabs then builds without it and says so when used.
+# FoundationModels is macOS 26+ only: weak-link it, stop Swift auto-linking it, and skip it when the SDK lacks it.
 FOUNDATION_MODELS := $(if $(wildcard $(SDK)/System/Library/Frameworks/FoundationModels.framework),-weak_framework FoundationModels)
 SWIFTFLAGS := -target arm64-apple-macos14.0 -O -parse-as-library -wmo -module-name DiaPatchesSwift \
 	-Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
 PASSKEYS := src/dylib/Patches/Passkeys/extension
 EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectcreate,__TEXT,__pk_$(basename $(file)),$(PASSKEYS)/$(file))
 
-# diapatch records its commit to tell a source build newer than the latest release from an older one.
 COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
 
 all: build/diapatch build/DiaPatches.dylib build/patches.json
@@ -49,7 +47,6 @@ build/mouse-back-forward: tests/mouse-back-forward.m src/dylib/Patches/MouseBack
 build/vertical-tab-glow: tests/vertical-tab-glow.m $(wildcard src/dylib/Patches/HideVerticalTabGlow/*.[hm]) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $<
 
-# Checks that need no Dia.
 check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/patches.json
 	tests/tweaks-update
 	build/group-tabs

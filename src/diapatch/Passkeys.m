@@ -1,4 +1,3 @@
-// Each request runs in the unpatched Dia, in a window the size of the passkey sheet so the sheet hides it.
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
 #import <pthread.h>
@@ -63,8 +62,7 @@ static void writeMessage(NSDictionary *message) {
 
 static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name" : @"NotAllowedError", @"message" : message } }; }
 
-// The extension keeps our stdin open until it has the answer, so reading to the end means the page gave up (its signal
-// aborted, or its tab went away). Stopping the copy of Dia also ends the read in progress on its pipe.
+// The extension holds our stdin open until it has the answer, so EOF means the page gave up.
 static void *watchForCancel(void *_) {
     char byte;
     while (read(STDIN_FILENO, &byte, 1) > 0) {}
@@ -86,7 +84,7 @@ static NSArray *modificationDates(NSString *folder) {
     return dates;
 }
 
-// Dia may be writing to its account store, so it's copied until the files hold still.
+// Dia may be writing its account store: copy until the files hold still.
 static void signInAsDia(NSString *userData) {
     NSFileManager *files = NSFileManager.defaultManager;
     NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
@@ -164,7 +162,6 @@ static BOOL hasWindowOnScreen(pid_t pid) {
 
 typedef NS_ENUM(int, DPStartup) { DPStartupReady, DPStartupSignedOut, DPStartupFailed };
 
-// Signed out, Dia shows its intro: a window of its own that no tab lives in.
 static DPStartup waitForStartupTab(pid_t pid, int seconds, NSString **targetId, NSNumber **windowId) {
     for (int tries = 0, tablessWindow = 0; tries < seconds * 4; tries++, usleep(250000)) {
         NSDictionary *targets = send(@"Target.getTargets", nil, nil);
@@ -222,19 +219,18 @@ static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id
 
     send(@"Browser.setWindowBounds", @{ @"windowId" : windowId, @"bounds" : sheetBounds() }, nil);
     NSString *session = send(@"Target.attachToTarget", @{ @"targetId" : targetId, @"flatten" : @YES }, nil)[@"result"][@"sessionId"];
-    // Any page at the origin works, and robots.txt runs none of the site's scripts.
+    // robots.txt runs none of the site's scripts.
     for (NSString *path in @[ @"/robots.txt", @"/" ]) {
         send(@"Page.navigate", @{ @"url" : [origin stringByAppendingString:path] }, session);
         if (atOrigin(session, origin)) break;
     }
     evaluate(session, page(@"Use your passkey for {site}", @"DiaTweaks opened this window to reach Apple Passwords. It closes by itself."));
     tellDia(@"show", pid);
-    // WebAuthn refuses a page without focus, which it only gets once Dia has brought the copy forward.
+    // WebAuthn refuses an unfocused page, and focus comes once Dia has brought the copy forward.
     for (int tries = 0; tries < 30; tries++, usleep(100000))
         if ([evaluate(session, @"document.hasFocus()") boolValue]) break;
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
-    // The timeout stops a picker left open from blocking every request after it.
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
                                                     "  const signal = AbortSignal.timeout(Math.min(options.timeout || 300000, 600000));"
                                                     "  try {"
@@ -255,7 +251,6 @@ int DPRunPasskeyHost(NSString *home) {
     if (!request) return 1;
     pthread_t watcher;
     if (pthread_create(&watcher, NULL, watchForCancel, NULL) == 0) pthread_detach(watcher);
-    // A second copy started on the same data waits for the first, unless its page gives up first.
     int lock = open([home stringByAppendingPathComponent:@"passkey-helper.lock"].fileSystemRepresentation, O_CREAT | O_RDWR, 0600);
     while (flock(lock, LOCK_EX | LOCK_NB) != 0 && errno == EWOULDBLOCK && !gCancelled) usleep(50000);
     if (gCancelled) return writeMessage(failure(@"The passkey request was cancelled.")), 0;
