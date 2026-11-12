@@ -103,8 +103,11 @@ BOOL DPFullScreen(NSView *container) {
 static CALayer *DPCornerShape(NSView *container, CGFloat *base, CGFloat *grow, CGFloat *left, CGFloat *right) {
     CALayer *layer = DPRoundedContent(container).layer;
     if (!layer) return nil;
-    *right = DPFullScreen(container) ? DPEdgeToEdge.progress : 0;
-    *left = DPBesideSidebar(container) ? DPSquareSidebarCorners.progress * DPEdgeToEdge.progress : *right;
+    // At the window's edge the corners go square in full screen, and when Square Corners at Window Edge asks for it.
+    CGFloat window = DPFullScreen(container) ? DPEdgeToEdge.progress : 0;
+    if (DPSquareWindowCorners.progress > 0 && !DPChatCard(container)) window = MAX(window, DPSquareWindowCorners.progress * DPEdgeToEdge.progress);
+    *right = window;
+    *left = DPBesideSidebar(container) ? DPSquareSidebarCorners.progress * DPEdgeToEdge.progress : window;
     // Rounder window corners don't reach the corners by the sidebar.
     CGFloat growth = DPWindowCornerGrowth(container.window);
     if (growth > 0 && layer.cornerRadius > 0 && DPBesideSidebar(container)) *left = 1 - (1 - *left) * (layer.cornerRadius - growth) / layer.cornerRadius;
