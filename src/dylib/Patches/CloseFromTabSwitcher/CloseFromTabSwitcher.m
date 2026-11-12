@@ -86,7 +86,7 @@ static BOOL DPTakeEvent(NSEvent *event) {
     return (mods == NSEventModifierFlagCommand || !mods) && isW && DPCloseFocusedTab(switcher);
 }
 
-// Every event comes through here, before the switcher's own key handling can take it.
+// Sees every event before the switcher's own key handling.
 static NSEvent *DPApplication_nextEvent(NSApplication *self, SEL _cmd, NSEventMask mask, NSDate *until, NSRunLoopMode mode, BOOL dequeue) {
     NSEvent *event;
     do event = DPCallOriginal(DPApplication_nextEvent, self, mask, until, mode, dequeue);

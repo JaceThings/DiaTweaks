@@ -10,7 +10,6 @@ static NSRect DPLaidOutHeader(NSView *header) {
     return [DPDiaValue(header, &DPHeaderFrameKey, @(header.frame)) rectValue];
 }
 
-// The close button's frame from the window's top left corner.
 static NSRect DPCloseButtonInWindow(NSView *lights) {
     NSView *close = DPFindView(lights, ^BOOL(NSView *v) { return [v isKindOfClass:NSButton.class] && v == [v.window standardWindowButton:NSWindowCloseButton]; });
     if (!close || !lights.window) return NSZeroRect;

@@ -142,7 +142,6 @@ static CALayer *DPBlurLayer(void) {
     return backdrop;
 }
 
-// Layers only: wheel events go past it to the page behind, never the pointer.
 @interface DPPassThroughView : NSView
 @end
 
@@ -195,7 +194,6 @@ static NSView *DPAddShade(NSWindow *window, BOOL blur) {
 static void DPUpdatePanelShadow(NSView *panel) {
     if (!panel) return;
     if (DPCommandBarShadow.on) {
-        // Arc-like: a soft drop shadow so the bar stands out with no dim or blur behind it.
         NSShadow *shadow = [NSShadow new];
         shadow.shadowColor = [NSColor colorWithWhite:0 alpha:MIN(MAX(DPTuned(DPShadowIntensityKey), 0), 0.8)];
         shadow.shadowBlurRadius = 32;
@@ -243,7 +241,7 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 }
 
 - (NSView *)hitTest:(NSPoint)point {
-    if (self.passingThrough) return nil;  // Looking for the page under a scroll, not the bar.
+    if (self.passingThrough) return nil;
     NSView *hit = [super hitTest:point];
     return !hit || (self.panel && [hit isDescendantOf:self.panel]) ? hit : self;
 }
@@ -358,7 +356,6 @@ static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
         });
 }
 
-// Only a click on a suggestion or Go can submit what's typed; one in the text, to move the caret, can't.
 static BOOL DPClickSubmits(DPCommandBarOverlay *overlay, NSEvent *event) {
     NSView *hit = [overlay hitTest:[overlay.superview convertPoint:event.locationInWindow fromView:nil]];
     NSView *suggestions = DPCommandBarPart(overlay.panel, DPDiaCommandBarSuggestions), *go = DPGoButton(DPCommandBarPart(overlay.panel, DPDiaCommandBarToolbar));
@@ -800,7 +797,6 @@ static NSView *DPSwitchRow(NSString *title, NSString *key) {
     return row;
 }
 
-// Each sits under the heading of the option it tunes.
 static NSArray<NSView *> *DPCommandBarRows(void) {
     NSView *darkness = DPSliderRow(@"Darkness", DPDarknessKey, 80, 100, @"%"), *radius = DPSliderRow(@"Blur Radius", DPBlurRadiusKey, 60, 1, @"pt"),
            *sidebar = DPSwitchRow(@"Blur Sidebar Too", DPBlurWindowKey),

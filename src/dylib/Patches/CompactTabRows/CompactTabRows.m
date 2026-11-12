@@ -58,8 +58,6 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     DPSet(self, &DPMovesKey, moves);
 }
 
-#pragma mark Dragging
-
 // Dia works out where a dragged tab lands from the rows as it laid them out, so the pointer goes back to the same spot
 // in those: through the innermost item under it, or past the nearest one above it. Collapse Pinned Tabs, whose hooks
 // install after these and so run first, has already taken its header out of the point.

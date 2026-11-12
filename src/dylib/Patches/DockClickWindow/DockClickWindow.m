@@ -12,8 +12,7 @@ static BOOL DPSwitchesToWindows(void) {
     return on;
 }
 
-// The browser window used last: the front one, then the rest as the Space order has them. A minimized one is left to
-// Dia, and so is a window that isn't open.
+// The window used last: the front one, then the rest in Space order. Minimized or closed windows are left to Dia.
 static NSWindow *DPWindowToShow(void) {
     NSMutableArray<NSWindow *> *windows = [NSApp.orderedWindows mutableCopy];
     for (NSWindow *window in NSApp.windows) if (![windows containsObject:window]) [windows addObject:window];

@@ -2,7 +2,7 @@
 
 extern DPPatch DPCollapsePinned;
 
-static NSString *const DPCollapsedKey = @"collapsedPinned";  // The profiles folded, by space ID.
+static NSString *const DPCollapsedKey = @"collapsedPinned";
 static const CGFloat DPRowHeight = 37, DPHeaderHeight = 28, DPRowInset = 15, DPTitleInset = 36, DPChevronInset = 11, DPGap = 8;
 static NSUserDefaults *DPCollapseDefaults;
 static BOOL DPRaw;  // While measuring, the layout answers as Dia laid it out.
@@ -152,7 +152,7 @@ static DPPinnedHeader *DPShownHeader(NSCollectionViewLayout *layout) {
     return header.shown ? header : nil;
 }
 
-// Everything moves down to make room for the header; folded, what follows the pinned rows moves up into their space.
+// Rows move down for the header; folded, what follows the pinned rows moves up into their space.
 static CGFloat DPShift(DPPinnedHeader *header, BOOL pinned) {
     return pinned || !header.collapsed ? DPHeaderHeight : DPHeaderHeight - (header.end - header.top);
 }
@@ -258,7 +258,6 @@ static id<NSDraggingInfo> DPDiaDragOf(NSView *tabList, id<NSDraggingInfo> info) 
     return (id<NSDraggingInfo>)drag;
 }
 
-// Holding a tab over the folded header unfolds it, like a folder in Finder.
 static void DPSpringOpen(NSView *tabList, id<NSDraggingInfo> info) {
     NSCollectionView *list = DPListIn(tabList);
     DPPinnedHeader *header = DPGet(list, &DPHeaderKey);

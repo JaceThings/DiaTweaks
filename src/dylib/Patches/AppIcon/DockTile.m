@@ -1,8 +1,8 @@
 #import "AppIcon.h"
 #import <objc/message.h>
 
-// The Dock keeps its own rendered copy of an app's icon and only redraws from the bundle on a real icon style change, so until
-// one happens Dia draws its own tile. Touching the system's style to force a redraw blinks every icon and can leave other apps' tiles wrong.
+// The Dock caches an app's icon and redraws from the bundle only on a real icon style change, so until then Dia draws its own
+// tile. Touching the system's style to force a redraw blinks every icon and can leave other apps' tiles wrong.
 static NSUInteger DPHandbacks;
 static BOOL DPSettingDockIcon, DPDrawsOwnTile;
 static NSString *const DPOwnTileKey = @"appIconOwnTile";
@@ -53,7 +53,6 @@ void DPDrawOwnTile(void) {
     DPDrawTile();
 }
 
-// The Dock goes on showing its last cached icon after a relaunch, so one drawn here must be drawn again, even once App Icon is off.
 BOOL DPOwnTileInDock(void) { return [DPTileDefaults() boolForKey:DPOwnTileKey]; }
 
 // Dia Pro's icon switcher would otherwise draw over the chosen icon.

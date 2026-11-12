@@ -1,6 +1,5 @@
 #import "AppIcon.h"
 
-// The icon's alpha shrunk inward by `radius`, one axis at a time.
 static NSData *DPErodedShape(const uint8_t *pixels, size_t size, size_t radius) {
     NSMutableData *across = [NSMutableData dataWithLength:size * size], *eroded = [NSMutableData dataWithLength:size * size];
     uint8_t *a = across.mutableBytes, *e = eroded.mutableBytes;
