@@ -54,14 +54,14 @@ static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     DPRefit(self);
     NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar), *suggestions = DPCommandBarPart(self, DPDiaCommandBarSuggestions);
     CGFloat hidden = DPHiddenSuggestionsHeight(suggestions);
-    if (hidden && toolbar && !DPCompactToolbar(self)) {
+    BOOL compact = DPCompactToolbar(self) != nil;
+    if (hidden && toolbar && !compact) {
         NSRect frame = toolbar.frame;
         frame.origin.y = NSMaxY(suggestions.frame) - hidden;
         toolbar.frame = frame;
     }
     NSStackView *stack = toolbar.subviews.firstObject;
     if (![stack isKindOfClass:NSStackView.class]) return;
-    BOOL compact = DPCompactToolbar(self) != nil;
     if (!compact && !DPGet(stack, &DPCompactedKey)) return;
     DPSet(stack, &DPCompactedKey, compact ? @YES : nil);
     // Faded, not hidden: the add tabs button stretches to push Go to the trailing edge.
