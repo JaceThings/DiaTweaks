@@ -30,23 +30,7 @@ static NSView *DPWideRow(NSView *view) {
 
     DPPreviewView *preview = [[DPPreviewView alloc] initWithKey:patch->key];
     [preview.heightAnchor constraintEqualToAnchor:preview.widthAnchor multiplier:10.0 / 16].active = YES;
-    NSMutableArray<NSView *> *headingText = [@[
-        DPLabel(patch->title, 13, NSFontWeightSemibold, NSColor.labelColor),
-        DPLabel(patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
-    ] mutableCopy];
-    if (patch->hint) {
-        NSView *gap = [NSView new];
-        [gap.heightAnchor constraintEqualToConstant:5].active = YES;
-        [headingText addObjectsFromArray:@[gap, DPLabel(patch->hint, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]];
-    }
-    [headingText addObject:_note];
-    NSStackView *heading = [NSStackView stackViewWithViews:@[
-        DPIconTile(patch->symbol, [NSColor valueForKey:patch->tint]),
-        DPColumn(headingText, 2),
-    ]];
-    heading.spacing = 10;
-    heading.alignment = NSLayoutAttributeTop;
-    NSMutableArray<NSView *> *views = [NSMutableArray arrayWithObjects:preview, DPGroup(@[DPRow(heading, [self switchFor:patch])]), nil];
+    NSMutableArray<NSView *> *views = [NSMutableArray arrayWithObjects:preview, [self headingGroup], nil];
 
     NSString *const unavailable = @"Not Available in This Version";
     NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithObject:@"Options"];
@@ -86,19 +70,43 @@ static NSView *DPWideRow(NSView *view) {
     for (NSString *title in titles)
         if (groups[title].count) [views addObjectsFromArray:@[DPHeader(title), DPGroup(groups[title])]];
 
-    NSURL *wiki = DPWikiURL(patch);
-    NSView *wikiRow = DPLinkRow(DPRow(DPLabel(@"Read more on the wiki", 13, NSFontWeightRegular, NSColor.labelColor),
-                                      DPSymbol(@"arrow.up.right", 11, NSColor.secondaryLabelColor)),
-                                @"Read more on the wiki", ^{ [NSWorkspace.sharedWorkspace openURL:wiki]; });
-    NSTextField *how = DPLabel([@"diatweaks enable " stringByAppendingString:patch->key], 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
-    how.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
-    how.selectable = YES;
-    NSView *howRow = DPRow(DPColumn(@[DPLabel(@"Turn on from Terminal", 13, NSFontWeightRegular, NSColor.labelColor), how], 2), [NSStackView new]);
-    [views addObject:DPGroup(@[wikiRow, howRow])];
+    [views addObject:[self footerGroup]];
 
     DPFillStack(self, views);
     [self sync];
     return self;
+}
+
+- (NSView *)headingGroup {
+    NSMutableArray<NSView *> *headingText = [@[
+        DPLabel(_patch->title, 13, NSFontWeightSemibold, NSColor.labelColor),
+        DPLabel(_patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
+    ] mutableCopy];
+    if (_patch->hint) {
+        NSView *gap = [NSView new];
+        [gap.heightAnchor constraintEqualToConstant:5].active = YES;
+        [headingText addObjectsFromArray:@[gap, DPLabel(_patch->hint, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]];
+    }
+    [headingText addObject:_note];
+    NSStackView *heading = [NSStackView stackViewWithViews:@[
+        DPIconTile(_patch->symbol, [NSColor valueForKey:_patch->tint]),
+        DPColumn(headingText, 2),
+    ]];
+    heading.spacing = 10;
+    heading.alignment = NSLayoutAttributeTop;
+    return DPGroup(@[DPRow(heading, [self switchFor:_patch])]);
+}
+
+- (NSView *)footerGroup {
+    NSURL *wiki = DPWikiURL(_patch);
+    NSView *wikiRow = DPLinkRow(DPRow(DPLabel(@"Read more on the wiki", 13, NSFontWeightRegular, NSColor.labelColor),
+                                      DPSymbol(@"arrow.up.right", 11, NSColor.secondaryLabelColor)),
+                                @"Read more on the wiki", ^{ [NSWorkspace.sharedWorkspace openURL:wiki]; });
+    NSTextField *how = DPLabel([@"diatweaks enable " stringByAppendingString:_patch->key], 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
+    how.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
+    how.selectable = YES;
+    NSView *howRow = DPRow(DPColumn(@[DPLabel(@"Turn on from Terminal", 13, NSFontWeightRegular, NSColor.labelColor), how], 2), [NSStackView new]);
+    return DPGroup(@[wikiRow, howRow]);
 }
 
 - (NSView *)switchFor:(DPPatch *)patch {
