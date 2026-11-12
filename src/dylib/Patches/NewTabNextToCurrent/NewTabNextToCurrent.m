@@ -124,11 +124,11 @@ static BOOL DPOpenNextToCurrent(NSWindow *window) {
     if (state.moving) return NO;
     NSSet<NSNumber *> *before = DPSessions(browser);
     long long fromSession = DPActiveSession(browser);
-    NSSet<NSString *> *tabsBefore = [NSSet setWithArray:DPTabIDs(window)];
+    NSArray<NSString *> *tabsBefore = DPTabIDs(window);
     id tab = ((id (*)(id, SEL, Class, NSString *, id, id))objc_msgSend)(scripted, make, tabClass, @"appleScriptTabs", nil, @{});
     // The command bar sends you straight back to the tab you were on, so the new tab is found by what's new.
     NSMutableArray<NSString *> *added = [DPTabIDs(window) mutableCopy];
-    [added removeObjectsInArray:tabsBefore.allObjects];
+    [added removeObjectsInArray:tabsBefore];
     NSString *created = tab && added.count == 1 ? added.firstObject : nil;
     if (!created) return tab != nil;
     state.originOf[created] = from;
