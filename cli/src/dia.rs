@@ -81,35 +81,43 @@ fn numbers(text: &str) -> Vec<u64> {
         .collect()
 }
 
+fn info_plist(app: &Path) -> Option<plist::Dictionary> {
+    plist::Value::from_file(app.join("Contents/Info.plist"))
+        .ok()?
+        .into_dictionary()
+}
+
 /// Formatted like diapatch prints it.
 pub fn version_of(app: &Path) -> Option<String> {
-    let info = plist::Value::from_file(app.join("Contents/Info.plist")).ok()?;
-    let info = info.as_dictionary()?;
+    let info = info_plist(app)?;
     let short = info.get("CFBundleShortVersionString")?.as_string()?;
     let build = info.get("CFBundleVersion")?.as_string()?;
     Some(format!("{short} ({build})"))
 }
 
 pub fn is_patched(app: &Path) -> bool {
-    plist::Value::from_file(app.join("Contents/Info.plist"))
-        .ok()
-        .and_then(|info| info.as_dictionary()?.get("DiaPatches")?.as_boolean())
+    info_plist(app)
+        .and_then(|info| info.get("DiaPatches")?.as_boolean())
         .unwrap_or(false)
+}
+
+fn safe_mode_state(support: &Path) -> Option<plist::Dictionary> {
+    plist::Value::from_file(support.join("safe-mode.plist"))
+        .ok()?
+        .into_dictionary()
 }
 
 /// 0 normally; 1 or 2 after Dia quit unexpectedly right after opening (see SafeMode.m).
 pub fn safe_mode(support: &Path) -> i64 {
-    plist::Value::from_file(support.join("safe-mode.plist"))
-        .ok()
-        .and_then(|state| state.as_dictionary()?.get("level")?.as_signed_integer())
+    safe_mode_state(support)
+        .and_then(|state| state.get("level")?.as_signed_integer())
         .unwrap_or(0)
 }
 
 /// Whether level 2 has already stepped down to level 1 once, so it stays until a new build (see SafeMode.m).
 pub fn safe_mode_parked(support: &Path) -> bool {
-    plist::Value::from_file(support.join("safe-mode.plist"))
-        .ok()
-        .and_then(|state| state.as_dictionary()?.get("steppedDown")?.as_boolean())
+    safe_mode_state(support)
+        .and_then(|state| state.get("steppedDown")?.as_boolean())
         .unwrap_or(false)
 }
 
