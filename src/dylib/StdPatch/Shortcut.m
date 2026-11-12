@@ -41,10 +41,24 @@ BOOL DPShortcutRecording(void) {
     return NO;
 }
 
+BOOL DPEventIsKey(NSEvent *event, NSString *key) {
+    if (key.length != 1) return NO;
+    NSString *typed = event.charactersIgnoringModifiers;
+    if (typed.length == 1 && [typed characterAtIndex:0] < 128) return [typed caseInsensitiveCompare:key] == NSOrderedSame;
+    // The keys of a US keyboard by key code, 0 to 50; a space is a key with no character.
+    static const char us[] = "asdfhgzxcv bqweryt123465=97-80]ou[ip lj'k;\\,/nm.  `";
+    unichar c = [key.lowercaseString characterAtIndex:0];
+    const char *at = c > ' ' && c < 127 ? strchr(us, c) : NULL;
+    return at && event.keyCode == at - us;
+}
+
+// A shortcut shown as a letter is on the key that types it, as Settings shows it. Any other is on the key that was pressed.
 BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
     NSDictionary *shortcut = DPPatchShortcut(patch);
-    return !DPShortcutRecording() && shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode &&
-           [shortcut[@"modifiers"] unsignedIntegerValue] == (event.modifierFlags & DPShortcutModifiers);
+    NSString *label = shortcut[@"key"];
+    BOOL letter = label.length == 1 && [label characterAtIndex:0] < 128 && isalpha([label characterAtIndex:0]);
+    BOOL key = letter ? DPEventIsKey(event, label) : shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode;
+    return !DPShortcutRecording() && key && [shortcut[@"modifiers"] unsignedIntegerValue] == (event.modifierFlags & DPShortcutModifiers);
 }
 
 static NSDictionary *DPMenuShortcut(NSMenuItem *item) {
