@@ -11,10 +11,10 @@ static char DPStateKey, DPRelayKey;
 // it. So New Tab, its shortcut and the sidebar's button make that tab instead. From a pinned or favorite tab it goes to
 // the top of the unpinned tabs, and from a tab in a folder right after the folder, as in Arc.
 @interface DPNextTabs : NSObject
-@property(strong) NSSet<NSString *> *known;  // Tab IDs at the last look.
-@property(copy) NSString *last;              // The tab in front at the last look.
-@property BOOL moving;                       // A new tab is being moved, which shifts the tab in front for a moment.
-@property(strong) NSMutableDictionary<NSString *, NSString *> *origins;  // New tab ID: the tab it was opened from.
+@property(strong) NSSet<NSString *> *knownIDs;
+@property(copy) NSString *lastFrontID;
+@property BOOL moving;  // A new tab is being moved, which shifts the tab in front for a moment.
+@property(strong) NSMutableDictionary<NSString *, NSString *> *originOf;
 @end
 
 @implementation DPNextTabs
@@ -37,9 +37,9 @@ static DPNextTabs *DPStateFor(NSWindow *window) {
     NSString *active = DPActiveTabID(window);
     if (state || !active) return state;
     state = [DPNextTabs new];
-    state.origins = [NSMutableDictionary dictionary];
-    state.known = [NSSet setWithArray:DPTabIDs(window)];
-    state.last = active;
+    state.originOf = [NSMutableDictionary dictionary];
+    state.knownIDs = [NSSet setWithArray:DPTabIDs(window)];
+    state.lastFrontID = active;
     DPSet(window, &DPStateKey, state);
     return state;
 }
@@ -75,8 +75,8 @@ static NSSet<NSNumber *> *DPSessions(id browser) {
 
 static void DPDoneMoving(NSWindow *window, DPNextTabs *state) {
     state.moving = NO;
-    state.known = [NSSet setWithArray:DPTabIDs(window)];
-    state.last = DPActiveTabID(window);
+    state.knownIDs = [NSSet setWithArray:DPTabIDs(window)];
+    state.lastFrontID = DPActiveTabID(window);
 }
 
 // `before` is the pages Dia had when the tab was made, so the new tab's page is the one it gained.
@@ -131,7 +131,7 @@ static BOOL DPOpenNextToCurrent(NSWindow *window) {
     [added removeObjectsInArray:tabsBefore.allObjects];
     NSString *created = tab && added.count == 1 ? added.firstObject : nil;
     if (!created) return tab != nil;
-    state.origins[created] = from;
+    state.originOf[created] = from;
     state.moving = YES;
     dispatch_async(dispatch_get_main_queue(), ^{ DPPlace(window, created, from, fromSession, before, state, 20); });
     return YES;
@@ -199,31 +199,31 @@ static void DPNote(NSWindow *window) {
     if (!state) return (void)DPStateFor(window);
     if (state.moving) return;
     NSSet<NSString *> *now = [NSSet setWithArray:ids];
-    BOOL switched = ![active isEqual:state.last];
+    BOOL switched = ![active isEqual:state.lastFrontID];
 
     // A new tab page came to the front that Dia, not the tweak, opened: a button or shortcut this didn't catch.
-    if (state.last && switched && ![state.known containsObject:active] && [now containsObject:state.last] && DPIsBlank(window, active))
-        state.origins[active] = state.last;
+    if (state.lastFrontID && switched && ![state.knownIDs containsObject:active] && [now containsObject:state.lastFrontID] && DPIsBlank(window, active))
+        state.originOf[active] = state.lastFrontID;
 
-    for (NSString *tab in state.origins.allKeys) {
-        NSString *origin = state.origins[tab];
+    for (NSString *tab in state.originOf.allKeys) {
+        NSString *origin = state.originOf[tab];
         if (![now containsObject:origin]) {
-            [state.origins removeObjectForKey:tab];
+            [state.originOf removeObjectForKey:tab];
         } else if (![now containsObject:tab]) {
-            [state.origins removeObjectForKey:tab];
-            if ([state.last isEqual:tab] && ![active isEqual:origin])
+            [state.originOf removeObjectForKey:tab];
+            if ([state.lastFrontID isEqual:tab] && ![active isEqual:origin])
                 dispatch_async(dispatch_get_main_queue(), ^{ DPReturnTo(window, origin, active); });
         } else if (![active isEqual:tab] && ![active isEqual:origin]) {
-            [state.origins removeObjectForKey:tab];
+            [state.originOf removeObjectForKey:tab];
             // Dia may bring the next tab to the front before it lets the closing one go.
-            if ([state.last isEqual:tab])
+            if ([state.lastFrontID isEqual:tab])
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
                     if (!DPScriptTab(window, tab)) DPReturnTo(window, origin, active);
                 });
         }
     }
-    state.known = now;
-    state.last = active;
+    state.knownIDs = now;
+    state.lastFrontID = active;
 }
 
 static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
