@@ -46,7 +46,7 @@ static void DPPutAwayWindow(NSWindow *window) {
 
 // Dia was hidden, so bringing it forward for the link showed every window: the others go away again, until Open in
 // Dia, or Dia is hidden again when its last small window closes and comes back the usual way.
-static BOOL DPPutAwayIfHidden(NSWindow *little) {
+static BOOL DPPutAwayIfHidden(void) {
     if (!DPUnhiddenAt || DPUnhiddenAt.timeIntervalSinceNow < -2) return NO;
     for (NSWindow *window in NSApp.orderedWindows)
         if (!DPIsLittleDiaWindow(window) && window.visible && window.level == NSNormalWindowLevel) DPPutAwayWindow(window);
@@ -89,7 +89,7 @@ BOOL DPHideAgain(void) {
 }
 
 void DPRestoreStack(NSWindow *little, NSDictionary *noted) {
-    if (DPPutAwayIfHidden(little)) return;
+    if (DPPutAwayIfHidden()) return;
     NSArray<NSDictionary *> *stack = noted[@"stack"];
     NSNumber *me = @(getpid());
     NSUInteger front = [stack indexOfObjectPassingTest:^BOOL(NSDictionary *window, NSUInteger i, BOOL *stop) { return ![window[@"pid"] isEqual:me]; }];
