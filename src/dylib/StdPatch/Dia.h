@@ -84,3 +84,4 @@
 #define DPDiaFeatheredLabel     "_TtC5ARCUI24FeatheredTruncatingLabel"
 #define DPDiaTransitioningLabel "_TtC5ARCUI27FeatheredTransitioningLabel"
 #define DPDiaTabListLayout      "_TtC7TabList27TabListCollectionViewLayout"
+#define DPDiaWindowController   "_TtC6Window24PlatformWindowController"

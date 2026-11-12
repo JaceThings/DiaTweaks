@@ -2,7 +2,8 @@
 
 // Dia gives an open tab under a folded pinned folder a minus button that closes its page and keeps the tab. This gives
 // every open pinned tab one. A click is sent as Dia's closeKeepingTab style, which does the same for any pinned tab.
-// An option of the close button, which already shows the button on pinned tabs outside a folder.
+// ⌘W on the tab you're on does what its minus does. An option of the close button, which already shows the button on
+// pinned tabs outside a folder.
 
 enum { DPDismiss = 2 };  // TabUI.TabCloseButtonStyle.
 
@@ -42,6 +43,51 @@ static void DPContent_closeButtonClicked(NSView *self, SEL _cmd) {
         DPCallOriginal(DPContent_closeButtonClicked, self);
 }
 
+#pragma mark ⌘W
+
+// Dia's ⌘W removes a pinned tab outside a folder. On a tab with the minus it does what the minus does instead.
+
+static NSView *DPEnclosing(NSView *view, const char *className) {
+    while (view && !DPIsKind(view, className)) view = view.superview;
+    return view;
+}
+
+// selectionStyle is "none" when unselected, nil on an unselected pinned tab, and above/below on the selection's neighbours.
+static BOOL DPTabSelected(NSView *tab) {
+    id state = DPSwiftValue(DPSwiftValue(DPSwiftValue(tab, @"viewModel"), @"stateSubject"), @"currentValue");
+    NSString *style = [[DPSwiftValue(state, @"selectionStyle") description] lowercaseString];
+    return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
+}
+
+// The list keeps cells it isn't showing, hidden, so a hidden cell is skipped but a collapsed sidebar isn't.
+static BOOL DPTabShown(NSView *tab) {
+    for (NSView *view = tab; view && ![view isKindOfClass:NSCollectionView.class]; view = view.superview)
+        if (view.hidden) return NO;
+    return YES;
+}
+
+// The page row of the tab you're on, while ⌘W closes the whole tab: one page fills the window, and that page, the sidebar
+// or the window has focus. Otherwise ⌘W closes something smaller, like one side of a split or the chat.
+static NSView *DPFrontContent(NSWindow *window) {
+    NSUInteger panes = 0;
+    for (NSView *pane in DPFindViews(DPDiaContentPane)) panes += pane.window == window && !pane.hiddenOrHasHiddenAncestor;
+    NSView *focus = [window.firstResponder isKindOfClass:NSView.class] ? (NSView *)window.firstResponder : nil;
+    if (panes != 1 || (focus && !DPEnclosing(focus, DPDiaContentPane) && DPEnclosing(focus, DPDiaContentContainer))) return nil;
+    for (NSView *content in DPFindViews(DPDiaTabContentView)) {
+        NSView *tab = DPEnclosingTab(content);
+        if (content.window == window && tab && DPTabShown(tab) && DPTabSelected(tab)) return content;
+    }
+    return nil;
+}
+
+// File > Close Tab.
+static void DPWindow_closeFocusedContent(NSWindowController *self, SEL _cmd, id sender) {
+    NSView *content = DPMinusOn() ? DPFrontContent(self.window) : nil;
+    if (!(content && DPMinusController(content) && DPCloseKeepingTab(content))) DPCallOriginal(DPWindow_closeFocusedContent, self, sender);
+}
+
+#pragma mark Patch
+
 static void DPApplyPinnedTabMinusButton(DPPatch *patch) { DPRelayoutTabContents(); }
 
 static NSString *DPVerifyPinnedTabMinusButton(DPPatch *patch) {
@@ -64,13 +110,14 @@ static void DPInstallPinnedTabMinusButton(void) {
     DPMinus = [NSImage imageWithSystemSymbolName:@"minus" accessibilityDescription:@"Close"];
     DPHook(DPDiaTabContentView, @selector(layout), (IMP)DPContent_layout);
     DPHook(DPDiaTabContentView, NSSelectorFromString(@"closeButtonClicked"), (IMP)DPContent_closeButtonClicked);
+    DPHook(DPDiaWindowController, NSSelectorFromString(@"closeFocusedContent:"), (IMP)DPWindow_closeFocusedContent);
 }
 
 DP_PATCH(DPPinnedTabMinusButton) {
     .key = @"pinnedTabMinusButton",
     .order = 86,
     .title = @"Minus Button on Open Pinned Tabs",
-    .detail = @"Show a minus button instead on pinned tabs with a page open, in or out of a folder, as in Arc. It closes the page and keeps the tab pinned.",
+    .detail = @"Show a minus button instead on pinned tabs with a page open, in or out of a folder, as in Arc. It closes the page and keeps the tab pinned, and ⌘W does the same.",
     .symbol = @"minus.circle.fill",
     .tint = @"systemPinkColor",
     .requires = @"pinnedTabCloseButton",
