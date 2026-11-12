@@ -1,15 +1,35 @@
 #import "SiteSearch.h"
+#import <objc/message.h>
 
 static char DPSiteKey;
 
 static __weak NSTextView *DPSearching;  // The field with a site chosen, if any.
 
-static DPSite *DPSiteOf(NSTextView *text) { return DPGet(text, &DPSiteKey); }
+static DPSite *DPSiteOf(NSTextView *text) { return text ? DPGet(text, &DPSiteKey) : nil; }
+
+DPSite *DPSiteOfField(NSTextView *text) { return DPSiteOf(text); }
+
+NSTextView *DPSearchingField(void) { return DPSearching; }
+
+// The site's brand color, else the strongest color in its icon. Layers take fixed colors, so a black and white brand's
+// text color is settled for the bar's light or dark appearance now.
+static NSColor *DPSiteColor(NSTextView *text, DPSite *site, NSImage *icon) {
+    if (!site.color) return DPBrandColor(icon);
+    __block NSColor *color = site.color;
+    [text.effectiveAppearance performAsCurrentDrawingAppearance:^{ color = [NSColor colorWithCGColor:site.color.CGColor] ?: site.color; }];
+    return color;
+}
 
 static void DPSetSite(NSTextView *text, DPSite *site) {
     DPSet(text, &DPSiteKey, site);
-    DPShowChip(text, site);
-    DPShowReturnTarget(text, site);
+    DPGuardField(text, site != nil);
+    NSImage *icon = site ? DPSiteIconFor(text, site) : nil;
+    NSColor *color = site ? DPSiteColor(text, site, icon) : nil;
+    if (site && !icon) icon = DPLetterIcon(site, color);
+    DPShowChip(text, site, icon, color);
+    DPShowGlow(text, color);
+    DPShowSiteButton(text, site, color);
+    DPUpdateSuggestions(text);
     if (site) DPSearching = text;
     else if (DPSearching == text) DPSearching = nil;
 }
@@ -17,37 +37,6 @@ static void DPSetSite(NSTextView *text, DPSite *site) {
 static void DPReplaceText(NSTextView *text, NSString *string) {
     [text setSelectedRange:NSMakeRange(0, text.string.length)];
     [text insertText:string replacementRange:NSMakeRange(0, text.string.length)];
-}
-
-#pragma mark Return
-
-#define DPDiaSuggestionsView "_TtC15BoostCommandBar15SuggestionsView"
-
-static NSTableView *DPSuggestionsOf(NSTextView *text) {
-    return (NSTableView *)DPFindView(text.window.contentView, ^BOOL(NSView *view) {
-        return [view isKindOfClass:NSTableView.class] && DPIsKind(((NSTableView *)view).delegate, DPDiaSuggestionsView);
-    });
-}
-
-static NSString *DPRowText(NSTableView *table, NSInteger row) {
-    if (row < 0 || row >= table.numberOfRows) return @"";
-    NSMutableArray *parts = [NSMutableArray new];
-    DPFindView([table rowViewAtRow:row makeIfNecessary:NO], ^BOOL(NSView *view) {
-        if ([view isKindOfClass:NSTextField.class]) [parts addObject:((NSTextField *)view).stringValue];
-        return NO;
-    });
-    return [parts componentsJoinedByString:@" | "];
-}
-
-// Return opens the suggestion Dia picked, which lags what's in the field. So it waits, up to `tries` times 20ms, until
-// the pick is the address put there.
-static void DPReturnWhenTyped(NSTextView *text, NSURL *url, int tries) {
-    NSTableView *table = DPSuggestionsOf(text);
-    NSString *picked = DPRowText(table, table.selectedRow), *bare = [url.absoluteString substringFromIndex:@"https://".length];
-    BOOL ready = [picked containsString:bare] || [picked containsString:[bare stringByRemovingPercentEncoding] ?: bare];
-    if (!ready && tries > 0 && text.window)
-        return (void)dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPReturnWhenTyped(text, url, tries - 1); });
-    if (text.window) [text doCommandBySelector:@selector(insertNewline:)];
 }
 
 #pragma mark Keys
@@ -64,7 +53,7 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
         return YES;
     }
     if (command == @selector(insertNewline:)) {
-        NSString *query = [text.string stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        NSString *query = [DPTypedText(text) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         NSURL *url = DPSiteSearchURL(site, query);
         DPSetSite(text, nil);
         DPReplaceText(text, url.absoluteString);
@@ -77,19 +66,13 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
         return YES;
     }
     if (command == @selector(insertTab:)) return YES;
-    if (command == @selector(cancelOperation:)) DPSetSite(text, nil);
+    // Esc starts over: the site and the words go, and the bar stays open for a new search. Esc again closes it.
+    if (command == @selector(cancelOperation:)) {
+        DPSetSite(text, nil);
+        DPReplaceText(text, @"");
+        return YES;
+    }
     return DPCallOriginal(DPInput_command, self, text, command);
-}
-
-// Words for a site aren't an address, so Dia shouldn't complete them into one: "g" isn't google.com on Amazon.
-static BOOL DPBrowser_autocomplete(id self, SEL _cmd, NSString *text, int cursor, BOOL prevent, BOOL fresh, id keyword, id *error, void (^completion)(id, BOOL)) {
-    NSTextView *field = DPSearching;
-    if (!DPSiteSearch.on || !DPSiteOf(field) || !completion) return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, prevent, fresh, keyword, error, completion);
-    // Dia names the Return button again with each update, so the site's name goes back after it.
-    return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, YES, fresh, keyword, error, ^(id result, BOOL done) {
-        completion(result, done);
-        dispatch_async(dispatch_get_main_queue(), ^{ DPShowReturnTarget(field, DPSiteOf(field)); });
-    });
 }
 
 // The bar's field is used again the next time it opens, so a site left from before goes when it closes.
@@ -101,7 +84,11 @@ static void DPText_viewDidMoveToWindow(NSTextView *self, SEL _cmd) {
 static void DPInstallSiteSearch(void) {
     DPHook(DPDiaCommandBarText, @selector(textView:doCommandBySelector:), (IMP)DPInput_command);
     DPHookClass(NSTextView.class, @selector(viewDidMoveToWindow), (IMP)DPText_viewDidMoveToWindow);
-    DPHook(DPDiaBrowser, @selector(autocomplete:cursorPosition:preventInlineAutocomplete:startFresh:keyword:error:completion:), (IMP)DPBrowser_autocomplete);
+    DPInstallSiteSuggestions();
+    DPInstallSitePlaceholder();
+    DPInstallSiteInline();
+    DPInstallSiteChip();
+    DPInstallSiteButton();
 }
 
 static void DPApplySiteSearch(DPPatch *patch) {
@@ -120,7 +107,7 @@ DP_PATCH(DPSiteSearch) {
     .key = @"siteSearch",
     .order = 93,
     .title = @"Search Sites with Tab",
-    .detail = @"Type a site such as amazon.com in the command bar, press Tab, then type what to search for on it and press Return. Works with popular sites and any site whose search box you've used.",
+    .detail = @"Type a site such as amazon.com in the command bar and press Tab to search it: type what to look for and press Return, or Esc to start over. Works with popular sites and any site whose search box you've used.",
     .symbol = @"magnifyingglass.circle.fill magnifyingglass",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",
