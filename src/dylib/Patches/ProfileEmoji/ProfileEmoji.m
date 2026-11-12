@@ -96,7 +96,7 @@ static void DPTopDot_layout(NSView *self, SEL _cmd) {
     DPShowEmoji(self, self.subviews.firstObject, DPEmoji(spaceID), 8, focused ? 1 : 0.45);
 }
 
-static void DPRefresh(DPPatch *patch) {
+static void DPRefresh(void) {
     for (NSString *name in @[ @DPDiaSpaceSwitcher, @DPDiaSpaceSwitcherItem, @DPDiaPageIndicatorDot ])
         for (NSView *view in DPFindViews(name.UTF8String)) view.needsLayout = YES;
 }
@@ -121,7 +121,7 @@ static void DPRefresh(DPPatch *patch) {
     NSMutableDictionary *emoji = [[DPEmojiDefaults dictionaryForKey:DPEmojisKey] mutableCopy] ?: [NSMutableDictionary dictionary];
     emoji[self.spaceID] = last.length ? last : nil;
     [DPEmojiDefaults setObject:emoji forKey:DPEmojisKey];
-    DPRefresh(&DPProfileEmoji);
+    DPRefresh();
 }
 @end
 
@@ -170,7 +170,7 @@ static void DPApplyProfileEmoji(DPPatch *patch) {
         if (patch->on) DPAddEmojiRow(pane);
         else DPRemoveEmojiRow(pane);
     }
-    DPRefresh(patch);
+    DPRefresh();
 }
 
 static void DPProfilePane_viewDidLoad(NSViewController *self, SEL _cmd) {
