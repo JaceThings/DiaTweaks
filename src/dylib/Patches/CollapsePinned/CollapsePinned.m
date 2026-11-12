@@ -1,4 +1,5 @@
 #import "StdPatch/StdPatch.h"
+#import "Patches/CompactTabRows/CompactTabRows.h"
 
 extern DPPatch DPCollapsePinned;
 
@@ -15,6 +16,11 @@ static NSString *DPSpaceOf(NSView *list) {
 }
 
 static BOOL DPIsCollapsed(NSString *space) { return space && [[DPCollapseDefaults arrayForKey:DPCollapsedKey] containsObject:space]; }
+
+static NSImage *DPSmallSymbol(NSString *name) {
+    NSImageSymbolConfiguration *small = [NSImageSymbolConfiguration configurationWithPointSize:10 weight:NSFontWeightSemibold];
+    return [[NSImage imageWithSystemSymbolName:name accessibilityDescription:nil] imageWithSymbolConfiguration:small];
+}
 
 @interface DPPinnedHeader : NSView
 @property (nonatomic, copy) NSString *space;
@@ -34,8 +40,7 @@ static void DPFold(NSString *space, BOOL collapsed);
 - (instancetype)init {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     self.wantsLayer = YES;
-    NSImageSymbolConfiguration *small = [NSImageSymbolConfiguration configurationWithPointSize:10 weight:NSFontWeightSemibold];
-    self.pin = [NSImageView imageViewWithImage:[[NSImage imageWithSystemSymbolName:@"pin.fill" accessibilityDescription:nil] imageWithSymbolConfiguration:small]];
+    self.pin = [NSImageView imageViewWithImage:DPSmallSymbol(@"pin.fill")];
     self.chevron = [NSImageView new];
     self.title = [NSTextField labelWithString:@"Pinned"];
     self.title.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
@@ -83,8 +88,7 @@ static void DPFold(NSString *space, BOOL collapsed);
 - (void)setCollapsed:(BOOL)collapsed {
     if (_collapsed == collapsed && self.chevron.image) return;
     _collapsed = collapsed;
-    NSImageSymbolConfiguration *small = [NSImageSymbolConfiguration configurationWithPointSize:10 weight:NSFontWeightSemibold];
-    self.chevron.image = [[NSImage imageWithSystemSymbolName:collapsed ? @"chevron.right" : @"chevron.down" accessibilityDescription:nil] imageWithSymbolConfiguration:small];
+    self.chevron.image = DPSmallSymbol(collapsed ? @"chevron.right" : @"chevron.down");
     self.line.opacity = collapsed ? 0 : 1;
     [self restyle];
 }
@@ -228,20 +232,6 @@ static BOOL DPDiaPoint(NSCollectionView *list, NSPoint *inWindow) {
     return YES;
 }
 
-@interface DPDiaDrag : NSProxy
-@property (nonatomic, strong) id<NSDraggingInfo> info;
-@property (nonatomic) NSPoint location;
-@end
-
-@implementation DPDiaDrag
-- (NSPoint)draggingLocation { return self.location; }
-- (NSMethodSignature *)methodSignatureForSelector:(SEL)sel { return [(NSObject *)self.info methodSignatureForSelector:sel]; }
-- (void)forwardInvocation:(NSInvocation *)invocation { [invocation invokeWithTarget:self.info]; }
-- (BOOL)respondsToSelector:(SEL)sel { return [(NSObject *)self.info respondsToSelector:sel]; }
-- (BOOL)conformsToProtocol:(Protocol *)protocol { return [(NSObject *)self.info conformsToProtocol:protocol]; }
-- (BOOL)isKindOfClass:(Class)cls { return [(NSObject *)self.info isKindOfClass:cls]; }
-@end
-
 static NSCollectionView *DPListIn(NSView *tabList) {
     return (NSCollectionView *)DPFindView(tabList, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabListCollection); });
 }
@@ -252,10 +242,7 @@ static id<NSDraggingInfo> DPDiaDragOf(NSView *tabList, id<NSDraggingInfo> info) 
     NSPoint location = info.draggingLocation;
     if (list && !DPDiaPoint(list, &location)) return nil;
     if (NSEqualPoints(location, info.draggingLocation)) return info;
-    DPDiaDrag *drag = [DPDiaDrag alloc];
-    drag.info = info;
-    drag.location = location;
-    return (id<NSDraggingInfo>)drag;
+    return DPDraggingInfoAt(info, location);
 }
 
 static void DPSpringOpen(NSView *tabList, id<NSDraggingInfo> info) {
