@@ -1,7 +1,6 @@
 #import "AppIcon.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <Foundation/Foundation.h>
-#import <sys/xattr.h>
 #import "LaunchServices.h"
 #import "Passkeys.h"
 #import "Passwords.h"
