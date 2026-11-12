@@ -32,15 +32,16 @@ static BOOL emit(FILE *out, NSString *format, ...) {
     va_start(args, format);
     NSString *line = [[NSString alloc] initWithFormat:format arguments:args];
     va_end(args);
-    if (out == stderr) gFailure = line;
+    BOOL failure = out == stderr;
+    if (failure) gFailure = line;
     if (gLog) {
         char stamp[20];
         time_t now = time(NULL);
         strftime(stamp, sizeof stamp, "%F %T", localtime(&now));
-        fprintf(gLog, "%s %s[%d] %s%s\n", stamp, gCommand, getpid(), out == stderr ? "error: " : "", line.UTF8String);
+        fprintf(gLog, "%s %s[%d] %s%s\n", stamp, gCommand, getpid(), failure ? "error: " : "", line.UTF8String);
     }
-    if (out) fprintf(out, "%s%s\n", out == stderr ? "diapatch: " : "", line.UTF8String);
-    return out != stderr;
+    if (out) fprintf(out, "%s%s\n", failure ? "diapatch: " : "", line.UTF8String);
+    return !failure;
 }
 
 #define note(...) emit(NULL, __VA_ARGS__)
@@ -53,6 +54,8 @@ static NSString *env(const char *name) {
     const char *value = getenv(name);
     return value && *value ? @(value) : nil;
 }
+
+static NSString *trimmed(NSString *text) { return [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; }
 
 static NSString *inHome(NSString *name) { return [gHome stringByAppendingPathComponent:name]; }
 
@@ -120,8 +123,7 @@ static BOOL check(NSArray<NSString *> *argv) {
     NSString *output;
     int status = run(argv, &output);
     return status == 0
-        || fail(@"%@ failed (%d): %@", argv[0].lastPathComponent, status,
-                [output stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]);
+        || fail(@"%@ failed (%d): %@", argv[0].lastPathComponent, status, trimmed(output));
 }
 
 // Dia's feed server turns away some HTTP clients but accepts curl.
@@ -286,9 +288,7 @@ static NSString *createLocalIdentity(NSString *keychain) {
 }
 
 static BOOL sign(NSString *app) {
-    NSString *identity = env("DIAPATCH_IDENTITY")
-        ?: [[NSString stringWithContentsOfFile:inHome(@"identity") encoding:NSUTF8StringEncoding error:NULL]
-               stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *identity = env("DIAPATCH_IDENTITY") ?: trimmed([NSString stringWithContentsOfFile:inHome(@"identity") encoding:NSUTF8StringEncoding error:NULL]);
     NSArray *codesign = @[ @"/usr/bin/codesign", @"--force", @"--timestamp=none", @"--sign" ];
     if (identity.length) {
         codesign = [codesign arrayByAddingObject:identity];
@@ -371,7 +371,7 @@ static BOOL newer(NSString *a, NSString *b) { return [a compare:b ?: @"" options
 static NSString *sparkle(NSXMLElement *item, NSXMLElement *enclosure, NSString *name) {
     NSString *value = [enclosure attributeForLocalName:name URI:kSparkle].stringValue
         ?: [item elementsForLocalName:name URI:kSparkle].firstObject.stringValue;
-    value = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    value = trimmed(value);
     return value.length ? value : nil;
 }
 
@@ -447,8 +447,7 @@ static NSString *sha256(NSString *file) {
 static NSDictionary *latestTweaks(int seconds, NSString **problem) {
     NSString *url = env("DIAPATCH_RELEASES") ?: kReleases, *output;
     if (fetch(url, seconds, nil, &output) != 0) {
-        *problem = [NSString stringWithFormat:@"cannot reach %@: %@", url,
-                                              [output stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]];
+        *problem = [NSString stringWithFormat:@"cannot reach %@: %@", url, trimmed(output)];
         return nil;
     }
     NSDictionary *release = [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
@@ -585,8 +584,7 @@ static NSString *signatureOf(NSString *app) {
     NSString *output;
     if (run(@[ @"/usr/bin/codesign", @"-dr", @"-", app ], &output) != 0) return nil;
     NSRange range = [output rangeOfString:@"designated => "];
-    return range.location == NSNotFound ? nil : [[output substringFromIndex:NSMaxRange(range)]
-                                                    stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    return range.location == NSNotFound ? nil : trimmed([output substringFromIndex:NSMaxRange(range)]);
 }
 
 // A grant that no longer matches stays switched on in System Settings, so Dia keeps asking for it without macOS ever
