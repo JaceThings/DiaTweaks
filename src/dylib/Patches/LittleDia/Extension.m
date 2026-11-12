@@ -52,7 +52,7 @@ static NSString *DPExtensionFolder(void) {
 
 static NSString *gExtensionID;
 static NSError *gWriteError;
-static NSTimeInterval gLoaded;  // When Dia started, as systemUptime.
+static NSTimeInterval gLaunchedAt;
 static const NSTimeInterval DPLaunchTime = 20;  // Dia is still launching for this long; a link waits less than this for it.
 
 // Chromium names an unpacked extension after its folder: the SHA-256 of the path, its first 32 hex digits spelt a to p.
@@ -79,22 +79,25 @@ BOOL DPWriteLittleDiaExtension(BOOL on) {
     if (!on) return YES;
     NSError *error;
     BOOL written = [files createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:&error];
-    for (NSString *name in DPExtensionFiles())
-        written = written && [DPExtensionFiles()[name] writeToFile:[folder stringByAppendingPathComponent:name] atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    NSDictionary<NSString *, NSString *> *contents = DPExtensionFiles();
+    for (NSString *name in contents)
+        written = written && [contents[name] writeToFile:[folder stringByAppendingPathComponent:name] atomically:YES encoding:NSUTF8StringEncoding error:&error];
     gWriteError = written ? nil : error;
     return written;
 }
 
 NSString *DPLittleDiaExtensionProblem(void) {
-    if (gWriteError) return [NSString stringWithFormat:@"Couldn’t write %@: %@", DPExtensionFolder(), gWriteError.localizedDescription];
-    for (NSString *name in DPExtensionFiles())
-        if (![NSFileManager.defaultManager fileExistsAtPath:[DPExtensionFolder() stringByAppendingPathComponent:name]])
-            return [NSString stringWithFormat:@"%@ is missing.", [DPExtensionFolder() stringByAppendingPathComponent:name]];
+    NSString *folder = DPExtensionFolder();
+    if (gWriteError) return [NSString stringWithFormat:@"Couldn’t write %@: %@", folder, gWriteError.localizedDescription];
+    for (NSString *name in DPExtensionFiles()) {
+        NSString *path = [folder stringByAppendingPathComponent:name];
+        if (![NSFileManager.defaultManager fileExistsAtPath:path]) return [NSString stringWithFormat:@"%@ is missing.", path];
+    }
     return nil;
 }
 
 void DPInstallLittleDiaExtension(void) {
-    gLoaded = NSProcessInfo.processInfo.systemUptime;
+    gLaunchedAt = NSProcessInfo.processInfo.systemUptime;
     if (!DPWriteLittleDiaExtension(DPLittleDia.on) || !DPLittleDia.on) return;
     DPLoadExtension(DPExtensionFolder());
     gExtensionID = DPExtensionID(DPExtensionFolder());
@@ -109,7 +112,7 @@ static id DPExtensions(id browser) {
 // closed: nothing is on its way, and the link would wait for nothing.
 BOOL DPLittleDiaStarting(void) {
     id extensions = DPExtensions(DPCommandBrowser());
-    if (!extensions) return gExtensionID && NSProcessInfo.processInfo.systemUptime - gLoaded < DPLaunchTime;
+    if (!extensions) return gExtensionID && NSProcessInfo.processInfo.systemUptime - gLaunchedAt < DPLaunchTime;
     return gExtensionID && [extensions respondsToSelector:@selector(isExtensionSystemReady)] && !DPMsgBool(extensions, @selector(isExtensionSystemReady));
 }
 

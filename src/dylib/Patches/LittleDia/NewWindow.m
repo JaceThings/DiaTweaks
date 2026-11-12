@@ -1,7 +1,7 @@
 #import "LittleDia.h"
 
 static NSMenuItem *gItem;
-static BOOL gLooking;  // A look is waiting its turn.
+static BOOL gLookScheduled;
 static int gLooks;
 
 static NSMenu *DPFileMenu(void) { return [NSApp.mainMenu itemWithTitle:@"File"].submenu; }
@@ -20,10 +20,10 @@ void DPRefreshLittleDiaNewWindow(void) {
         }
         gItem.hidden = !show;
     }
-    if (show || !DPLittleDia.on || gLooking) return;
-    gLooking = YES;
+    if (show || !DPLittleDia.on || gLookScheduled) return;
+    gLookScheduled = YES;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (gLooks++ < 120 ? 500 : 5000) * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        gLooking = NO;
+        gLookScheduled = NO;
         DPRefreshLittleDiaNewWindow();
     });
 }
