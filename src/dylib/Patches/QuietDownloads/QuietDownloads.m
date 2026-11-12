@@ -2,6 +2,7 @@
 
 extern DPPatch DPQuietDownloads;
 
+static Class DPDownloadsMenu;
 static __weak NSView *DPPressed;  // by VoiceOver or Full Keyboard Access, until the run loop comes round
 
 static BOOL DPButton_press(NSView *self, SEL _cmd) {
@@ -18,8 +19,6 @@ static BOOL DPAskedFor(NSView *anchor) {
     NSView *clicked = [anchor.window.contentView.superview hitTest:event.locationInWindow];  // the frame view has no superview
     return [clicked isDescendantOf:anchor] || [anchor isDescendantOf:clicked];
 }
-
-static Class DPDownloadsMenu;
 
 static void DPPopover_show(NSPopover *self, SEL _cmd, NSRect rect, NSView *anchor, NSRectEdge edge) {
     if (DPQuietDownloads.on && [self.contentViewController isKindOfClass:DPDownloadsMenu] && !DPAskedFor(anchor)) return;

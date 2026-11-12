@@ -2,13 +2,12 @@
 #import <objc/message.h>
 
 extern DPPatch DPWindowCorners;
-static const CGFloat DPCornerReach = 26;
+static const CGFloat DPCornerReach = 26, DPMaxRadius = 26;
+static NSString *const DPRadiusSetting = @"windowCornerRadius";
 static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey;
 #define DPCornerBars (@[ @DPDiaTabStrip, @DPDiaSidebarHeader, @DPDiaSidebarFooter ])
 
 static CGFloat DPCornerRadius(NSWindow *window) { return ((CGFloat (*)(id, SEL))objc_msgSend)(window, @selector(_cornerRadius)); }
-static const CGFloat DPMaxRadius = 26;
-static NSString *const DPRadiusSetting = @"windowCornerRadius";
 
 static NSUserDefaults *DPSettings(void) {
     static NSUserDefaults *settings;
@@ -22,9 +21,6 @@ static CGFloat DPRadius(void) {
     return saved ? MIN(MAX([saved doubleValue], 0), DPMaxRadius) : DPMaxRadius;
 }
 
-// AppKit takes a radius under 1 as its default.
-static CGFloat DPWindowRadius(void) { return MAX(1, DPRadius()); }
-
 // A full screen window keeps the square corners macOS gives it.
 static BOOL DPInFullScreen(NSWindow *window) { return (window.styleMask & NSWindowStyleMaskFullScreen) != 0; }
 
@@ -34,7 +30,8 @@ CGFloat DPWindowCornerGrowth(NSWindow *window) {
     return DPRadius() - [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
 }
 
-static CGFloat DPWindowTarget(NSWindow *window, CGFloat dia) { return DPWindowCorners.on && !DPInFullScreen(window) ? DPWindowRadius() : dia; }
+// AppKit takes a radius under 1 as its default.
+static CGFloat DPWindowTarget(NSWindow *window, CGFloat dia) { return DPWindowCorners.on && !DPInFullScreen(window) ? MAX(1, DPRadius()) : dia; }
 
 static void DPRoundWindow(NSWindow *window) {
     CGFloat current = DPCornerRadius(window), dia = [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
@@ -61,8 +58,8 @@ static void DPRoundLayers(CALayer *layer, CGFloat growth) {
 
 static void DPRoundCornerItems(NSView *root) {
     NSView *frame = root.window.contentView.superview;
-    CGFloat growth = DPWindowCornerGrowth(root.window);
     if (!frame) return;
+    CGFloat growth = DPWindowCornerGrowth(root.window);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     DPFindView(root, ^BOOL(NSView *view) {

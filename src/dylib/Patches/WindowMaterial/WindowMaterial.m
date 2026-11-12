@@ -58,7 +58,12 @@ static void DPCollectEffects(NSView *view, NSMutableArray<NSVisualEffectView *> 
     for (NSView *sub in view.subviews) DPCollectEffects(sub, effects);
 }
 
-static NSView *DPTintIn(NSView *view);
+// Not the selected tab's own copy, which sits deeper.
+static NSView *DPTintIn(NSView *view) {
+    for (NSView *sub in view.subviews)
+        for (NSView *inner in sub.subviews) if (DPIsKind(inner, DPDiaWindowTint)) return inner;
+    return nil;
+}
 
 // The tint is a white or black wash under a gradient of the profile's color. Only the wash hides the material.
 static NSView *DPWashIn(NSView *tint) {
@@ -123,13 +128,6 @@ static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
     DPOverride(window, &DPOpaqueKey, dia, ours);
     if (window.opaque != [ours[0] boolValue]) window.opaque = [ours[0] boolValue];
     if (![window.backgroundColor isEqual:ours[1]]) window.backgroundColor = ours[1];
-}
-
-// Not the selected tab's own copy, which sits deeper.
-static NSView *DPTintIn(NSView *view) {
-    for (NSView *sub in view.subviews)
-        for (NSView *inner in sub.subviews) if (DPIsKind(inner, DPDiaWindowTint)) return inner;
-    return nil;
 }
 
 static NSArray<NSView *> *DPWindowFrames(void) {
