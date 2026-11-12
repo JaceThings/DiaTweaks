@@ -6,12 +6,10 @@
 extern DPPatch DPNewTabNextToCurrent;
 static char DPStateKey, DPRelayKey;
 
-// Dia puts a tab made from its menu or the sidebar at the end of the list, and its own new tab page has nothing a tab
-// can be moved by. A tab made through its scripting, as `make new tab` does, is a real page, which Group Tabs by Domain's
-// way of moving a tab works on: put it in a scratch group, move the group, ungroup it. So File › New Tab, its
-// shortcut, whatever that's set to, and the sidebar's New Tab button make that tab instead and move it right after the
-// one you were on. From a pinned or favorite tab it goes to the top of the unpinned tabs, and from a tab in a folder
-// right after the folder, as in Arc. Closing it goes back to the tab it was opened from.
+// Dia's own new tab page has nothing a tab can be moved by. A tab made through its scripting, as `make new tab` does, is a
+// real page, which Group Tabs by Domain's way of moving a tab works on: put it in a scratch group, move the group, ungroup
+// it. So New Tab, its shortcut and the sidebar's button make that tab instead. From a pinned or favorite tab it goes to
+// the top of the unpinned tabs, and from a tab in a folder right after the folder, as in Arc.
 @interface DPNextTabs : NSObject
 @property(strong) NSSet<NSString *> *known;  // Tab IDs at the last look.
 @property(copy) NSString *last;              // The tab in front at the last look.
@@ -28,7 +26,7 @@ static NSArray<NSString *> *DPTabIDs(NSWindow *window) {
     return [[DPScriptWindow(window) valueForKey:@"appleScriptTabs"] valueForKey:@"tabId"] ?: @[];
 }
 
-// A tab with no page loaded is Dia's new tab page.
+// Dia's new tab page has no http, https or file URL.
 static BOOL DPIsBlank(NSWindow *window, NSString *tabID) {
     NSString *url = [[DPScriptTab(window, tabID) valueForKey:@"URL"] description];
     return !url.length || !([url hasPrefix:@"http:"] || [url hasPrefix:@"https:"] || [url hasPrefix:@"file:"]);
@@ -56,7 +54,6 @@ static void DPAskGroups(id delegate, id browser, void (^done)(NSArray *groups)) 
     });
 }
 
-// How many tabs follow `session` in its folder, 0 when it isn't in one.
 static NSInteger DPTabsLeftInFolder(NSArray *groups, long long session) {
     for (id info in groups) {
         NSArray *raw = [info respondsToSelector:@selector(tabSessionIds)] ? DPMsg(info, @selector(tabSessionIds)) : nil;
@@ -253,7 +250,7 @@ static void DPInstallNewTabNextToCurrent(void) {
 static void DPApplyNewTabNextToCurrent(DPPatch *patch) {
     DPRelayMenuItem(patch->on);
     for (NSWindow *window in NSApp.windows) {
-        DPSet(window, &DPStateKey, nil);  // Starts afresh from the tabs there are when it's on.
+        DPSet(window, &DPStateKey, nil);
         if (patch->on) DPNote(window);
     }
 }

@@ -1,17 +1,15 @@
 #import "Patches/Peek/Peek.h"
 #import "Patches/HideToolbar/HideToolbar.h"
 
-// Dia's loading glow along the bottom of the Peek's toolbar, as its own bars and Little Dia's show it: Dia's shader in
-// Dia's colors, rising from the bottom edge as far as the page has loaded, then fading once it has.
 static const NSTimeInterval DPGlowCycle = 2;
-// Dia's finish, timed from Little Dia's bar: the rest of the way across, a hold at full width, then a quick fade.
+// Dia's finish, timed from Little Dia's bar.
 static const NSTimeInterval DPGlowFinish = 0.3, DPGlowHold = 0.1, DPGlowFade = 0.15;
 static const CGFloat DPGlowEase = 0.15;  // While loading: how much of the gap to the page's progress it closes each frame.
 
 @interface DPPeekGlow : NSView
 @property (nonatomic, weak) id page;
 @property (nonatomic, strong) CAMetalLayer *shader;
-@property (nonatomic, strong) CALayer *line;  // Without the shader: a plain line in the accent color.
+@property (nonatomic, strong) CALayer *line;
 @property (nonatomic, strong) NSTimer *frames;
 @property (nonatomic) CGFloat fraction, shown, finishFrom;
 @property (nonatomic) CFTimeInterval finishStart;
@@ -76,7 +74,7 @@ static const CGFloat DPGlowEase = 0.15;  // While loading: how much of the gap t
 - (void)step {
     NSObject *page = self.page;
     BOOL loading = [[page valueForKey:@"isLoading"] boolValue];
-    if (loading && !self.loading) {  // Starts again from the left, as Dia's does.
+    if (loading && !self.loading) {
         self.shown = self.fraction = 0;
         self.finishing = self.fading = NO;
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
@@ -96,7 +94,7 @@ static const CGFloat DPGlowEase = 0.15;  // While loading: how much of the gap t
     CFTimeInterval since = CACurrentMediaTime() - self.finishStart;
     if (!self.finishing) self.shown += (self.fraction - self.shown) * DPGlowEase;
     else {
-        CGFloat t = MIN(1, since / DPGlowFinish), eased = 1 - (1 - t) * (1 - t);  // Ease out, as Dia's slows into the edge.
+        CGFloat t = MIN(1, since / DPGlowFinish), eased = 1 - (1 - t) * (1 - t);
         self.shown = self.finishFrom + (1 - self.finishFrom) * eased;
     }
     if (self.finishing && !self.fading && since >= DPGlowFinish + DPGlowHold) {

@@ -7,7 +7,7 @@ static NSString *const DPEmojisKey = @"profileEmojis";
 static const CGFloat DPSidebarEmojiSize = 13.5, DPSidebarEmojiWidth = 16, DPSidebarDotWidth = 6, DPSidebarGap = 10;
 static NSUserDefaults *DPEmojiDefaults;
 static NSHashTable<NSViewController *> *DPProfilePanes;
-static char DPLabelKey, DPRowKey;  // The row's separator and the row, on the pane that got them.
+static char DPLabelKey, DPRowKey;
 
 static NSString *DPEmoji(NSString *spaceID) {
     return DPProfileEmoji.on && spaceID ? [DPEmojiDefaults dictionaryForKey:DPEmojisKey][spaceID] : nil;
@@ -165,7 +165,6 @@ static void DPRemoveEmojiRow(NSViewController *pane) {
     DPSet(pane, &DPRowKey, nil);
 }
 
-// A pane that's already loaded gets the row, or loses it, as the tweak changes.
 static void DPApplyProfileEmoji(DPPatch *patch) {
     for (NSViewController *pane in DPProfilePanes.allObjects) {
         if (patch->on) DPAddEmojiRow(pane);

@@ -21,7 +21,7 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @property (nonatomic, weak) NSView *pane;
 @property (nonatomic, strong) id paneObserver, monitor;
 @property (nonatomic) NSRect link;    // In the card's own coordinates.
-@property (nonatomic) CGFloat grown;  // 0 at rest, 1 filling the page area.
+@property (nonatomic) CGFloat grown;
 @property (nonatomic) BOOL closing;
 @property (nonatomic) NSInteger paneMoves;
 - (NSRect)cardFrame;
@@ -56,11 +56,11 @@ NSView *DPPeekGlowFor(id page);
 void DPPeekRefreshAddress(NSView *address);
 void DPPeekEditAddress(NSView *address);
 BOOL DPPeekEditingAddress(NSView *address);
-void DPPeekEditToolbarAddress(DPPeekCard *peek);  // ⌘L: shows the toolbar if it's hidden, and edits its address.
+void DPPeekEditToolbarAddress(DPPeekCard *peek);
 NSURL *DPPeekSearchURL(id page, NSString *text);
-BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event);  // Copy URL's shortcut, for the Peek's page. YES: handled.
-BOOL DPPeekIsShortcut(NSEvent *event, NSMenuItem *item);  // Whether the event is the item's key equivalent.
-BOOL DPPeekZoomShortcut(DPPeekCard *peek, NSEvent *event);  // Zoom In, Zoom Out and Actual Size's shortcuts, for the Peek's page. YES: handled.
+BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event);
+BOOL DPPeekIsShortcut(NSEvent *event, NSMenuItem *item);
+BOOL DPPeekZoomShortcut(DPPeekCard *peek, NSEvent *event);
 void DPPeekInstallZoom(void);
 NSString *DPPeekZoomProblem(void);
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);

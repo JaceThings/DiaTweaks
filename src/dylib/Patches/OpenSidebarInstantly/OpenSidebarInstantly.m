@@ -56,7 +56,7 @@ static BOOL DPMatchesAt(const uint32_t *code) {
     return code[DPSiteIndex] == DPLoadDelay || code[DPSiteIndex] == DPNoDelay;
 }
 
-// Matches of the signature among the words from `first` up to `end`; `found` is the last one's fmov.
+// `found` is the last match's fmov.
 static NSUInteger DPSearch(const uint32_t *text, NSUInteger first, NSUInteger end, uint32_t **found) {
     NSUInteger count = 0;
     for (NSUInteger i = first; i < end; i++)
@@ -76,7 +76,6 @@ static uint32_t *DPFindSite(void) {
     return DPSearch(text, 0, words, &found) == 1 ? found : NULL;
 }
 
-// Only from the instruction it should be to the one it should become.
 static BOOL DPRewrite(uint32_t expected, uint32_t value) {
     if (!DPSite || *DPSite != expected) return NO;
     mach_vm_address_t page = (mach_vm_address_t)DPSite & ~((mach_vm_address_t)vm_page_size - 1);

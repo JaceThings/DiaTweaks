@@ -82,10 +82,9 @@ static NSView *DPPeekSlider(NSString *title, NSString *key, double min, double m
     return row;
 }
 
-// Titled and described like the options Settings lists for a patch.
 static NSView *DPPeekSwitch(NSString *title, NSString *detail, NSString *key) {
     NSSwitch *toggle = [NSSwitch new];
-    toggle.controlSize = NSControlSizeSmall;  // As Settings' own switches.
+    toggle.controlSize = NSControlSizeSmall;
     toggle.state = DPPeekTuned(key) ? NSControlStateValueOn : NSControlStateValueOff;
     toggle.action = @selector(tune:);
     NSStackView *lines = DPColumn(@[DPLabel(title, 13, NSFontWeightRegular, NSColor.labelColor),

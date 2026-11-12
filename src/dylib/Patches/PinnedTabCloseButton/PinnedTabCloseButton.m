@@ -3,7 +3,7 @@
 // Dia hides the close button on a pinned tab outside a folder by setting suppressesCloseButton on its tab controller,
 // and reads it again each time the pointer enters the tab. Clearing it first shows the button as on tabs in a folder.
 
-static NSHashTable *DPCleared;  // Tab controllers whose flag this patch cleared.
+static NSHashTable *DPCleared;
 
 static void DPAllowClose(NSView *tab) {
     id controller = DPViewModelDelegate(tab);
@@ -25,7 +25,7 @@ static void DPTab_layout(NSView *self, SEL _cmd) {
     if (DPPinnedTabCloseButton.on) DPAllowClose(self);
 }
 
-// The button follows on the next hover. The minus button option goes with it.
+// The button follows on the next hover.
 static void DPApplyPinnedTabCloseButton(DPPatch *patch) {
     DPRelayoutTabContents();
     if (patch->on) {

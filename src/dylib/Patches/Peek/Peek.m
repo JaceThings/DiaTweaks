@@ -10,7 +10,6 @@ static BOOL DPPeekWanted(NSInteger disposition) {
     return DPPeek.on && !DPPeekGiving && elsewhere && mods == NSEventModifierFlagShift;  // ⌘⇧-click and ⌥⇧-click keep their meaning.
 }
 
-// Peek shows web pages. A mailto: or tel: link has none, so it would leave an empty card.
 static BOOL DPPeekIsWeb(NSURL *url) { return [url isKindOfClass:NSURL.class] && [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]; }
 
 static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
@@ -28,7 +27,6 @@ static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebC
     DPPeekOpenLater(self, webContents, url);
 }
 
-// The same link, as if it opened in its own tab.
 @interface DPStayingAction : NSProxy
 @property (nonatomic, strong) id action;
 @end
@@ -68,8 +66,8 @@ static BOOL DPPeekLookAheadWanted(id page, NSURL *url) {
     return DPPeek.on && mods == NSEventModifierFlagShift && url && page && !DPPeekShows(page) && DPPeekCanOpen(page);
 }
 
-// Shift is also pressed for a capital letter, so the link loads only once Shift has stood alone for a moment. A key cancels it,
-// and it looks again when the moment is up, as Shift may have gone without anything left to cancel it.
+// Shift also types capitals, so the link loads once Shift has stood alone for a moment. A key cancels it, and the recheck
+// when the moment is up covers Shift released with nothing left to cancel it.
 static void DPPeekLookAhead(void) {
     id page = DPPeekHoveredPage;
     NSURL *url = DPPeekHovered;

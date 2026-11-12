@@ -3,8 +3,8 @@
 
 #define DPDiaWindowController "_TtC6Window24PlatformWindowController"
 
-// Dia's Zoom In, Zoom Out and Actual Size zoom the tab behind the card. In a Peek they zoom the Peek's page instead, from the
-// menu or by shortcut, so each keeps whatever shortcut its menu item has.
+// Dia's Zoom In, Zoom Out and Actual Size zoom the tab behind the card; in a Peek they zoom the Peek's page, by menu or by
+// shortcut.
 
 static NSArray<NSString *> *DPPeekZoomActions(void) {
     static NSArray<NSString *> *actions;
@@ -15,7 +15,7 @@ static NSArray<NSString *> *DPPeekZoomActions(void) {
 
 static BOOL DPPeekIsZoom(SEL action) { return action && [DPPeekZoomActions() containsObject:NSStringFromSelector(action)]; }
 
-// What an action does to the page: its zoom now and after. NO: the page can't zoom.
+// NO: the page can't zoom.
 static BOOL DPPeekZoomFrom(id page, SEL action, float *now, float *next) {
     BOOL reset = action == @selector(resetZoom:);
     if (![page respondsToSelector:@selector(zoomFactor)] || ![page respondsToSelector:reset ? @selector(resetZoomAndScaleFactors) : @selector(setZoomFactor:)]) return NO;

@@ -1,6 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPPinnedTabCloseButton, DPPinnedTabMinusButton;  // The minus button is an option of the close button.
+extern DPPatch DPPinnedTabCloseButton, DPPinnedTabMinusButton;
 
 // The view model's delegate of a TabView (its TabController) or a TabContentView (its TabContentController).
 id DPViewModelDelegate(NSView *view);

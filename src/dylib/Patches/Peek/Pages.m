@@ -56,7 +56,6 @@ void DPPeekLoad(id page, NSURL *url) {
     if (url && [navigation respondsToSelector:load]) ((id (*)(id, SEL, NSURL *, NSURL *))objc_msgSend)(navigation, load, url, nil);
 }
 
-// Dia's default search engine for the profile the page belongs to, else Google.
 NSURL *DPPeekSearchURL(id page, NSString *text) {
     id factory = DPPeekFactoryFor(page, NSApp.keyWindow);
     id context = [factory respondsToSelector:@selector(preferences)] ? factory : [(NSObject *)factory valueForKey:@"context"];

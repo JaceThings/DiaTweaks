@@ -1,8 +1,7 @@
 #import "Patches/PinnedTabCloseButton/PinnedTabs.h"
 
-// Dia gives an open tab under a folded pinned folder a minus button that closes its page and keeps the tab. This gives
-// every open pinned tab one. A click is sent as Dia's closeKeepingTab style, which does the same for any pinned tab.
-// An option of the close button, which already shows the button on pinned tabs outside a folder.
+// Dia gives an open tab under a folded pinned folder a minus button that closes its page and keeps the tab. Its
+// closeKeepingTab style does the same for any pinned tab, so a click is sent as that.
 
 enum { DPDismiss = 2 };  // TabUI.TabCloseButtonStyle.
 

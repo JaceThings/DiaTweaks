@@ -1,8 +1,6 @@
 #import "Patches/Peek/Peek.h"
 #import "Patches/LittleDia/LittleDia.h"
 
-// A bar across the top of the card, built from Little Dia's own parts so the two look and behave alike: its buttons,
-// its divider and its page color, with the Peek's address and Dia's loading glow.
 const CGFloat DPPeekToolbarHeight = 38;
 static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30;  // Little Dia's.
 
@@ -93,7 +91,7 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
     if (_clicks) [NSEvent removeMonitor:_clicks];
 }
 
-// As Little Dia's bar does: the page has no change notifications that reach here.
+// The page has no change notifications that reach here.
 - (void)refresh {
     NSObject *page = self.page;
     if (!page) return;

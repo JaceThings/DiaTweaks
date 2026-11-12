@@ -1,8 +1,8 @@
 #import "Patches/Peek/Peek.h"
 #import "Patches/HideToolbar/HideToolbar.h"
 
-// Dia's Copy URL and Copy URL as Markdown copy the tab behind the card. In a Peek, their shortcuts, whatever they're set
-// to, copy the Peek's page instead, and show the Copied message Dia shows for a tab.
+// Dia's Copy URL and Copy URL as Markdown copy the tab behind the card; in a Peek, their shortcuts, whatever they're set to,
+// copy the Peek's page.
 
 static NSMenuItem *DPPeekMenuItem(NSMenu *menu, NSString *title) {
     for (NSMenuItem *item in menu.itemArray) {
@@ -38,7 +38,6 @@ BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event) {
         [board setString:url.absoluteString forType:NSPasteboardTypeString];
         [board setString:url.absoluteString forType:NSPasteboardTypeURL];
     }
-    // Dia's own wording, at the top of the card as Dia shows it at the top of the page.
     DPShowCopyToast(peek.clip, markdown ? @"Copied URL as Markdown" : @"Copied Current URL");
     return YES;
 }
