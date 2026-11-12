@@ -22,12 +22,14 @@ static NSString *const DPGlasses[] = {
     @"Sidebar", @"Abutted Sidebar", @"Inspector", @"Control", @"Loupe", @"Slider", @"Camera", @"Cartouche Popover",
 };
 
+static Class DPGlassEffectView(void) { return NSClassFromString(@"NSGlassEffectView"); }
+
 static NSMenu *DPMaterialChoices(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Material"];
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Materials"]];
     for (NSUInteger i = 0; i < sizeof DPMaterials / sizeof *DPMaterials; i++)
         if (DPMaterials[i]) [menu addItemWithTitle:DPMaterials[i] action:nil keyEquivalent:@""].representedObject = [NSString stringWithFormat:@"material.%lu", i];
-    if (!NSClassFromString(@"NSGlassEffectView")) return menu;
+    if (!DPGlassEffectView()) return menu;
     [menu addItem:[NSMenuItem sectionHeaderWithTitle:@"Liquid Glass"]];
     for (NSUInteger i = 0; i < sizeof DPGlasses / sizeof *DPGlasses; i++)
         [menu addItemWithTitle:DPGlasses[i] action:nil keyEquivalent:@""].representedObject = [NSString stringWithFormat:@"glass.%lu", i];
@@ -37,7 +39,8 @@ static NSMenu *DPMaterialChoices(void) {
 // Liquid Glass needs NSGlassEffectView, which macOS 14 and 15 don't have, so they get Sidebar instead.
 static NSString *DPWindowMaterialChoice(void) {
     NSString *choice = DPChoice(&DPWindowMaterial);
-    return [choice hasPrefix:@"glass."] && !NSClassFromString(@"NSGlassEffectView") ? [NSString stringWithFormat:@"material.%ld", (long)NSVisualEffectMaterialSidebar] : choice;
+    BOOL unsupported = [choice hasPrefix:@"glass."] && !DPGlassEffectView();
+    return unsupported ? [NSString stringWithFormat:@"material.%ld", (long)NSVisualEffectMaterialSidebar] : choice;
 }
 
 // Dia shows and hides these views too, so its last say is kept for when the patch lets go.
@@ -113,7 +116,7 @@ static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
         DPSet(content, &DPGlassKey, glassView = nil);
     }
     if (glass && !glassView) {
-        glassView = [[NSClassFromString(@"NSGlassEffectView") alloc] initWithFrame:content.bounds];
+        glassView = [[DPGlassEffectView() alloc] initWithFrame:content.bounds];
         glassView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [glassView setValue:@(content.layer.cornerRadius) forKey:@"cornerRadius"];
         [content addSubview:glassView positioned:NSWindowBelow relativeTo:nil];
