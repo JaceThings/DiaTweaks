@@ -1,14 +1,6 @@
 #import "PullRequestRepo.h"
 
-@interface NSObject (DPSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;
-@end
-
 static char DPDiaTextKey, DPCheckedKey, DPInListKey;
-
-static id DPField(id object, NSString *key) {
-    return [object respondsToSelector:@selector(safeSwiftValueForKey:)] ? [object safeSwiftValueForKey:key] : nil;
-}
 
 static NSString *DPMatch(NSString *pattern, NSString *text) {
     NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
@@ -20,20 +12,22 @@ BOOL DPIsPRSubtitle(NSView *label) {
     return DPIsKind(label, DPDiaFeatheredLabel) && DPIsKind(label.superview, DPDiaTransitioningLabel);
 }
 
-static BOOL DPInTabList(NSView *view) {
-    while (view && !DPIsKind(view, DPDiaTabListCollection)) view = view.superview;
-    return view != nil;
+NSView *DPEnclosingView(NSView *view, const char *className) {
+    while (view && !DPIsKind(view, className)) view = view.superview;
+    return view;
 }
+
+static BOOL DPInTabList(NSView *view) { return DPEnclosingView(view, DPDiaTabListCollection) != nil; }
 
 // From the row's live item, on its TabContentController.
 NSDictionary *DPPullRequestOf(NSView *view) {
-    while (view && !DPIsKind(view, DPDiaTabContentView)) view = view.superview;
-    id controller = DPField(DPField(view, @"viewModel"), @"delegate");
-    NSString *item = [DPField(controller, @"currentlyRenderedLiveItem") description];
+    view = DPEnclosingView(view, DPDiaTabContentView);
+    id controller = DPSwiftValue(DPSwiftValue(view, @"viewModel"), @"delegate");
+    NSString *item = [DPSwiftValue(controller, @"currentlyRenderedLiveItem") description];
     if (![item containsString:@".pullRequest("]) return nil;
     NSString *repo = DPMatch(@"github\\.com/[^/\\s]+/([^/\\s)]+)/pull/[0-9]+", item), *number = DPMatch(@"github\\.com/[^\\s)]+/pull/([0-9]+)", item);
     NSString *author = DPMatch(@"author: \"([^\"]+)\"", item), *state = DPMatch(@"PullRequest\\.Status\\.([a-zA-Z]+)", item);
-    NSString *tab = DPMatch(@"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", [DPField(controller, @"tabID") description]);
+    NSString *tab = DPMatch(@"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", [DPSwiftValue(controller, @"tabID") description]);
     if (!repo || !number || !author) return nil;
     NSString *line = [NSString stringWithFormat:@"%@ #%@", repo, number];
     state = state.length ? [[state substringToIndex:1].uppercaseString stringByAppendingString:[state substringFromIndex:1]] : @"";

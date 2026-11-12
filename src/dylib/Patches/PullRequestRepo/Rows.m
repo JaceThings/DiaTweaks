@@ -23,8 +23,7 @@ static void DPInvalidateRows(void) {
 }
 
 void DPSetPRStatus(NSView *subtitle, NSString *tab, NSString *status) {
-    NSView *content = subtitle.superview;
-    while (content && !DPIsKind(content, DPDiaTabContentView)) content = content.superview;
+    NSView *content = DPEnclosingView(subtitle.superview, DPDiaTabContentView);
     DPSet(content, &DPStatusKey, status);
     content.needsLayout = YES;
     if (!tab.length || [DPTallTabs containsObject:tab] == (status != nil)) return;
@@ -45,12 +44,16 @@ static NSString *DPTabAt(id source, NSIndexPath *path) {
     return open.location == NSNotFound || item.length < NSMaxRange(open) + 36 ? nil : [item substringWithRange:NSMakeRange(NSMaxRange(open), 36)];
 }
 
+static id DPObjectIvar(id object, const char *name) {
+    Ivar ivar = class_getInstanceVariable(object_getClass(object), name);
+    return ivar ? object_getIvar(object, ivar) : nil;
+}
+
 static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     DPCallOriginal(DPLayout_prepareLayout, self);
     if (!DPPullRequestRepo.on || !DPTallTabs.count) return DPSet(self, &DPEditsKey, nil);
     id diffable = self.collectionView.dataSource;
-    Ivar ivar = class_getInstanceVariable(object_getClass(diffable), "_impl");
-    id source = ivar ? object_getIvar(diffable, ivar) : nil;
+    id source = DPObjectIvar(diffable, "_impl");
     void *height = DPIvar(self, "contentHeight");
     if (![source respondsToSelector:@selector(itemIdentifierForIndexPath:)] || !height) return;
     // Dia's own attributes, which it keeps, so changing them changes the layout; Collapse Pinned Tabs hands out moved copies.
@@ -112,8 +115,7 @@ static BOOL DPTabList_prepare(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
 static BOOL DPTabList_perform(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_perform, self, DPDiaDrag(self, info)); }
 
 static NSView *DPPart(NSView *content, const char *name) {
-    Ivar ivar = class_getInstanceVariable(object_getClass(content), name);
-    id part = ivar ? object_getIvar(content, ivar) : nil;
+    id part = DPObjectIvar(content, name);
     return [part isKindOfClass:NSView.class] ? part : nil;
 }
 

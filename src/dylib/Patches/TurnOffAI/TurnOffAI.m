@@ -2,7 +2,6 @@
 #import "Updates/Updates.h"
 
 #define DPDiaCapabilitiesToolbar "_TtC23AssistantCapabilitiesUI32AssistantCapabilitiesToolbarView"
-#define DPDiaCapabilitiesItem    "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
 #define DPDiaTabCardActions      "_TtC5TabUI21TabPopoverActionsView"
 #define DPDiaSettingsHeader      "_TtC11Preferences25SettingsSectionHeaderView"
 #define DPDiaPlaceholderText     "_TtC5ARCUI23TextViewWithPlaceholder"
@@ -21,7 +20,7 @@ BOOL DPIsAITitle(NSString *title) {
 static BOOL DPIsAIView(NSView *view) {
     return DPHasLabel(view, @"Chat with this tab") || DPIsKind(view, DPDiaLibraryButton) || DPIsKind(view, DPDiaLibraryCell)
         || DPIsKind(view, DPDiaSkillsSuggestions) || DPIsKind(view, DPDiaPersonalizeButton) || DPIsKind(view, DPDiaChatUsage)
-        || DPIsKind(view, DPDiaCapabilitiesItem);
+        || DPIsKind(view, DPDiaCapabilityButton);
 }
 
 // The command bar and a tab's card are outside the hide hosts. The command bar's toolbar itself stays, so the buttons
