@@ -1,5 +1,6 @@
 #import "TidyTabs.h"
 
+static const CGFloat DPTidyRowHeight = 24;
 static NSHashTable<NSView *> *DPTidyLists;
 static char DPScrollFrameKey;
 

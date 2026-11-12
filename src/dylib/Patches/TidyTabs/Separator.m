@@ -2,7 +2,7 @@
 
 // Dia's divider shows Close All while the pointer is on it; the broom shows and hides with it.
 static char DPLineFrameKey;
-static const CGFloat DPCloseAllGap = 4, DPLineGap = 6;
+static const CGFloat DPCloseAllGap = 4;
 
 static CALayer *DPSeparatorLine(NSView *separator) {
     for (CALayer *layer in separator.layer.sublayers)
@@ -71,7 +71,8 @@ NSInteger DPTidyTabsBelowLine(NSView *list) {
         NSRect frame = frames[i].rectValue;
         if (isTab[i] == (id)NSNull.null ? fabs(NSHeight(frame) - height.doubleValue) > 1 : !isTab[i].boolValue) continue;
         BOOL inside = NO;
-        for (NSValue *other in frames) inside |= NSHeight(other.rectValue) > NSHeight(frame) + 1 && NSPointInRect(NSMakePoint(NSMidX(frame), NSMidY(frame)), other.rectValue);
+        for (NSValue *other in frames)
+            inside |= NSHeight(other.rectValue) > NSHeight(frame) + 1 && NSPointInRect(NSMakePoint(NSMidX(frame), NSMidY(frame)), other.rectValue);
         loose += !inside;
     }
     return loose;
@@ -100,7 +101,7 @@ void DPPlaceSeparatorBrush(NSView *separator) {
     brush.hidden = !shown;
     if (!line) return;
     NSRect dia = [DPDiaValue(line, &DPLineFrameKey, [NSValue valueWithRect:line.frame]) rectValue], frame = dia;
-    CGFloat trimmed = MIN(NSWidth(dia), MAX(0, right - DPTidyBrushSize - DPLineGap - NSMinX(dia)));
+    CGFloat trimmed = MIN(NSWidth(dia), MAX(0, right - DPTidyBrushSize - DPTidyLineGap - NSMinX(dia)));
     if (shown) frame.size.width = trimmed;
     DPOverride(line, &DPLineFrameKey, [NSValue valueWithRect:dia], [NSValue valueWithRect:frame]);
     if (!NSEqualRects(line.frame, frame)) {
