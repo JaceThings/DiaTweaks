@@ -66,6 +66,7 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
         if (before) DPForgetFrontTab(window);
         if (pinned) {
             if (before) DPFocusTab(before);
+            DPMarkOwnClose();  // Unloading isn't closing, so it doesn't arm Undo Closing a Tab.
             return (void)DPCloseKeepingTab(pane);
         }
         if (!before) return (void)[page performSelector:@selector(discard)];
