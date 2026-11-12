@@ -3,7 +3,7 @@
 extern DPPatch DPPeek, DPPeekPinnedLinks;
 
 typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit };  // Also the controls' button tags.
-typedef NS_ENUM(NSInteger, DPPeekStep) { DPPeekBack, DPPeekForward, DPPeekReload, DPPeekStop };
+typedef NS_ENUM(NSInteger, DPPeekStep) { DPPeekBack, DPPeekForward, DPPeekReload };
 
 // ArcWebContentsNavigationDisposition, numbered differently from Chromium's. A Shift-click arrives as a popup.
 enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTab = 3, DPNewWindow = 5, DPPopup = 6, DPSplitView = 9 };

@@ -106,7 +106,6 @@ NSView *DPPeekToolbarFor(id page) { return [[DPPeekToolbar alloc] initWithPage:p
 NSView *DPPeekToolbarAddress(NSView *toolbar) { return [toolbar isKindOfClass:DPPeekToolbar.class] ? ((DPPeekToolbar *)toolbar).address : nil; }
 
 void DPPeekNavigate(id page, DPPeekStep step) {
-    if (step == DPPeekStop) return (void)[page performSelector:@selector(stop)];
     id navigation = [(NSObject *)page valueForKey:@"navigationController"];
     if (step == DPPeekBack && [[(NSObject *)page valueForKey:@"canGoBack"] boolValue]) [navigation performSelector:@selector(goBack)];
     else if (step == DPPeekForward && [[(NSObject *)page valueForKey:@"canGoForward"] boolValue]) [navigation performSelector:@selector(goForward)];
