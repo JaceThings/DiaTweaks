@@ -14,11 +14,13 @@ static NSEdgeInsets DPGaps(NSView *superview, NSRect frame) {
     return NSEdgeInsetsMake(superview.isFlipped ? low : high, NSMinX(frame) - NSMinX(bounds), superview.isFlipped ? high : low, NSMaxX(bounds) - NSMaxX(frame));
 }
 
+// Grows the page over each side where Dia left the window padding, by `progress` of it. Beside the sidebar only unless Keep Padding Next to Sidebar is on.
 static NSRect DPEdgeToEdgeFrame(NSView *view, NSRect frame) {
     CGFloat inset = DPEdgeToEdge.progress * DPWindowPadding;
     NSView *superview = view.superview;
     if (inset == 0 || !superview || DPChatCard(view)) return frame;
     NSEdgeInsets gaps = DPGaps(superview, frame);
+    if (gaps.left > DPWindowPadding + 1 && DPKeepsSidebarPadding()) return frame;
     BOOL (^isPadding)(CGFloat) = ^BOOL(CGFloat gap) { return fabs(gap - DPWindowPadding) < 0.5; };
     if (isPadding(gaps.left)) frame.origin.x -= inset, frame.size.width += inset;
     if (isPadding(gaps.right)) frame.size.width += inset;
@@ -99,7 +101,7 @@ static NSString *DPVerifyEdgeToEdge(DPPatch *patch) {
         BOOL square = patch->on && DPFullScreen(container);
         if (layer && (DPCornersRound(layer, YES) == square || (!DPBesideSidebar(container) && DPCornersRound(layer, NO) == square)))
             return square ? @"corners stay round in full screen" : @"corners are square out of full screen";
-        if (!patch->on || DPChatCard(container)) {
+        if (!patch->on || DPChatCard(container) || DPSteppedAside(container)) {
             if (!NSEqualRects(container.frame, requested.rectValue)) return @"web content isn't where Dia put it";
             continue;
         }
