@@ -104,12 +104,8 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
         if (!NSPointInRect(point, DPGrainHostBounds(sidebar))) continue;
         NSView *hit = [sidebar hitTest:[sidebar convertPoint:point toView:sidebar.superview]];
         NSCollectionView *collection = nil;
-        for (NSView *view = hit; view && view != sidebar; view = view.superview) {
-            if ([view isKindOfClass:NSCollectionView.class]) {
-                collection = (NSCollectionView *)view;
-                break;
-            }
-        }
+        for (NSView *view = hit; view && view != sidebar && !collection; view = view.superview)
+            if ([view isKindOfClass:NSCollectionView.class]) collection = (NSCollectionView *)view;
         BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
         if (horizontal && ([hit isKindOfClass:NSControl.class] ||
             [hit.accessibilityRole isEqual:NSAccessibilityButtonRole] ||
