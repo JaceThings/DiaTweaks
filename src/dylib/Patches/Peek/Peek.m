@@ -7,7 +7,7 @@ static NSUInteger DPPeekLookAheadTurn;
 static BOOL DPPeekWanted(NSInteger disposition) {
     BOOL elsewhere = disposition == DPForegroundTab || disposition == DPBackgroundTab || disposition == DPPopup || disposition == DPNewWindow;
     NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad | NSEventModifierFlagFunction);
-    return DPPeek.on && elsewhere && mods == NSEventModifierFlagShift;  // ⌘⇧-click and ⌥⇧-click keep their meaning.
+    return DPPeek.on && !DPPeekGiving && elsewhere && mods == NSEventModifierFlagShift;  // ⌘⇧-click and ⌥⇧-click keep their meaning.
 }
 
 // Peek shows web pages. A mailto: or tel: link has none, so it would leave an empty card.

@@ -73,11 +73,15 @@ NSURL *DPPeekSearchURL(id page, NSString *text) {
     return [NSURL URLWithString:[rest stringByReplacingMatchesInString:template options:0 range:NSMakeRange(0, template.length) withTemplate:@""]];
 }
 
+BOOL DPPeekGiving;
+
 static BOOL DPPeekGive(id page, id delegate, id source, NSURL *url, DPPeekExit exit) {
     SEL adopt = @selector(webContents:didCreateNewWebContent:targetURL:disposition:);
     if (!page || !source || ![url isKindOfClass:NSURL.class] || ![delegate respondsToSelector:adopt]) return NO;
     NSInteger disposition = exit == DPPeekSplit ? DPSplitView : DPForegroundTab;
+    DPPeekGiving = YES;
     ((void (*)(id, SEL, id, id, NSURL *, NSInteger))objc_msgSend)(delegate, adopt, source, page, url, disposition);
+    DPPeekGiving = NO;
     return YES;
 }
 
