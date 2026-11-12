@@ -35,6 +35,8 @@ static BOOL DPCrashed(NSDictionary *state) {
 static void DPSurvived(void) {
     if (![DPState[@"launching"] boolValue]) return;
     DPState[@"launching"] = @NO;
+    // Level 2 loads no Settings, so nothing in Dia can turn patches back on. A launch that survives it steps down to level 1, which can.
+    if (DPSafeMode == 2) DPState[@"level"] = @1;
     [DPState writeToURL:DPStateURL error:nil];
 }
 
