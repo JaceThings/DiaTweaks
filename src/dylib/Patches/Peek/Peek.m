@@ -63,15 +63,21 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
     return DPIgnoreAction;
 }
 
-// Shift is also pressed for a capital letter, so the link loads only once Shift has stood alone for a moment. A key cancels it.
-static void DPPeekLookAhead(void) {
+static BOOL DPPeekLookAheadWanted(id page, NSURL *url) {
     NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
+    return DPPeek.on && mods == NSEventModifierFlagShift && url && page && !DPPeekShows(page) && DPPeekCanOpen(page);
+}
+
+// Shift is also pressed for a capital letter, so the link loads only once Shift has stood alone for a moment. A key cancels it,
+// and it looks again when the moment is up, as Shift may have gone without anything left to cancel it.
+static void DPPeekLookAhead(void) {
     id page = DPPeekHoveredPage;
     NSURL *url = DPPeekHovered;
     NSUInteger turn = ++DPPeekLookAheadTurn;
-    if (!(DPPeek.on && mods == NSEventModifierFlagShift && url && page && !DPPeekShows(page) && DPPeekCanOpen(page))) return DPPeekCool();
+    if (!DPPeekLookAheadWanted(page, url)) return DPPeekCool();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (turn == DPPeekLookAheadTurn) DPPeekWarm(NSApp.keyWindow, page, url);
+        if (turn == DPPeekLookAheadTurn && page == DPPeekHoveredPage && [url isEqual:DPPeekHovered] && DPPeekLookAheadWanted(page, url))
+            DPPeekWarm(NSApp.keyWindow, page, url);
     });
 }
 
