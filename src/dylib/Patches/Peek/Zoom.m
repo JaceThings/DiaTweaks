@@ -13,34 +13,29 @@ static NSArray<NSString *> *DPPeekZoomActions(void) {
     return actions;
 }
 
-// Chromium's zoom steps.
-static const float DPPeekZoomSteps[] = {0.25, 1.0 / 3, 0.5, 2.0 / 3, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5};
+static BOOL DPPeekIsZoom(SEL action) { return action && [DPPeekZoomActions() containsObject:NSStringFromSelector(action)]; }
+
+// What an action does to the page: its zoom now and after. NO: the page can't zoom.
+static BOOL DPPeekZoomFrom(id page, SEL action, float *now, float *next) {
+    BOOL reset = action == @selector(resetZoom:);
+    if (![page respondsToSelector:@selector(zoomFactor)] || ![page respondsToSelector:reset ? @selector(resetZoomAndScaleFactors) : @selector(setZoomFactor:)]) return NO;
+    *now = ((float (*)(id, SEL))objc_msgSend)(page, @selector(zoomFactor));
+    *next = reset ? 1 : DPZoomStep(*now, action == @selector(zoomOut:) ? -1 : 1);
+    return YES;
+}
 
 static BOOL DPPeekZoom(DPPeekCard *peek, SEL action) {
     id page = peek.page;
-    SEL get = @selector(zoomFactor), set = @selector(setZoomFactor:), reset = @selector(resetZoomAndScaleFactors);
-    if (action == @selector(resetZoom:)) {
-        if (![page respondsToSelector:reset]) return NO;
-        ((void (*)(id, SEL))objc_msgSend)(page, reset);
-        return YES;
-    }
-    if (![page respondsToSelector:get] || ![page respondsToSelector:set]) return NO;
-    float now = ((float (*)(id, SEL))objc_msgSend)(page, get), next;
-    size_t count = sizeof DPPeekZoomSteps / sizeof *DPPeekZoomSteps;
-    if (action == @selector(zoomOut:)) {
-        next = DPPeekZoomSteps[0];
-        for (size_t i = count; i-- > 0;) if (DPPeekZoomSteps[i] < now - 0.001) { next = DPPeekZoomSteps[i]; break; }
-    } else {
-        next = DPPeekZoomSteps[count - 1];
-        for (size_t i = 0; i < count; i++) if (DPPeekZoomSteps[i] > now + 0.001) { next = DPPeekZoomSteps[i]; break; }
-    }
-    ((void (*)(id, SEL, float))objc_msgSend)(page, set, next);
+    float now, next;
+    if (!DPPeekZoomFrom(page, action, &now, &next)) return NO;
+    if (action == @selector(resetZoom:)) ((void (*)(id, SEL))objc_msgSend)(page, @selector(resetZoomAndScaleFactors));
+    else ((void (*)(id, SEL, float))objc_msgSend)(page, @selector(setZoomFactor:), next);
     return YES;
 }
 
 static SEL DPPeekZoomShortcutIn(NSMenu *menu, NSEvent *event) {
     for (NSMenuItem *item in menu.itemArray) {
-        if (item.action && [DPPeekZoomActions() containsObject:NSStringFromSelector(item.action)] && DPPeekIsShortcut(event, item)) return item.action;
+        if (DPPeekIsZoom(item.action) && DPPeekIsShortcut(event, item)) return item.action;
         SEL action = DPPeekZoomShortcutIn(item.submenu, event);
         if (action) return action;
     }
@@ -57,13 +52,22 @@ static void DPWindow_zoom(NSWindowController *self, SEL _cmd, id sender) {
     if (!peek || !DPPeekZoom(peek, _cmd)) DPCallOriginal(DPWindow_zoom, self, sender);
 }
 
+// Dia greys the items by the tab behind the card, such as Actual Size when that tab is at 100%.
+static BOOL DPWindow_validate(NSWindowController *self, SEL _cmd, NSMenuItem *item) {
+    DPPeekCard *peek = DPPeekIsZoom(item.action) ? DPPeekCardIn(self.window) : nil;
+    float now, next;
+    if (!peek || !DPPeekZoomFrom(peek.page, item.action, &now, &next)) return DPCallOriginal(DPWindow_validate, self, item);
+    return fabsf(next - now) > 0.001;
+}
+
 void DPPeekInstallZoom(void) {
     for (NSString *action in DPPeekZoomActions()) DPHook(DPDiaWindowController, NSSelectorFromString(action), (IMP)DPWindow_zoom);
+    DPHook(DPDiaWindowController, @selector(validateMenuItem:), (IMP)DPWindow_validate);
 }
 
 NSString *DPPeekZoomProblem(void) {
     Class controller = objc_getClass(DPDiaWindowController);
     for (NSString *action in DPPeekZoomActions())
         if (class_getMethodImplementation(controller, NSSelectorFromString(action)) != (IMP)DPWindow_zoom) return @"zoom doesn't reach Peek";
-    return nil;
+    return class_getMethodImplementation(controller, @selector(validateMenuItem:)) == (IMP)DPWindow_validate ? nil : @"zoom menu items don't reach Peek";
 }
