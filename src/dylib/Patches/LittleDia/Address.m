@@ -1,13 +1,11 @@
 #import "LittleDia.h"
 #import <objc/message.h>
 
-// Dia's address, drawn like the one in its main window: "site / Page Title", and "site/path" in a soft field under the
-// pointer. A click, or ⌘L, edits the whole URL; Return goes, Escape doesn't.
 @interface DPAddressView : NSView <NSTextFieldDelegate>
 @property (nonatomic, weak) NSView *title;
 @property (nonatomic) NSTextField *label, *field;
 @property (nonatomic) BOOL hovered, beginning, ending;
-@property (nonatomic, copy) NSString *notice;  // Shown in place of the address for a moment, as "Copied current URL".
+@property (nonatomic, copy) NSString *notice;
 @property (nonatomic) NSUInteger notices;
 @end
 
@@ -101,7 +99,6 @@
     [self refresh];
 }
 
-#pragma mark Typing another address
 - (void)begin {
     if (self.field) {
         [self.window makeFirstResponder:self.field];
@@ -137,7 +134,6 @@
     [self.field removeFromSuperview];
     self.field = nil;
     self.label.hidden = NO;
-    // Back to the page, so the keys typed next scroll it, as in Dia's main window.
     NSView *page = DPFindView(self.window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor; });
     [self.window makeFirstResponder:DPFindView(page, ^BOOL(NSView *view) { return view.acceptsFirstResponder; })];
     self.ending = NO;

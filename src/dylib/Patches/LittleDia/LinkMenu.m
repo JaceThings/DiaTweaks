@@ -1,7 +1,7 @@
 #import "LittleDia.h"
 
 static char DPItemKey;
-static NSURL *gLink;  // The link the page's menu is about to show, until that menu opens.
+static NSURL *gLink;
 static NSDate *gLinkAt;
 
 static NSString *const DPItemTitle = @"Open Link in Little Dia";
@@ -16,7 +16,6 @@ static BOOL DPPage_willShowMenu(id self, SEL _cmd, id page, id menu, id element)
     return DPCallOriginal(DPPage_willShowMenu, self, page, menu, element);
 }
 
-// After the other Open Link items, else first.
 static void DPAddLinkItem(NSMenu *menu) {
     for (NSMenuItem *old in menu.itemArray)
         if (DPGet(old, &DPItemKey)) [menu removeItem:old];  // A menu that's shown again.

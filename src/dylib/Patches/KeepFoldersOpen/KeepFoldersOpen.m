@@ -88,7 +88,6 @@ static void DPFolder_mouse(NSView *self, SEL _cmd, NSEvent *event) {
     DPCallOriginal(DPFolder_mouse, self, event);
 }
 
-// A click on a top folder's header counts for the folder around it.
 static void DPHeader_mouse(NSView *self, SEL _cmd, NSEvent *event) {
     NSView *folder = self.superview;
     while (folder && !DPIsKind(folder, DPDiaTabGroupView)) folder = folder.superview;

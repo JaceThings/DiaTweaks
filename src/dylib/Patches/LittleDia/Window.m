@@ -3,11 +3,11 @@
 
 static char DPLittleKey, DPPageKey, DPChromeKey, DPSourceKey, DPPromotedKey;
 
-// Links on their way, oldest first: each {frame, noted, missed}. Chromium makes their windows, and hands over their pages,
-// in the order it was asked, so the first window or page to arrive belongs to the first link still waiting.
+// Links on their way, oldest first: each {frame, noted, missed}. Chromium makes their windows and hands over their pages
+// in the order it was asked, so the first to arrive belongs to the first link waiting.
 static NSMutableArray<NSDictionary *> *DPExpected;
-static NSMutableArray *DPPendingPages;                     // Pages that came before their window.
-static NSPointerArray *DPWindowsAwaitingPage;              // Windows that came before their page.
+static NSMutableArray *DPPendingPages;         // Came before their window.
+static NSPointerArray *DPWindowsAwaitingPage;  // Came before their page.
 
 void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window)) {
     NSMutableDictionary *link = [@{@"frame" : [NSValue valueWithRect:frame], @"noted" : noted, @"missed" : [missed copy]} mutableCopy];
@@ -25,7 +25,7 @@ BOOL DPIsLittleDiaWindow(NSWindow *window) { return window && [DPGet(window, &DP
 
 id DPLittleDiaPage(NSWindow *window) { return DPGet(window, &DPPageKey); }
 
-// Takes away the title bar: the content runs under it, so Dia's popup bar, pinned to the top, is the top of the window.
+// The content runs under the title bar, so Dia's popup bar, pinned to the top, is the top of the window.
 static void DPSetChrome(NSWindow *window, BOOL little) {
     NSView *titlebar = [window standardWindowButton:NSWindowCloseButton].superview.superview;
     if (little && !DPGet(window, &DPChromeKey)) {
@@ -44,7 +44,7 @@ static void DPSetChrome(NSWindow *window, BOOL little) {
     titlebar.hidden = little;
 }
 
-// Claims a popup that appears while a link is on its way. Pages open popups too, but rarely in the same second.
+// A popup that appears while a link is on its way is the link's; pages rarely open one in the same second.
 static void DPClaim(NSWindow *window) {
     if (!window || !DPIsKind(window, DPDiaPopupWindow) || DPGet(window, &DPLittleKey) || !DPExpected.count) return;
     NSDictionary *link = DPExpected.firstObject, *noted = link[@"noted"];
@@ -105,7 +105,6 @@ static BOOL DPStaysInLittleDia(id page, NSInteger disposition) {
     return NO;
 }
 
-// The same link, as if it stayed in its page.
 @interface DPStayingLink : NSProxy
 @property (nonatomic, strong) id action;
 @end
@@ -154,8 +153,6 @@ void DPInstallLittleDiaWindows(void) {
     });
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) { DPClaim(note.object); }];
-    // Open in Dia goes to the main window. Otherwise, closed while in front, by ✕, ⌘W or Escape: back to the app the
-    // link came from.
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) {
                                                     NSWindow *window = note.object;

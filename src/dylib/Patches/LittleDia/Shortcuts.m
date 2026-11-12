@@ -4,9 +4,8 @@
 #define DPDiaPopupController  "_TtC5Popup29PlatformPopupWindowController"
 #define DPDiaCallbackMenuItem "_TtC5ARCUI16CallbackMenuItem"
 
-// Dia sends its menu commands for a popup window through a model of its page that Little Dia's page isn't part of, so
-// in a Little Dia window Copy URL, Go Back, Zoom In and the rest did nothing, from the menu or by shortcut. Here they act
-// on the page itself, so each keeps whatever shortcut its menu item has.
+// Dia sends a popup's menu commands through a model of its page that Little Dia's page isn't part of, so here they act
+// on the page itself, and each keeps its menu item's shortcut.
 static const char *const DPPopupActionNames[] = {"copyCurrentURL:", "copyCurrentURLAsMarkdown:", "navigateTabBack:", "navigateTabForward:", "zoomIn:",
                                                  "zoomInAlternate:", "zoomOut:", "resetZoom:", "printFocusedContent:", "closeFocusedContent:"};
 
@@ -76,8 +75,6 @@ static void DPRun(NSWindow *window, SEL action) {
     else if (action == @selector(printFocusedContent:) && [page respondsToSelector:@selector(print)]) ((void (*)(id, SEL))objc_msgSend)(page, @selector(print));
     else if (action == @selector(closeFocusedContent:) || action == @selector(performClose:)) [window performClose:nil];
 }
-
-#pragma mark Hooks
 
 static void DPPopup_action(NSWindowController *self, SEL _cmd, id sender) {
     NSWindow *window = DPLittleWindow(self.window);

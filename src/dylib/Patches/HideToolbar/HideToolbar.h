@@ -18,7 +18,7 @@ extern NSHashTable<NSView *> *DPPanes;
 - (void)endPeek;
 @end
 
-NSRect DPLaidOutFrame(NSView *view);  // Where Dia put the view, before the patch moved it.
+NSRect DPLaidOutFrame(NSView *view);
 CGFloat DPTop(NSView *pane, NSRect r);  // From the pane's top, either way it's flipped.
 CGFloat DPBottom(NSView *pane, NSRect r);
 NSView *DPBookmarksUnder(NSView *pane, NSView *bar);

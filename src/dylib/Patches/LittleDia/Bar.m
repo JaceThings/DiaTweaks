@@ -1,12 +1,11 @@
 #import "LittleDia.h"
 #import <objc/message.h>
 
-// One per popup bar: the buttons around Dia's address, which keeps its own look and Dia's updates to it.
 @interface DPLittleBar : NSObject
 @property (nonatomic, weak) NSView *title;
 @property (nonatomic) NSArray<NSButton *> *leading;  // close, back, forward, reload
 @property (nonatomic) NSButton *open;
-@property (nonatomic) NSButton *profiles;  // Open in another profile; hidden with only one.
+@property (nonatomic) NSButton *profiles;
 @property (nonatomic) NSView *address;
 @property (nonatomic) NSView *divider;
 @property (nonatomic) NSTimer *timer;
@@ -58,7 +57,7 @@ void DPMatchPage(NSView *row, id page) {
 @property (nonatomic) BOOL hovered, pill;  // pill: a filled button with an icon and a word, laid out like Dia's Chat button
 @property (nonatomic) NSImageView *pillIcon;
 @property (nonatomic) NSTextField *pillLabel;
-@property (nonatomic) CGFloat outerCorner;  // The radius of the top corner nearest the window's, for a button tucked into it.
+@property (nonatomic) CGFloat outerCorner;
 @property (nonatomic) BOOL outerCornerOnRight;
 @end
 
@@ -184,7 +183,6 @@ static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     return button;
 }
 
-// Dia's main window comes forward on the chosen profile, with the page as a new tab, and the small window closes.
 static void DPShowProfiles(NSButton *button) {
     NSWindow *window = button.window;
     NSMenu *menu = [NSMenu new];
@@ -218,7 +216,7 @@ static NSButton *DPMakeProfilesButton(void) {
 - (void)dealloc { [_timer invalidate]; }
 @end
 
-static char DPBarKey;  // The DPLittleBar on Dia's address view.
+static char DPBarKey;
 static char DPHiddenByUsKey;
 static const CGFloat DPAddressHeight = 30;
 
@@ -268,7 +266,6 @@ static void DPPlaceBar(DPLittleBar *bar) {
     NSSize open = bar.open.intrinsicContentSize;
     if (bar.open.superview != row) [row addSubview:bar.open];
     if (bar.profiles.superview != row) [row addSubview:bar.profiles];
-    // The same gap above them as beside them.
     CGFloat top = round(mid - open.height / 2), gap = NSHeight(row.bounds) - NSMaxY(NSMakeRect(0, top, 0, open.height));
     CGFloat chevron = bar.profiles.hidden ? 0 : DPGap + DPChevron;
     bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - chevron - open.width, top, open.width, open.height);
@@ -342,7 +339,6 @@ static DPLittleBar *DPBarFor(NSView *title) {
     return bar;
 }
 
-// Dia keeps setting the address's frame; in a Little Dia window it gets this layout's instead.
 static void DPTitle_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
     if (!DPInPopupBar(self)) return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
     DPSet(self, &DPDiaOriginKey, [NSValue valueWithPoint:origin]);

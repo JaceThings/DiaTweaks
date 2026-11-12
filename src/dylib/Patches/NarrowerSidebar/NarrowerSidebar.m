@@ -53,8 +53,7 @@ static void DPApplyNarrowerSidebar(DPPatch *patch) {
         NSLog(@"DiaPatches: Narrower Sidebar couldn't change the sidebar clamp");
 }
 
-// install runs after the saved switches are read, so it also applies the patch at launch. apply handles toggles. A Dia
-// whose resize code moved stays off and says so, like a patch whose classes are gone.
+// install runs after the saved switches are read, so it also applies the patch at launch.
 static void DPInstallNarrowerSidebar(void) {
     if (!DPIsSidebarClamp(DPSidebarClampWide) && !DPIsSidebarClamp(DPSidebarClampNarrow)) {
         DPNarrowerSidebar.unavailable = YES;

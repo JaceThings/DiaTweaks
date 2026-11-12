@@ -15,9 +15,6 @@ static NSString *const kManifest = @"{\n"
     @"  \"background\": { \"service_worker\": \"worker.js\" }\n"
     @"}\n";
 
-// open: a popup with the link, unless `until` has passed: a worker that wakes late finds the link has fallen back to a
-// tab. The others name a popup by its tab's ID, or failing that its URL. search: the words, with the profile's search
-// engine, in that popup. promote: its page becomes a tab in the last normal window, which comes forward.
 static NSString *const kWorker = @"const popupTab = async ({ tabId, url }) => {\n"
     @"  const byId = tabId ? await chrome.tabs.get(tabId).catch(() => null) : null;\n"
     @"  if (byId) return byId;\n"
@@ -53,7 +50,7 @@ static NSString *DPExtensionFolder(void) {
     return DPAppSupport([NSString stringWithFormat:@"DiaPatches/little-dia-%08x", hash]);
 }
 
-static NSString *gExtensionID;  // Set once Chromium has been told to load it.
+static NSString *gExtensionID;
 static NSError *gWriteError;
 static NSTimeInterval gLoaded;  // When Dia started, as systemUptime.
 static const NSTimeInterval DPLaunchTime = 20;  // Dia is still launching for this long; a link waits less than this for it.

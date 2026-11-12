@@ -1,8 +1,8 @@
 #import "HideToolbar.h"
 #import <objc/message.h>
 
-// Which panes load comes from their reload buttons; progress comes from ArcWebContents, which don't say which pane
-// they're in, so with several visible pages loading the focused one wins.
+// Loading comes from each pane's reload button; progress from ArcWebContents, which don't say which pane they're in,
+// so the focused page wins when several load.
 
 typedef NS_ENUM(NSInteger, DPWebContentsVisibility) { DPWebContentsVisible = 2 };  // ArcWebContentsVisibility.h
 

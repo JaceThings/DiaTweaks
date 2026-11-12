@@ -8,8 +8,8 @@ static NSMenu *DPFileMenu(void) { return [NSApp.mainMenu itemWithTitle:@"File"].
 
 static BOOL DPShouldShow(void) { return DPLittleDia.on && DPLittleDiaReady(); }
 
-// After New Incognito Window. The extension is ready some time after Dia starts, and much later if Dia starts with no
-// window, so this looks again until it is: twice a second for a minute, then every 5 seconds.
+// The extension is ready some time after Dia starts, and much later if Dia starts with no window, so this looks again
+// until it is: twice a second for a minute, then every 5 seconds.
 void DPRefreshLittleDiaNewWindow(void) {
     NSMenu *file = DPFileMenu();
     BOOL show = DPShouldShow();

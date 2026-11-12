@@ -1,7 +1,6 @@
 #import "LittleDia.h"
 
-// Dia's own AppleScript support: a window lists the profiles, and a profile takes a new tab and can be focused. The app
-// delegate answers for the application's windows.
+// Dia's AppleScript: the app delegate lists its windows, a window its profiles; a profile takes a new tab and can be focused.
 static id DPScriptWindow(void) {
     id app = NSApp.delegate;
     if (![app respondsToSelector:@selector(appleScriptWindows)]) return nil;

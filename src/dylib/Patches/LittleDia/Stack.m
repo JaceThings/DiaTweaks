@@ -1,15 +1,14 @@
 #import "LittleDia.h"
 
-// A link from another app makes macOS bring Dia forward, and Dia's main window with it. Little Dia puts the main window
-// back where it was: the order of the windows on screen is noted just before Dia comes forward, and after the small
-// window opens, every Dia window that was behind the app the link came from goes back behind it.
+// A link from another app makes macOS bring Dia forward, and its main window with it. The window order is noted just
+// before that, and once the small window opens, every Dia window that was behind the app the link came from goes back.
 
 static NSArray<NSDictionary *> *DPBeforeActivating;
 static NSDate *DPNotedAt, *DPUnhiddenAt;
 static NSMutableArray<NSWindow *> *DPPutAway;  // Dia's other windows, while a link opened with Dia hidden is open.
 static NSMapTable<NSWindow *, NSNumber *> *DPVeiled;  // Windows kept see-through as Dia unhides, with their own alpha.
 
-// Normal windows on screen, front to back, with the app each belongs to. Needs no screen recording permission.
+// Front to back. Needs no screen recording permission.
 static NSArray<NSDictionary *> *DPWindowStack(void) {
     NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
     NSMutableArray *stack = [NSMutableArray array];
@@ -23,7 +22,7 @@ NSDictionary *DPNoteStackForLink(void) {
     NSArray<NSDictionary *> *stack = nil;  // Dia was already in front: nothing to put back.
     if (!NSApp.active) stack = DPWindowStack();
     else if (DPNotedAt && DPNotedAt.timeIntervalSinceNow > -2) stack = DPBeforeActivating;
-    NSNumber *me = @(getpid()), *source = @0;  // The app the link was clicked in, if Dia wasn't in front.
+    NSNumber *me = @(getpid()), *source = @0;
     for (NSDictionary *window in stack)
         if (![window[@"pid"] isEqual:me]) {
             source = window[@"pid"];
