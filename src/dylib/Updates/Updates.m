@@ -7,16 +7,17 @@ NSNotificationName const DPUpdatesDidChangeNotification = @"DPUpdatesDidChange";
 NSString *DPPartName(NSString *part) { return [part isEqual:DPDia] ? @"Dia" : @"DiaTweaks"; }
 
 static NSString *DPSupport(NSString *name) {
-    return [[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches"] stringByAppendingPathComponent:name];
+    return [DPAppSupport(@"DiaPatches") stringByAppendingPathComponent:name];
 }
 
-static BOOL DPLaunchCLI(NSArray<NSString *> *args) {
+static NSTask *DPCLITask(NSArray<NSString *> *args) {
     NSTask *task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:DPSupport(@"bin/diapatch")];
     task.arguments = args;
-    return [task launchAndReturnError:nil];
+    return task;
 }
+
+static BOOL DPLaunchCLI(NSArray<NSString *> *args) { return [DPCLITask(args) launchAndReturnError:nil]; }
 
 static NSUserDefaults *DPUpdateDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
 
@@ -43,9 +44,7 @@ static NSString *DPReasonIn(NSData *data) {
 
 void DPRunCLIReporting(NSArray<NSString *> *args, void (^completion)(NSString *output, NSString *reason)) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSTask *task = [NSTask new];
-        task.executableURL = [NSURL fileURLWithPath:DPSupport(@"bin/diapatch")];
-        task.arguments = args;
+        NSTask *task = DPCLITask(args);
         NSPipe *pipe = [NSPipe pipe], *errors = [NSPipe pipe];
         task.standardOutput = pipe;
         task.standardError = errors;
