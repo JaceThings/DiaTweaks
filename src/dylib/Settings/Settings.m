@@ -1,5 +1,4 @@
 #import "Settings.h"
-#import <Carbon/Carbon.h>
 
 static char DPSettingsKey, DPSearchItemKey;
 
@@ -253,15 +252,12 @@ static void DPSettings_handleBack(id self, SEL _cmd) {
     DPCallOriginal(DPSettings_handleBack, self);
 }
 
-// ⌘F focuses the shown pane's search field, matched by letter, else by the key's place on a US keyboard.
 static NSEvent *DPSettings_findKey(NSEvent *event) {
     DPPaneView *pane = DPShownPane;
     NSSearchToolbarItem *item = pane.searchItem;
     if (!item || pane.hidden || event.window != pane.window || !event.window.isKeyWindow || DPShortcutRecording()) return event;
     NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad);
-    NSString *key = event.charactersIgnoringModifiers.lowercaseString;
-    BOOL f = key.length == 1 && [key characterAtIndex:0] < 128 ? [key characterAtIndex:0] == 'f' : event.keyCode == kVK_ANSI_F;
-    if (mods != NSEventModifierFlagCommand || !f) return event;
+    if (mods != NSEventModifierFlagCommand || !DPEventIsKey(event, @"f")) return event;
     [item beginSearchInteraction];
     [item.searchField selectText:nil];
     return nil;
