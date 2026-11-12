@@ -2,8 +2,7 @@
 #import "Patches/CompactTabRows/CompactTabRows.h"
 #import <objc/message.h>
 
-// Dia's list gives every tab the same height, so a row with a status line is made taller after the layout, and the rows
-// below it move down.
+// Dia's list gives every tab the same height, so a row with a status line is made taller after its layout.
 
 static const CGFloat DPExtra = 14, DPTabHeight = 37;
 static NSMutableSet<NSString *> *DPTallTabs;
@@ -63,8 +62,8 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     for (NSCollectionViewLayoutAttributes *a in all)
         if (a.representedElementCategory == NSCollectionElementCategoryItem && [DPTallTabs containsObject:DPTabAt(source, a.indexPath)]) [tall addObject:a];
     // A prepare that kept the last geometry still has our heights in it.
-    NSArray *last = DPGet(self, &DPAdjustedKey);
     if (!tall.count) return DPSet(self, &DPEditsKey, nil);
+    NSArray *last = DPGet(self, &DPAdjustedKey);
     if (last[0] == tall[0] && NSEqualRects([last[1] rectValue], tall[0].frame)) return;
     NSMutableArray<NSValue *> *rows = [NSMutableArray new];
     for (NSCollectionViewLayoutAttributes *a in tall) [rows addObject:[NSValue valueWithRect:a.frame]];
@@ -74,7 +73,7 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
         for (NSValue *value in rows) {
             NSRect row = value.rectValue;
             if (NSMinY(a.frame) >= NSMaxY(row) - 0.5) frame.origin.y += DPExtra;
-            else if (NSMinY(a.frame) <= NSMinY(row) + 0.5 && NSMaxY(a.frame) >= NSMaxY(row) - 0.5) frame.size.height += DPExtra;  // it, or a folder around it
+            else if (NSMinY(a.frame) <= NSMinY(row) + 0.5 && NSMaxY(a.frame) >= NSMaxY(row) - 0.5) frame.size.height += DPExtra;
         }
         if (a.representedElementCategory == NSCollectionElementCategoryItem)
             [edits addObject:@[a, @(frame.origin.y - a.frame.origin.y), @(frame.size.height - a.frame.size.height)]];

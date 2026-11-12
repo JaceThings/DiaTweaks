@@ -88,9 +88,8 @@ static void DPItem_setHidden(NSMenuItem *self, SEL _cmd, BOOL hidden) {
 static void DPTrack(NSMenuItem *item) {
     if (!DPIsAITitle(item.title)) return;
     if (![DPAIItems containsObject:item]) {
-        BOOL diaHidden = item.hidden;
+        DPSet(item, &DPDiaHiddenKey, @(item.hidden));
         [DPAIItems addObject:item];
-        DPSet(item, &DPDiaHiddenKey, @(diaHidden));
     }
     item.hidden = [DPGet(item, &DPDiaHiddenKey) boolValue];
 }

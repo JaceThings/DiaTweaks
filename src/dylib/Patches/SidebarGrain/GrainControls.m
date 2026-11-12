@@ -101,7 +101,7 @@ NSArray<NSView *> *DPGrainRows(void) {
     return rows;
 }
 
-// A nil space is the global values. `reset` runs after the reset button.
+// `reset` runs after the reset button.
 void DPGrainRowsFor(NSArray<NSView *> *rows, NSString *space, void (^reset)(void)) {
     for (NSView *row in rows) {
         if ([row isKindOfClass:DPGrainSliderRow.class]) ((DPGrainSliderRow *)row).space = space;
