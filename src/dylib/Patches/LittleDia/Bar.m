@@ -346,8 +346,9 @@ static void DPTitle_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
         DPRemoveBar(self);
         return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
     }
-    DPCallOriginal(DPTitle_setFrameOrigin, self, DPTitleFrame(self, DPBarFor(self)).origin);
-    DPPlaceBar(DPBarFor(self));
+    DPLittleBar *bar = DPBarFor(self);
+    DPCallOriginal(DPTitle_setFrameOrigin, self, DPTitleFrame(self, bar).origin);
+    DPPlaceBar(bar);
 }
 
 static void DPTitle_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
@@ -358,8 +359,9 @@ static void DPTitle_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
         DPRemoveBar(self);
         return DPCallOriginal(DPTitle_setFrameSize, self, size);
     }
-    DPCallOriginal(DPTitle_setFrameSize, self, DPTitleFrame(self, DPBarFor(self)).size);
-    DPPlaceBar(DPBarFor(self));
+    DPLittleBar *bar = DPBarFor(self);
+    DPCallOriginal(DPTitle_setFrameSize, self, DPTitleFrame(self, bar).size);
+    DPPlaceBar(bar);
 }
 
 void DPRelayoutLittleDiaBars(void) {
