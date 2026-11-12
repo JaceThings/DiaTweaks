@@ -1,8 +1,6 @@
 #import "AppIcon.h"
 #import "Updates/Updates.h"
 
-// macOS reads an app's icon from its bundle. `diapatch build` links Dia to a catalog under one fixed name and `set-icon`
-// repoints it, so a switch never touches Dia's signature.
 static NSUInteger DPSwitches;
 
 static void DPAlertIconFailed(void) {
@@ -50,7 +48,7 @@ static BOOL DPCatalogLinked(void) {
 }
 
 static void DPApplyAppIcon(DPPatch *patch) {
-    if (DPTesting) return;  // The self-test flips patches without saving.
+    if (DPTesting) return;
     if (!DPCatalogLinked()) {
         if (patch->on) DPLinkCatalog();
         return;
@@ -71,7 +69,7 @@ static BOOL DPWorkspace_setIcon(NSWorkspace *self, SEL _cmd, NSImage *image, NSS
 static void DPInstallAppIcon(void) {
     DPHook("NSWorkspace", @selector(setIcon:forFile:options:), (IMP)DPWorkspace_setIcon);
     DPInstallDockTile();
-    // The Dock shows the icon it last cached for Dia, which a relaunch brings back, so the chosen one is drawn again.
+    // The Dock shows its cached icon after a relaunch, so draw the chosen one again.
     DPOnLaunch(^{ if ((DPAppIcon.on || DPOwnTileInDock()) && DPCatalogLinked()) DPDrawOwnTile(); });
 }
 
@@ -100,7 +98,6 @@ static NSMenu *DPAppIconChoices(void) {
     return menu;
 }
 
-// "AppIcon" is Dia's own icon.
 DP_PATCH(DPAppIcon) {
     .key = @"appIcon",
     .order = 115,
