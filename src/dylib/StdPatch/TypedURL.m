@@ -20,9 +20,9 @@ static BOOL DPIsIPv4(NSArray<NSString *> *labels) {
     return YES;
 }
 
-// Whether the last label is a top-level domain. CFNetwork's list is the system's own and kept current, so .dev, .app and
-// .sh count, and .js, .json and .14 don't. Some file extensions are country domains too (.md, .py, .rs), and are sites here as
-// they are in Chromium. Should the private call be gone, Foundation's link detector and the common newer domains stand in.
+// CFNetwork's list is the system's own and kept current: .dev, .app and .sh count, .js, .json and .14 don't. File extensions
+// that are country domains (.md, .py, .rs) are sites, as in Chromium. Without the private call, Foundation's link detector and
+// the common newer domains stand in.
 static BOOL DPIsTopLevel(NSString *label) {
     static Boolean (*system)(CFStringRef);
     static NSDataDetector *links;
@@ -41,7 +41,6 @@ static BOOL DPIsTopLevel(NSString *label) {
     return [newer containsObject:label.lowercaseString] || (match && NSEqualRanges(match.range, NSMakeRange(0, host.length)));
 }
 
-// Names that only exist on a network of one's own, which speak plain HTTP like localhost does.
 static BOOL DPIsLocalName(NSString *name) {
     if ([name isEqual:@"localhost"]) return YES;
     for (NSString *suffix in @[ @".localhost", @".test", @".local", @".internal", @".lan", @".home.arpa" ]) if ([name hasSuffix:suffix]) return YES;
@@ -67,7 +66,6 @@ NSURL *DPAddressURL(NSString *typed) {
     NSString *text = [typed stringByTrimmingCharactersInSet:space];
     if (!text.length || [text rangeOfCharacterFromSet:space].location != NSNotFound) return nil;
 
-    // An explicit scheme is kept as typed.
     NSRange colon = [text rangeOfString:@":"];
     NSString *scheme = colon.location == NSNotFound ? @"" : [text substringToIndex:colon.location].lowercaseString;
     NSCharacterSet *schemeLetters = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789+.-"];
@@ -75,10 +73,9 @@ NSURL *DPAddressURL(NSString *typed) {
         ![scheme isEqual:@"javascript"] && ([[text substringFromIndex:NSMaxRange(colon)] hasPrefix:@"//"] || DPKeepsScheme(scheme)))
         return [NSURL URLWithString:text];
 
-    // Else a host with a port, a path or a query: what comes before the first / ? or #.
     NSRange end = [text rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"/?#"]];
     NSString *authority = end.location == NSNotFound ? text : [text substringToIndex:end.location], *host = authority, *port = nil;
-    if ([authority hasPrefix:@"["]) {  // [::1] or [::1]:3000
+    if ([authority hasPrefix:@"["]) {
         NSRange close = [authority rangeOfString:@"]"];
         if (close.location == NSNotFound) return nil;
         NSString *after = [authority substringFromIndex:NSMaxRange(close)];

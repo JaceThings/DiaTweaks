@@ -34,7 +34,6 @@ DPAutoLevel DPAutoLevelOf(NSString *part) {
 
 void DPSetAutoLevel(NSString *part, DPAutoLevel level) { [DPUpdateDefaults() setInteger:level forKey:DPAutoKey(part)]; }
 
-// The last line diapatch printed to stderr, without its "diapatch: " prefix: why a run failed.
 static NSString *DPReasonIn(NSData *data) {
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     NSString *line = [[text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsSeparatedByString:@"\n"].lastObject;

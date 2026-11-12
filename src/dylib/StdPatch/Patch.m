@@ -172,6 +172,7 @@ static void DPApplySavedSettings(void) {
     [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
 }
 
+// Settings order is install order: a later hook runs first, and tweaks that hook one method (the sidebar drags) depend on it.
 void DPInstallPatches(void) {
     for (NSUInteger i = 0; i < DPPatchCount; i++) if (!DPPatches[i]->unavailable && DPPatches[i]->install) DPPatches[i]->install();
     DPOnLaunch(^{

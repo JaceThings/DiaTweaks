@@ -45,7 +45,6 @@ static void DPListenForScripts(void) {
             if ([DPPatches[i]->choice isEqualToString:parts[0]]) DPSetChoice(DPPatches[i], parts[1]);
     }];
     [center addObserverForName:@"com.diapatches.dev.type" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-        // Dia needn't be the active app.
         id responder = (NSApp.keyWindow ?: NSApp.orderedWindows.firstObject).firstResponder;
         if (![responder isKindOfClass:NSTextView.class] || ![note.object isKindOfClass:NSString.class]) return;
         NSString *text = note.object;

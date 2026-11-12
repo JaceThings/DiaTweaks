@@ -4,7 +4,7 @@
 NSHashTable<NSView *> *DPHideHosts, *DPSuppressed;
 static char DPHidersKey;
 
-// Every patch that hides the view. Only a match is remembered: some views only match once Dia labels them.
+// Only a match is cached: some views only match once Dia labels them.
 static NSArray<NSValue *> *DPHiders(NSView *view) {
     NSArray<NSValue *> *cached = DPGet(view, &DPHidersKey);
     if (cached) return cached;
@@ -15,7 +15,6 @@ static NSArray<NSValue *> *DPHiders(NSView *view) {
     return hiders;
 }
 
-// One that's on, else the first that would hide it.
 DPPatch *DPHider(NSView *view) {
     NSArray<NSValue *> *hiders = DPHiders(view);
     for (NSValue *hider in hiders)

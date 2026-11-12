@@ -11,7 +11,7 @@ static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
     return row >= 0 && ours >= 0 ? ours : DPDiaRow;
 }
 
-// Dia puts a pane's toolbar items in when that pane is selected and takes them out, by identifier, the next time any of its panes is. Our rows never reach that, so the last pane's items would stay beside ours. They're taken out here; Dia puts them back when its pane is selected again.
+// Dia removes a pane's toolbar items only when another of its panes is selected, so the last pane's would stay beside ours.
 static void DPRemoveDiaPaneItems(NSToolbar *toolbar) {
     void **slot = DPIvar(toolbar.delegate, "paneToolbarItems");
     // A Swift array of objects is its storage, an NSArray; one bridged from Objective-C is tagged and left alone.
@@ -51,7 +51,6 @@ static __weak DPPaneView *DPShownPane;
     return settings;
 }
 
-// The divider takes the sidebar's spare height, so our rows sit at its bottom. It's sized when the table first asks for its height, and re-fitted when the clip's size or insets change.
 - (CGFloat)fittedDividerHeight {
     NSTableView *table = self.table;
     NSClipView *clip = table.enclosingScrollView.contentView;
@@ -83,7 +82,7 @@ static __weak DPPaneView *DPShownPane;
     return nil;
 }
 
-// Building and laying out a pane takes a moment, so it's done hidden as Settings opens and a click only shows it.
+// Building a pane takes a moment, so it is built hidden as Settings opens.
 - (void)preparePane:(DPPaneView *)pane {
     NSView *detail = ((NSSplitViewController *)self.table.window.contentViewController).splitViewItems.lastObject.viewController.view;
     if (!detail || pane.superview == detail) return;
@@ -129,7 +128,6 @@ static __weak DPPaneView *DPShownPane;
     [self allowResizing:NO];
 }
 
-// Leaves the window resizable, for when another of our panes is about to show.
 - (void)closeShownPane {
     DPPaneView *pane = self.shown;
     if (!pane) return;
@@ -255,7 +253,7 @@ static void DPSettings_handleBack(id self, SEL _cmd) {
     DPCallOriginal(DPSettings_handleBack, self);
 }
 
-// ⌘F goes to the shown pane's search field, as in most apps' settings. The key's letter, so it follows the layout; where that isn't ASCII, the key's place on a US keyboard.
+// ⌘F focuses the shown pane's search field, matched by letter, else by the key's place on a US keyboard.
 static NSEvent *DPSettings_findKey(NSEvent *event) {
     DPPaneView *pane = DPShownPane;
     NSSearchToolbarItem *item = pane.searchItem;

@@ -72,7 +72,7 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
     if (!NSPointInRect(point, self.bounds)) return;
     NSSwitch *toggle = (NSSwitch *)DPFindView(self, ^BOOL(NSView *v) { return [v isKindOfClass:NSSwitch.class]; });
     NSRect frame = [self convertRect:toggle.bounds fromView:toggle];
-    if (toggle.enabled && NSPointInRect(point, frame)) return;  // The switch already flipped itself.
+    if (toggle.enabled && NSPointInRect(point, frame)) return;
     if (toggle.enabled && NSPointInRect(point, NSInsetRect(frame, -10, -10))) [toggle performClick:nil];
     else self.open();
 }
@@ -103,7 +103,7 @@ NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
 + (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description;
 @end
 
-// NSImageView throws on a missing symbol, which crashed Settings. Rows share a few symbols, so each is looked up and sized once.
+// NSImageView throws on a missing symbol, which crashed Settings.
 NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color) {
     static NSMutableDictionary<NSString *, id> *cache;
     if (!cache) cache = [NSMutableDictionary new];
@@ -157,8 +157,7 @@ NSView *DPIconTile(NSString *symbol, NSColor *color) { return DPIconTileOfSize(s
 
 static CGFloat DPLinear(CGFloat c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
 
-// The same fill in both appearances, so a layer's fixed CGColor never goes stale: the light-mode color, darkened until
-// the white glyph on it reaches 3:1.
+// The light-mode color in both appearances, so a layer's fixed CGColor never goes stale, darkened until the white glyph reaches 3:1.
 static NSColor *DPTileFill(NSColor *color) {
     __block NSColor *rgb;
     [[NSAppearance appearanceNamed:NSAppearanceNameAqua] performAsCurrentDrawingAppearance:^{

@@ -28,7 +28,6 @@ static NSURL *DPCachedPreview(NSString *name) {
     return [dir URLByAppendingPathComponent:name];
 }
 
-// The layout is passed in: finding it walks every window's views.
 static NSArray<NSString *> *DPPreviewNames(NSString *key, NSString *layout) {
     NSString *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
     NSMutableArray<NSString *> *names = [NSMutableArray new];
@@ -62,7 +61,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
                 [NSFileManager.defaultManager removeItemAtURL:cached error:nil];
                 return DPFetchPreview([names subarrayWithRange:NSMakeRange(1, names.count - 1)], done);
             }
-            if (!preview) return done(nil, NO);  // The copy already cached stays.
+            if (!preview) return done(nil, NO);
             BOOL changed = ![[NSData dataWithContentsOfURL:cached] isEqualToData:data];
             if (changed) [data writeToURL:cached atomically:YES];
             done(cached, changed);
@@ -178,7 +177,6 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [self updatePlayback];
 }
 
-// Keyed to the clock so every preview flips at the same moment.
 - (void)showState {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];

@@ -40,13 +40,12 @@ struct DPPatch {
 
 #define DPClasses(...) ((const char *const []){__VA_ARGS__, NULL})
 
-//     DP_PATCH(DPHideFooButton) { .key = @"hideFooButton", .title = @"Hide Foo button", ... };
 #define DP_PATCH(name)                                                                              \
     DPPatch name;                                                                                   \
     __attribute__((used, section("__DATA,__dppatches"))) static DPPatch *const name##Entry = &name; \
     DPPatch name =
 
-extern DPPatch *const *DPPatches;  // In Settings order.
+extern DPPatch *const *DPPatches;  // In Settings order, which is also the order their installs run.
 extern NSUInteger DPPatchCount;
 DPPatch *DPPatchNamed(NSString *key);
 DPPatch *DPRequired(DPPatch *patch);

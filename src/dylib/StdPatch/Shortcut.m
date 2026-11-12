@@ -2,7 +2,7 @@
 #import <Carbon/Carbon.h>
 
 static const NSEventModifierFlags DPShortcutModifiers = NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagShift | NSEventModifierFlagCommand;
-static NSHashTable<NSView *> *DPRecorders;  // fields recording, whichever window is key
+static NSHashTable<NSView *> *DPRecorders;
 
 static NSUserDefaults *DPShortcutDefaults(void) {
     static NSUserDefaults *defaults;
@@ -52,7 +52,6 @@ BOOL DPEventIsKey(NSEvent *event, NSString *key) {
     return at && event.keyCode == at - us;
 }
 
-// A shortcut shown as a letter is on the key that types it, as Settings shows it. Any other is on the key that was pressed.
 BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
     NSDictionary *shortcut = DPPatchShortcut(patch);
     NSString *label = shortcut[@"key"];
@@ -164,7 +163,6 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 - (NSRect)focusRingMaskBounds { return self.bounds; }
 - (void)drawFocusRingMask { [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill]; }
 
-// Tab and Shift-Tab move on, as from any field, and end recording.
 - (BOOL)moveFocus:(NSEvent *)event {
     NSEventModifierFlags flags = event.modifierFlags & DPShortcutModifiers;
     if (event.keyCode != kVK_Tab || (flags & ~NSEventModifierFlagShift)) return NO;
@@ -174,14 +172,13 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
     return YES;
 }
 
-// Tabbing in only focuses the field, so ⌘W there still closes the window. A click, Space or Return starts recording.
+// Tabbing in only focuses the field, so ⌘W there still closes the window.
 - (void)keyDown:(NSEvent *)event {
     BOOL activate = (event.keyCode == kVK_Space || event.keyCode == kVK_Return) && !(event.modifierFlags & DPShortcutModifiers);
     if (activate) [self startRecording];
     else if (![self moveFocus:event]) [super keyDown:event];
 }
 
-// Recording takes every key before Dia's menus and other shortcuts see it.
 - (void)startRecording {
     if (_monitor) return;
     DPRecorders = DPRecorders ?: [NSHashTable weakObjectsHashTable];

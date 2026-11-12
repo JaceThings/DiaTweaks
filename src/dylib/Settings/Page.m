@@ -18,7 +18,7 @@ static NSView *DPWideRow(NSView *view) {
     NSMutableArray<DPPatchSwitch *> *_switches;
     NSTextField *_note;
     NSArray<NSView *> *_rows;
-    NSMutableArray<NSView *> *_optionChoices;  // Shown only while their option is on.
+    NSMutableArray<NSView *> *_optionChoices;
 }
 
 - (instancetype)initWithPatch:(DPPatch *)patch {

@@ -54,7 +54,6 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     return [updates downloading:part] ? @"downloading" : [updates staged:part] ? @"staged" : @"available";
 }
 
-// Rebuilds only when something other than download progress changed, so buttons don't move under the pointer.
 - (void)sync {
     DPUpdates *updates = DPUpdates.shared;
     NSMutableString *shape = [NSMutableString stringWithFormat:@"%d %d %@", updates.checking, updates.found != nil, updates.checkProblem];
@@ -148,7 +147,7 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     NSTextField *detail = DPLine([state isEqual:@"staged"] ? (installsOnQuit ? @"Installs when you quit" : @"Ready to install")
                                  : [updates failed:part] ? ([updates failure:part] ?: @"Download failed") : size,
                                  11, [updates failed:part] ? NSColor.systemRedColor : NSColor.secondaryLabelColor);
-    if ([updates failed:part]) detail.toolTip = detail.stringValue;  // the line truncates
+    if ([updates failed:part]) detail.toolTip = detail.stringValue;
     NSStackView *leading = [NSStackView stackViewWithViews:@[
         DPPartIcon(part),
         DPColumn(@[DPLine([NSString stringWithFormat:@"%@ %@", DPPartName(part), found[@"latest"]], 13, NSColor.labelColor), detail], 2),
@@ -194,7 +193,6 @@ static NSButton *DPButton(NSString *title, id target, SEL action, NSString *part
     DPUpdates *updates = DPUpdates.shared;
     NSArray<NSString *> *parts = self.shown;
     __block NSUInteger left = parts.count;
-    // A part whose download failed shows why on the page, and quitting for it would only relaunch the same Dia.
     void (^ready)(void) = ^{
         if (--left != 0) return;
         NSMutableArray<NSString *> *staged = [NSMutableArray new];
