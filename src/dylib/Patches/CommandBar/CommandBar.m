@@ -347,13 +347,13 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
 }
 
 static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
+    if (!checks || !overlay.host) return;
     __weak DPCommandBarOverlay *weak = overlay;
-    if (checks && overlay.host)
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-            if (!weak.host) return;
-            DPWatchNewTab(weak);
-            DPWatchSoon(weak, checks - 1);
-        });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (!weak.host) return;
+        DPWatchNewTab(weak);
+        DPWatchSoon(weak, checks - 1);
+    });
 }
 
 static BOOL DPClickSubmits(DPCommandBarOverlay *overlay, NSEvent *event) {
