@@ -1,6 +1,6 @@
 #import "DevMode.h"
 
-static const CGFloat DPStripeGap = 9, DPStripeWidth = 3.5;
+static const CGFloat DPStripeWidth = 15, DPStripeSpacing = 15;  // Arc's, at -45°.
 static char DPStripesKey, DPDiaAppearanceKey, DPDiaFillKey;
 static BOOL DPSettingOurs;
 
@@ -157,14 +157,14 @@ static NSView *DPWindowTint(NSWindow *window) {
     self.profile.frame = tint ? [self convertRect:tint.bounds fromView:tint] : self.bounds;
     CGFloat height = NSHeight(self.bounds);
     CGMutablePathRef path = CGPathCreateMutable();
-    for (CGFloat x = -height; x < NSWidth(self.bounds) + height; x += DPStripeGap) {
-        CGPathMoveToPoint(path, NULL, x, 0);
-        CGPathAddLineToPoint(path, NULL, x + height, height);
+    for (CGFloat x = -height; x < NSWidth(self.bounds) + height; x += (DPStripeWidth + DPStripeSpacing) * M_SQRT2) {
+        CGPathMoveToPoint(path, NULL, x, height);
+        CGPathAddLineToPoint(path, NULL, x + height, 0);
     }
     self.stripes.path = path;
     CGPathRelease(path);
     BOOL dark = [tint.effectiveAppearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]] == NSAppearanceNameDarkAqua;
-    self.stripes.strokeColor = [NSColor colorWithWhite:dark alpha:0.06].CGColor;
+    self.stripes.strokeColor = [NSColor colorWithWhite:1 alpha:dark ? 0.02 : 0.3].CGColor;
     [CATransaction commit];
 }
 
