@@ -4,15 +4,16 @@
 // "AppIcon" is the tweak's name for Dia's own icon, which isn't always called that: Dia's beta builds use AppIconBeta.
 static NSString *const DPIconAlias = @"DiaChosenIcon", *const DPDefaultChoice = @"AppIcon", *const DPOwnIconKey = @"DiaTweaksOwnIcon";
 
+static NSString *DPInfoPath(NSString *app) { return [app stringByAppendingPathComponent:@"Contents/Info.plist"]; }
+
 static NSString *DPOwnIcon(NSString *app) {
-    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[app stringByAppendingPathComponent:@"Contents/Info.plist"]];
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:DPInfoPath(app)];
     NSString *name = info[DPOwnIconKey] ?: info[@"CFBundleIconName"];
     return name && ![name isEqual:DPIconAlias] ? name : DPDefaultChoice;
 }
 
 static NSString *DPIconsFolder(NSString *app, NSString *home) {
-    NSString *info = [app stringByAppendingPathComponent:@"Contents/Info.plist"];
-    NSString *build = [NSDictionary dictionaryWithContentsOfFile:info][@"CFBundleVersion"];
+    NSString *build = [NSDictionary dictionaryWithContentsOfFile:DPInfoPath(app)][@"CFBundleVersion"];
     return build ? [home stringByAppendingPathComponent:[@"icons/builds" stringByAppendingPathComponent:build]] : nil;
 }
 
@@ -96,7 +97,7 @@ NSString *DPPrepareIcons(NSString *app, NSString *installed, NSString *home) {
     NSString *current = [folder stringByAppendingPathComponent:@"current.car"];
     if (![files createSymbolicLinkAtPath:link withDestinationPath:current error:NULL] || rename(link.fileSystemRepresentation, catalog.fileSystemRepresentation) != 0)
         return @"kept Dia's icons: couldn't link the catalog";
-    NSURL *url = [NSURL fileURLWithPath:[app stringByAppendingPathComponent:@"Contents/Info.plist"]];
+    NSURL *url = [NSURL fileURLWithPath:DPInfoPath(app)];
     NSMutableDictionary *info = [[NSMutableDictionary alloc] initWithContentsOfURL:url error:NULL];
     info[DPOwnIconKey] = DPOwnIcon(app);
     info[@"CFBundleIconName"] = DPIconAlias;
