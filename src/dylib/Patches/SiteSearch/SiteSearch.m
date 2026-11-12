@@ -9,6 +9,7 @@ static DPSite *DPSiteOf(NSTextView *text) { return DPGet(text, &DPSiteKey); }
 static void DPSetSite(NSTextView *text, DPSite *site) {
     DPSet(text, &DPSiteKey, site);
     DPShowChip(text, site);
+    DPShowReturnTarget(text, site);
     if (site) DPSearching = text;
     else if (DPSearching == text) DPSearching = nil;
 }
@@ -58,8 +59,8 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
         if (command != @selector(insertTab:)) return DPCallOriginal(DPInput_command, self, text, command);
         site = DPSiteFor(text.string, text.window);
         if (!site) return DPCallOriginal(DPInput_command, self, text, command);
+        DPSetSite(text, site);  // First, while the suggestions still show the site's icon.
         DPReplaceText(text, @"");
-        DPSetSite(text, site);
         return YES;
     }
     if (command == @selector(insertNewline:)) {
@@ -82,8 +83,13 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
 
 // Words for a site aren't an address, so Dia shouldn't complete them into one: "g" isn't google.com on Amazon.
 static BOOL DPBrowser_autocomplete(id self, SEL _cmd, NSString *text, int cursor, BOOL prevent, BOOL fresh, id keyword, id *error, void (^completion)(id, BOOL)) {
-    if (DPSiteSearch.on && DPSiteOf(DPSearching)) prevent = YES;
-    return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, prevent, fresh, keyword, error, completion);
+    NSTextView *field = DPSearching;
+    if (!DPSiteSearch.on || !DPSiteOf(field) || !completion) return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, prevent, fresh, keyword, error, completion);
+    // Dia names the Return button again with each update, so the site's name goes back after it.
+    return DPCallOriginal(DPBrowser_autocomplete, self, text, cursor, YES, fresh, keyword, error, ^(id result, BOOL done) {
+        completion(result, done);
+        dispatch_async(dispatch_get_main_queue(), ^{ DPShowReturnTarget(field, DPSiteOf(field)); });
+    });
 }
 
 // The bar's field is used again the next time it opens, so a site left from before goes when it closes.
