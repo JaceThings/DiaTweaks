@@ -45,7 +45,7 @@ static BOOL DPTabOpen(NSView *tab) {
 }
 
 static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
-    [DPPages addObject:self];
+    if ([self respondsToSelector:@selector(visibility)] && [self respondsToSelector:@selector(discard)]) [DPPages addObject:self];
     DPCallOriginal(DPPage_setVisibility, self, visibility);
     if (visibility == DPPageVisible) {
         [DPDiscarded removeObject:self];
