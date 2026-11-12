@@ -85,7 +85,8 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
 }
 
 // Dia works out where a dragged tab lands from the rows as it laid them out, so the pointer goes back to the same spot in
-// those. Collapse Pinned Tabs' hooks install before these and so run after, so each row is taken as the list shows it.
+// those. It arrives as the list shows it, Collapse Pinned Tabs' header included: that tweak's hooks install before these and
+// so run after, so each row is taken as the list shows it too.
 static NSArray<NSArray<NSValue *> *> *DPMoves(NSCollectionViewLayout *layout) {
     NSMutableArray *moves = [NSMutableArray new];
     for (NSArray *edit in DPGet(layout, &DPEditsKey)) {
