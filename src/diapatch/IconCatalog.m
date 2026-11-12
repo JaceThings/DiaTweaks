@@ -27,7 +27,6 @@ static NSString *DPCopyNames(id<DPAssetStorage> source, id<DPAssetStorage> catal
     return nil;
 }
 
-// nil if the key can't be expressed in the catalog's format.
 static NSData *DPTranslateKey(const DPKeyToken *key, id<DPAssetStorage> source, id<DPAssetStorage> catalog) {
     const DPKeyFormat *format = catalog.keyFormat;
     NSMutableData *translated = [NSMutableData dataWithLength:format->count * sizeof(uint16_t)];

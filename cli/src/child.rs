@@ -18,7 +18,6 @@ use crate::{
 
 /// Children get their own process group, so the terminal's Ctrl-C reaches only diatweaks.
 pub enum OnInterrupt {
-    /// Stop it: it only writes inside our temporary checkout.
     Stop,
     /// Stop only its downloads; diapatch cleans up after a failed download and exits. Everything
     /// else it does finishes, because it moves whole app bundles.

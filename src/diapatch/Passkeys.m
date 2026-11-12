@@ -15,8 +15,8 @@ int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim
 static const int kSheetWidth = 480, kSheetHeight = 300;
 
 static FILE *gFromHelper, *gToHelper;
-static _Atomic pid_t gHelper;       // the passkey copy of Dia, while it runs
-static _Atomic int gCancelled;      // the extension closed our stdin: the page gave up on the request
+static _Atomic pid_t gHelper;
+static _Atomic int gCancelled;
 
 static NSDictionary *readFromHelper(void) {
     NSMutableData *data = [NSMutableData data];
@@ -64,8 +64,8 @@ static void writeMessage(NSDictionary *message) {
 
 static NSDictionary *failure(NSString *message) { return @{ @"error" : @{ @"name" : @"NotAllowedError", @"message" : message } }; }
 
-// The extension keeps its end of our stdin open until it has the answer, so reading to the end means the page gave up (its signal
-// aborted, or its tab went away). The copy of Dia is stopped, which also ends the read in progress on its pipe.
+// The extension keeps our stdin open until it has the answer, so reading to the end means the page gave up (its signal
+// aborted, or its tab went away). Stopping the copy of Dia also ends the read in progress on its pipe.
 static void *watchForCancel(void *_) {
     char byte;
     while (read(STDIN_FILENO, &byte, 1) > 0) {}

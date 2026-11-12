@@ -23,7 +23,7 @@ static NSString *const kDiaReleaseNotes = @"https://www.diabrowser.com/release-n
 static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
 static const char *gCommand;
 static FILE *gLog;
-static NSString *gFailure;  // the last thing fail() said
+static NSString *gFailure;
 
 #pragma mark - Output
 
@@ -74,14 +74,13 @@ static BOOL removeTree(NSString *path) {
 static BOOL removeQuietly(NSString *path) {
     NSError *error;
     if ([NSFileManager.defaultManager removeItemAtPath:path error:&error] || error.code == NSFileNoSuchFileError) return YES;
-    // A locked file, like the Icon\r a locked custom Finder icon leaves in a bundle, can be unlocked and removed.
+    // A custom Finder icon leaves a locked Icon\r in a bundle; it has to be unlocked to go.
     for (NSString *item in [NSFileManager.defaultManager enumeratorAtPath:path])
         [NSFileManager.defaultManager setAttributes:@{ NSFileImmutable : @NO } ofItemAtPath:[path stringByAppendingPathComponent:item] error:nil];
     return [NSFileManager.defaultManager removeItemAtPath:path error:nil];
 }
 
-// Something left in .trash that can't be removed, like files that root owns, would stop every install and update after
-// it. It's set aside instead, and each run tries again.
+// Leftovers that can't be removed (root-owned files) are set aside, or they would stop every later install and update.
 static BOOL emptyTrash(void) {
     NSString *trash = inHome(@".trash"), *aside = [trash stringByAppendingFormat:@"-%@", NSUUID.UUID.UUIDString];
     if (removeQuietly(trash)) return YES;
@@ -175,7 +174,6 @@ static NSString *versionOf(NSString *app) {
 
 static BOOL isPatched(NSString *app) { return [infoOf(app)[@"DiaPatches"] boolValue]; }
 
-// Unverified; verifyOfficial checks the signature.
 static BOOL claimsOfficial(NSString *app) {
     NSString *details;
     return run(@[ @"/usr/bin/codesign", @"-dv", app ], &details) == 0 && [details containsString:@"\nTeamIdentifier=S6N382Y83G\n"];
@@ -467,7 +465,7 @@ static NSDictionary *latestTweaks(int seconds, NSString **problem) {
               @"releaseNotes" : release[@"html_url"] ?: @"", @"url" : asset[@"browser_download_url"] };
 }
 
-// The commit this build came from; make records it. A release install is told apart by its release.plist.
+// make records the commit; a release install has a release.plist and no source commit.
 static NSString *sourceCommit(void) {
 #ifdef DIATWEAKS_COMMIT
     NSString *commit = env("DIAPATCH_COMMIT") ?: @DIATWEAKS_COMMIT;
@@ -478,8 +476,8 @@ static NSString *sourceCommit(void) {
     return !installedRelease()[@"tag"] && [hex evaluateWithObject:commit] ? commit : nil;
 }
 
-// Whether a source build is at or past the release's tag, so the release would only take it back. GitHub's compare
-// says "ahead" or "identical" for that. A commit it doesn't know (unpushed work), or no network, leaves the release on offer.
+// A source build at or past the release's tag would only be taken back by it: GitHub's compare says "ahead" or "identical".
+// A commit it doesn't know (unpushed work), or no network, leaves the release on offer.
 static NSString *sourceNotOlder(NSDictionary *latest) {
     NSString *commit = sourceCommit();
     if (!commit || ![latest[@"tag"] isKindOfClass:NSString.class]) return nil;
@@ -493,8 +491,8 @@ static NSString *sourceNotOlder(NSDictionary *latest) {
     return [@[ @"ahead", @"identical" ] containsObject:status] ? [commit substringToIndex:7] : nil;
 }
 
-// An updater only installs the files it knows about, so one older than a file leaves it out: v1.1.0 updating to v1.1.1
-// dropped app-icons. Offering the release again lets the new updater put the missing files in place.
+// An older updater leaves out files it doesn't know (v1.1.0 updating to v1.1.1 dropped app-icons), so a release with a
+// file missing is offered again.
 static BOOL tweaksInstalled(NSDictionary *latest) {
     if (![installedRelease()[@"digest"] isEqual:latest[@"digest"]]) return NO;
     for (NSString *path in tweaksTargets().allValues)
@@ -545,8 +543,7 @@ static NSString *agentPlist(void) {
 
 static NSString *agentService(void) { return [NSString stringWithFormat:@"gui/%d/com.diapatches.passwords", getuid()]; }
 
-// Allow 1Password used to run a relay under this launch agent, with a copy of Dia of its own.
-// bootout returns before a busy job has exited, and the relay would keep using its copy.
+// Removes the relay Allow 1Password used to run. bootout returns before a busy job has exited.
 static void removeRelay(void) {
     run(@[ @"/bin/launchctl", @"bootout", agentService() ], NULL);
     for (int i = 0; i < 100 && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0; i++) usleep(100000);
@@ -556,7 +553,7 @@ static void removeRelay(void) {
 }
 
 static BOOL applyTweaks(void) {
-    // A release staged a while ago may since have been replaced, or overtaken by what's installed.
+    // A staged release may since have been replaced, or overtaken by what's installed.
     NSString *problem;
     NSDictionary *latest = stagedRelease() ? latestTweaks(15, &problem) : nil;
     if (latest && tweaksInstalled(latest)) removeTree(gStagedTweaks);
@@ -599,7 +596,6 @@ static NSString *signatureOf(NSString *app) {
 static void forgetScreenRecordingIfResigned(NSString *before) {
     NSString *bundleID = infoOf(gApp)[@"CFBundleIdentifier"];
     if (env("DIAPATCH_APP") || !bundleID || [before isEqual:signatureOf(gApp)]) return;
-    // If this fails there is nothing to clear, and macOS behaves as it always did.
     if (run(@[ @"/usr/bin/tccutil", @"reset", @"ScreenCapture", bundleID ], NULL) == 0)
         say(@"Dia's signature changed, so macOS asks again before Dia can share your screen: allow Dia under System Settings > "
             @"Privacy & Security > Screen & System Audio Recording, then reopen Dia");
@@ -648,8 +644,8 @@ static BOOL install(BOOL relaunch) {
                inHome(@"bin/diapatch"));
 }
 
-// A Dia build that couldn't be patched is offered again on every launch, and downloaded again if updates are automatic. So
-// it's remembered with the diapatch that failed on it; any other diapatch tries it afresh.
+// A Dia build that couldn't be patched is offered, and with automatic updates downloaded, again on every launch. It's
+// remembered with the diapatch that failed on it; any other diapatch tries it afresh.
 static NSString *unpatchableFile(void) { return inHome(@"unpatchable.plist"); }
 
 static NSString *ownDigest(void) { return sha256(NSBundle.mainBundle.executablePath); }

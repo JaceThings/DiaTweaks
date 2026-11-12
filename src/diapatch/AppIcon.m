@@ -62,7 +62,6 @@ static NSArray<NSString *> *DPMissingIcons(NSString *catalog, NSString *home) {
     return missing;
 }
 
-// nil on success. Every .car in icons/ that `catalog` lacks joins it.
 static NSString *DPWriteBase(NSString *catalog, NSString *folder, NSString *home) {
     NSFileManager *files = NSFileManager.defaultManager;
     NSString *base = [folder stringByAppendingPathComponent:@"base.car"], *incoming = [base stringByAppendingString:@".new"];
