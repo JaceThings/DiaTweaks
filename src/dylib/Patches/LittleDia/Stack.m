@@ -39,15 +39,17 @@ void DPReturnToSource(pid_t pid) {
     else [app activateWithOptions:0];
 }
 
+static void DPPutAwayWindow(NSWindow *window) {
+    if (![DPPutAway containsObject:window]) [DPPutAway addObject:window];
+    [window orderOut:nil];
+}
+
 // Dia was hidden, so bringing it forward for the link showed every window: the others go away again, until Open in
 // Dia, or Dia is hidden again when its last small window closes and comes back the usual way.
 static BOOL DPPutAwayIfHidden(NSWindow *little) {
     if (!DPUnhiddenAt || DPUnhiddenAt.timeIntervalSinceNow < -2) return NO;
-    for (NSWindow *window in NSApp.orderedWindows) {
-        if (DPIsLittleDiaWindow(window) || !window.visible || window.level != NSNormalWindowLevel) continue;
-        if (![DPPutAway containsObject:window]) [DPPutAway addObject:window];
-        [window orderOut:nil];
-    }
+    for (NSWindow *window in NSApp.orderedWindows)
+        if (!DPIsLittleDiaWindow(window) && window.visible && window.level == NSNormalWindowLevel) DPPutAwayWindow(window);
     return YES;
 }
 
@@ -59,11 +61,8 @@ static void DPUnveil(void) {
 }
 
 void DPLinkArrived(void) {
-    for (NSWindow *window in DPVeiled) {
-        if (!window.visible) continue;
-        if (![DPPutAway containsObject:window]) [DPPutAway addObject:window];
-        [window orderOut:nil];
-    }
+    for (NSWindow *window in DPVeiled)
+        if (window.visible) DPPutAwayWindow(window);
     DPUnveil();
 }
 
@@ -106,24 +105,24 @@ void DPRestoreStack(NSWindow *little, NSDictionary *noted) {
     for (NSWindow *window in behind) [window orderWindow:NSWindowBelow relativeTo:anchor];
 }
 
+static void DPVeilWindows(void) {
+    if (!DPLittleDia.on) return;
+    for (NSWindow *window in NSApp.windows)
+        if (window.level == NSNormalWindowLevel && !DPIsLittleDiaWindow(window) && window.alphaValue > 0) {
+            [DPVeiled setObject:@(window.alphaValue) forKey:window];
+            window.alphaValue = 0;
+        }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPUnveil(); });
+}
+
 void DPInstallLittleDiaStack(void) {
     DPPutAway = [NSMutableArray array];
     DPVeiled = [NSMapTable weakToStrongObjectsMapTable];
-    [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillUnhideNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) {
-                                                    if (!DPLittleDia.on) return;
-                                                    for (NSWindow *window in NSApp.windows)
-                                                        if (window.level == NSNormalWindowLevel && !DPIsLittleDiaWindow(window) && window.alphaValue > 0) {
-                                                            [DPVeiled setObject:@(window.alphaValue) forKey:window];
-                                                            window.alphaValue = 0;
-                                                        }
-                                                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPUnveil(); });
-                                                }];
-    [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidUnhideNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) { DPUnhiddenAt = [NSDate date]; }];
-    [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillBecomeActiveNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) {
-                                                    DPBeforeActivating = DPWindowStack();
-                                                    DPNotedAt = [NSDate date];
-                                                }];
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserverForName:NSApplicationWillUnhideNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPVeilWindows(); }];
+    [center addObserverForName:NSApplicationDidUnhideNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPUnhiddenAt = [NSDate date]; }];
+    [center addObserverForName:NSApplicationWillBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        DPBeforeActivating = DPWindowStack();
+        DPNotedAt = [NSDate date];
+    }];
 }
