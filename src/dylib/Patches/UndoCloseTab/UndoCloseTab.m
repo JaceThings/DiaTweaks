@@ -21,7 +21,6 @@ static void DPPage_close(id self, SEL _cmd, NSInteger timing) {
     DPForgetGroupingUndo();
 }
 
-// Text being edited in the window keeps ⌘Z while there is something in it to undo.
 static BOOL DPEditingWithUndo(NSWindow *window) {
     NSText *text = [window.firstResponder isKindOfClass:NSText.class] ? (NSText *)window.firstResponder : nil;
     return text.editable && text.undoManager.canUndo;

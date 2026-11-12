@@ -5,7 +5,6 @@ static void DPApplyPullRequestRepo(DPPatch *patch) {
     if (!patch->on) DPResetPRRows();
 }
 
-// On, no pull request shows its author. Off, none shows its repository or a status line of ours.
 static NSString *DPVerifyPullRequestRepo(DPPatch *patch) {
     for (NSView *view in DPFindViews(DPDiaFeatheredLabel)) {
         if (!DPIsPRSubtitle(view) || view.hiddenOrHasHiddenAncestor) continue;

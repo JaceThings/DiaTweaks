@@ -12,7 +12,6 @@ static void DPNoteFront(NSWindow *window) {
     if (recent.count > 20) [recent removeObjectAtIndex:0];
 }
 
-// The tab you were on before the one in front, or else one next to it.
 id DPTabBefore(NSWindow *window) {
     NSString *active = DPActiveTabID(window);
     NSArray *tabs = [DPScriptWindow(window) valueForKey:@"appleScriptTabs"];

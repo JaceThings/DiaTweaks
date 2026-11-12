@@ -26,8 +26,7 @@ NSRect DPGrainHostBounds(NSView *host) {
     });
     if (!content) return NSZeroRect;
     NSRect page = [host convertRect:content.bounds fromView:content];
-    // Dia's strip extends below its visible chrome to feather tab shadows.
-    // Keep the texture above the actual page boundary, not that larger root.
+    // Dia's strip extends below its chrome to feather tab shadows; the texture stops at the page.
     CGFloat edge = host.isFlipped ? NSMinY(page) : NSMaxY(page);
     NSRect chrome = host.isFlipped ? NSMakeRect(NSMinX(bounds), NSMinY(bounds), NSWidth(bounds), MAX(0, edge - NSMinY(bounds))) :
         NSMakeRect(NSMinX(bounds), MAX(NSMinY(bounds), edge), NSWidth(bounds), MAX(0, NSMaxY(bounds) - edge));
@@ -61,7 +60,6 @@ static void DPUpdateGrainHosts(BOOL settings) {
     for (NSView *host in DPGrainHosts) DPUpdateGrainHost(host, settings);
 }
 
-// Runs on every layout. Off, it does nothing to Dia's views unless this host still holds a texture.
 void DPTrackGrainHost(NSView *host) {
     if (!DPGrainHosts) DPGrainHosts = [NSHashTable weakObjectsHashTable];
     [DPGrainHosts addObject:host];

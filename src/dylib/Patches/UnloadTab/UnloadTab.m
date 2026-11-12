@@ -9,7 +9,7 @@ static NSHashTable *DPPages;
 static NSHashTable *DPDiscarded;  // Pages Chromium says it unloaded, until they're shown again.
 static NSHashTable *DPUnloadOnHide;  // Pages to unload as soon as switching away from them takes them off screen.
 
-// The tab's one page, as Dia's tab controller knows it. A split tab has more than one, and isn't offered.
+// A split tab has more than one page and isn't offered.
 static id DPTabContent(NSView *tab) {
     NSDictionary *views = DPSwiftValue(tab, @"contentViews");
     if (views.count != 1) return nil;
@@ -103,9 +103,6 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
     return menu;
 }
 
-#pragma mark Verify
-
-// The tab's menu, built as a right-click would without showing it.
 static NSMenuItem *DPUnloadItem(NSView *tab) {
     NSPoint point = [tab convertPoint:NSMakePoint(NSMidX(tab.bounds), NSMidY(tab.bounds)) toView:nil];
     NSEvent *click = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
@@ -113,8 +110,7 @@ static NSMenuItem *DPUnloadItem(NSView *tab) {
     return [[tab menuForEvent:click] itemWithTitle:@"Unload Tab"];
 }
 
-// A tab showing a web page no other tab shows offers Unload Tab when its page is loaded, as the one in front of a window
-// always is, and the one in front can leave for another tab if the window has one. Nothing is unloaded.
+// A tab showing a page no other tab shows offers Unload Tab when its page is loaded, as the one in front always is.
 static NSString *DPVerifyUnloadTab(DPPatch *patch) {
     NSArray<NSView *> *tabs = DPFindViews(DPDiaTabView);
     NSCountedSet<NSURL *> *urls = [NSCountedSet set];
@@ -139,8 +135,6 @@ static NSString *DPVerifyUnloadTab(DPPatch *patch) {
     }
     return nil;
 }
-
-#pragma mark Patch
 
 static void DPInstallUnloadTab(void) {
     DPPages = [NSHashTable weakObjectsHashTable];

@@ -5,8 +5,8 @@ BOOL DPGrainDarkAppearance(NSAppearance *appearance) {
         isEqual:NSAppearanceNameDarkAqua];
 }
 
-// Redraws the tile at its scaled size, so it stays crisp. A sharp tile repeats or drops whole pixels, which
-// keeps each grain square. A soft one is smooth anyway. Either gets its tone and spread back after the resize.
+// A sharp tile repeats or drops whole pixels, which keeps each grain square. Either kind gets its tone and spread back
+// after the resize.
 static CGImageRef DPScaledGrainTile(CGImageRef image, NSInteger scale, BOOL fit, BOOL soft, BOOL dark) CF_RETURNS_RETAINED {
     size_t width = CGImageGetWidth(image) * scale / 100, height = CGImageGetHeight(image) * scale / 100;
     NSMutableData *data = [NSMutableData dataWithLength:width * height * 4];
@@ -26,7 +26,6 @@ static CGImageRef DPScaledGrainTile(CGImageRef image, NSInteger scale, BOOL fit,
     return result;
 }
 
-// Tiles are kept for the scale in use, and dropped when it changes.
 CGImageRef DPGrainAppearanceTile(NSString *material, BOOL soft, BOOL dark, NSInteger scale) {
     BOOL fine = [material isEqual:@"fine"];
     CGImageRef image = fine ? DPFineGrainTile() : DPIsPatternGrainMaterial(material) ? DPPatternGrainTile(material, soft) : DPMatteGrainTile(soft);

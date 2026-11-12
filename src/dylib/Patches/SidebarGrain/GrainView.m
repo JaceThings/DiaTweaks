@@ -44,7 +44,6 @@
     }
 }
 
-// Takes the settings of the profile this view's sidebar or strip is showing.
 - (void)reloadSettings {
     _space = DPGrainSpaceOf(self.superview);
     [self setGrainAmount:DPGrainShown(_space) ? DPGrainAmount(_space) : 0 softness:DPGrainSoftness(_space) scale:DPGrainScale(_space)];

@@ -41,7 +41,6 @@ NSHashTable<DPTidyBrush *> *DPTidyBrushes(void) {
 
 BOOL DPTidyIsBusy(void) { return DPBrushesBusy; }
 
-// Busy keeps the row open; after, it follows the pointer again.
 void DPTidySetBusy(BOOL busy) {
     DPBrushesBusy = busy;
     for (DPTidyBrush *brush in DPTidyBrushes()) [brush showBusy];

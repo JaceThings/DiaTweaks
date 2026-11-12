@@ -37,10 +37,9 @@ static void DPCloseAll_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     if (DPIsKind(self.superview, DPDiaTabListSeparator)) DPPlaceSeparatorBrush(self.superview);
 }
 
-// Loose tabs below the line, from the layout, which knows off-screen rows too. Tab rows, folders, the New Tab row and a
-// group's own row are all about as tall as each other (and the height changes between Dia builds), so a row is a tab by
-// its cell's class where it has one. An off-screen row has no cell: it's a tab if it's the height of the others. A group's
-// tabs are rows inside the group's frame, so a row inside a taller row isn't loose.
+// Tab rows, folders, the New Tab row and a group's own row are all about as tall (and the height changes between Dia
+// builds), so a row is a tab by its cell's class where it has one. An off-screen row has no cell: it's a tab if it's the
+// height of the others. A group's tabs are rows inside the group's frame, so a row inside a taller row isn't loose.
 NSInteger DPTidyTabsBelowLine(NSView *list) {
     NSCollectionView *collection = (NSCollectionView *)DPTidyListScroll(list).documentView;
     if (![collection isKindOfClass:NSCollectionView.class]) return 0;

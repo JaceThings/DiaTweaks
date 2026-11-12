@@ -6,7 +6,6 @@ static const NSUInteger DPTidyMaxTabs = 50;  // Keeps the prompt inside the on-d
 
 void DPTidyAskModel(NSArray *tabs, void (^done)(NSArray *groups, NSString *error));
 
-// A tidy that didn't happen shows nothing; the broom just stops.
 static void DPTidyFail(NSString *message) {
     NSLog(@"DiaPatches: Tidy Tabs: %@", message);
 }

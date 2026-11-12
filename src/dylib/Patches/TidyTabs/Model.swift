@@ -79,7 +79,6 @@ private func DPTidyMergeNarrower(_ subjects: [String]) -> [String] {
     }
 }
 
-// "Cat Food", "cat foods" and " cat food." are one subject.
 private func DPTidyNormalize(_ subject: String) -> String {
     subject.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
         .map { $0.count > 3 && $0.hasSuffix("s") && !$0.hasSuffix("ss") ? String($0.dropLast()) : $0 }

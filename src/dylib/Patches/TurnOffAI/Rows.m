@@ -1,7 +1,5 @@
 #import "TurnOffAI.h"
 
-// Rows hidden through the table itself: the chat suggestion, Settings' Apps and Skills panes, the chat shortcuts, and
-// the chat sounds.
 #define DPDiaSuggestionsView   "_TtC15BoostCommandBar15SuggestionsView"
 #define DPDiaShortcutsPane     "_TtC11Preferences45KeyboardShortcutsPreferencePaneViewController"
 #define DPDiaPreferencesTable  "_TtC11Preferences20PreferencesTableView"
@@ -20,8 +18,7 @@ static BOOL DPIsAIRowView(NSTableView *table, NSView *row) {
     BOOL sidebar = DPIsKind(table.delegate, DPDiaSettingsSidebar), suggestions = DPIsKind(table.delegate, DPDiaSuggestionsView);
     return DPFindView(row, ^BOOL(NSView *view) {
         if ([view isKindOfClass:NSImageView.class]) return [view.accessibilityLabel isEqual:@"chat"];
-        // A suggestion's text is what was typed or a page's title, which can start with "Chat with" too. Only the icon
-        // says the row is Dia's chat.
+        // A suggestion's text is what was typed or a page's title, which can start with "Chat with" too: only the icon says it's chat.
         if (suggestions) return NO;
         NSString *text = [view isKindOfClass:NSTextField.class] ? [(NSTextField *)view stringValue] : view.accessibilityLabel;
         if (sidebar) return [text isEqual:@"Apps"] || [text isEqual:@"Skills"];
@@ -29,9 +26,7 @@ static BOOL DPIsAIRowView(NSTableView *table, NSView *row) {
     }) != nil;
 }
 
-#pragma mark Typed row
-
-static CFTimeInterval gArrowAt;  // When the command bar was last given ↑ or ↓.
+static CFTimeInterval gArrowAt;
 
 static BOOL DPArrowJustPressed(void) { return CACurrentMediaTime() - gArrowAt < 0.3; }
 
@@ -56,7 +51,7 @@ static NSView *DPRowCell(NSTableView *table, NSInteger row) {
     return DPFindView([table rowViewAtRow:row makeIfNecessary:YES], ^BOOL(NSView *view) { return DPIsKind(view, DPDiaSuggestionCell); });
 }
 
-// The first row showing whose text is exactly what was typed, "— Google" trailing in a label of its own; -1 if none.
+// The first row showing whose text is what was typed, with "— Google" after it in a label of its own; -1 if none.
 static NSInteger DPTypedRow(NSTableView *table, NSString *typed) {
     NSIndexSet *hidden = DPGet(table, &DPAIRowsKey);
     for (NSInteger row = 0; row < table.numberOfRows; row++) {
@@ -73,7 +68,7 @@ static NSImageView *DPIconIn(NSView *root) {
     return (NSImageView *)DPFindView(container, ^BOOL(NSView *view) { return [view isKindOfClass:NSImageView.class]; });
 }
 
-// The search engine's name trailing a row's text, "— Google" read as "Google"; nil if the row has no such label.
+// "— Google" read as "Google".
 static NSString *DPTrailingName(NSView *cell, NSString *typed) {
     __block NSString *label;
     DPFindView(cell, ^BOOL(NSView *view) {
@@ -85,8 +80,8 @@ static NSString *DPTrailingName(NSView *cell, NSString *typed) {
     return DPTrimmed([label substringFromIndex:1]);
 }
 
-// Dia's pick can't be changed from here (a table's selection only shows it), and while it is the hidden chat row the bar
-// still looks like chat. So the button and the icon say what Return will do instead, as Dia does when it picks that row.
+// Dia's pick can't be changed from here, and while it is the hidden chat row the bar still looks like chat. So the button
+// and the icon say what Return will do instead, as Dia does when it picks that row.
 static void DPShowTypedAction(NSTableView *table) {
     if (!DPTurnOffAI.on || !DPGet(table, &DPPickKey)) return;
     NSView *bar = DPBarOf(table);
@@ -111,8 +106,8 @@ static void DPPickedHiddenRow(NSTableView *table) {
     dispatch_async(dispatch_get_main_queue(), ^{ DPShowTypedAction(table); });
 }
 
-// Return on the hidden chat row clicks the row for what was typed. With none it does nothing: chat is cut off, so
-// letting it through would only open a chat that can't answer.
+// With no row for what was typed Return does nothing: chat is cut off, so letting it through would only open a chat that
+// can't answer.
 static BOOL DPOpenTypedRow(NSTextView *text) {
     NSTableView *table = DPSuggestionsOf(text);
     NSString *typed = DPTrimmed(text.string);
@@ -138,14 +133,14 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
     return DPCallOriginal(DPInput_command, self, text, command);
 }
 
-// A hidden row has no view to look at, so the ones hidden here are shown again first, all before anything is drawn.
-// Rows are only looked at between updates: asking a table for a view while it updates throws.
+// A hidden row has no view to look at, so the ones hidden here are shown again first. Asking a table for a view while it
+// updates throws, so rows are only looked at between updates.
 static void DPFindAIRows(NSTableView *table) {
     // Hiding and showing rows are updates too.
     static BOOL finding;
     if (finding) return;
     finding = YES;
-    // The table keeps its hidden rows in step as rows come and go; what was found before may point past the end now.
+    // The table keeps its hidden rows in step as rows come and go, so what was found before may point past the end.
     if ([DPGet(table, &DPAIRowsKey) count] && table.hiddenRowIndexes.count)
         [table unhideRowsAtIndexes:table.hiddenRowIndexes withAnimation:NSTableViewAnimationEffectNone];
     NSMutableIndexSet *rows = [NSMutableIndexSet indexSet];
@@ -186,8 +181,8 @@ static void DPTable_reloadData(NSTableView *self, SEL _cmd) {
     if (DPFoldsRows(self)) DPFindAIRows(self);
 }
 
-// Dia picks the command bar's suggestion itself, hidden or not. Landing on the chat row with an arrow key moves on the way
-// the key did; picked for what was typed it isn't moved from, which would fill the field with the next suggestion.
+// Landing on the chat row with an arrow key moves on the way the key did; picked for what was typed it isn't moved from,
+// which would fill the field with the next suggestion.
 static void DPTable_selectRows(NSTableView *self, SEL _cmd, NSIndexSet *rows, BOOL extend) {
     NSInteger from = self.selectedRow;
     DPCallOriginal(DPTable_selectRows, self, rows, extend);

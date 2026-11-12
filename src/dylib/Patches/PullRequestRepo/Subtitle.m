@@ -1,9 +1,5 @@
 #import "PullRequestRepo.h"
 
-// GitHub live folders show "author • review status" under each pull request's title, and in Created by Me the author is
-// always you. This shows "hello-world #42 · Open" there instead, and moves the review status to a line of its own.
-// Only the sidebar's list can make a row taller, so with tabs at the top the status stays on the repository line.
-
 @interface NSObject (DPSwiftFields)
 - (id)safeSwiftValueForKey:(NSString *)key;
 @end
@@ -24,7 +20,6 @@ BOOL DPIsPRSubtitle(NSView *label) {
     return DPIsKind(label, DPDiaFeatheredLabel) && DPIsKind(label.superview, DPDiaTransitioningLabel);
 }
 
-// In the sidebar's list, as opposed to the tab strip at the top or a row that isn't in either yet.
 static BOOL DPInTabList(NSView *view) {
     while (view && !DPIsKind(view, DPDiaTabListCollection)) view = view.superview;
     return view != nil;
@@ -46,9 +41,9 @@ NSDictionary *DPPullRequestOf(NSView *view) {
     return @{@"repo": line, @"state": state, @"author": author, @"tab": tab ?: @""};
 }
 
-// "author", "author •", "author • Changes Requested" and "author • Changes Requested •" (a comments icon follows a
-// trailing dot). Returns the repository line, and the review status when there is one. A status that only repeats the
-// state, like "Merged ✓", takes the state's place on the repository line instead.
+// Dia's line is "author", "author •", "author • Changes Requested" or "author • Changes Requested •" (a comments icon follows
+// a trailing dot). A status that only repeats the state, like "Merged ✓", takes the state's place on the repository line.
+// Only the sidebar's list can make a row taller, so with tabs at the top the status stays on the repository line.
 static NSString *DPSplit(NSView *label, NSString *text, NSString **status, NSString **tab) {
     NSDictionary *pr = text.length ? DPPullRequestOf(label) : nil;
     if (!pr || ![text hasPrefix:pr[@"author"]]) return nil;

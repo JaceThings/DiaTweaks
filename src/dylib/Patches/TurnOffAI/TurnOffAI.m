@@ -47,8 +47,7 @@ static void DPSettingsHeader_layout(NSView *self, SEL _cmd) {
 
 static NSHashTable<NSViewController *> *DPChatSidebars;
 
-// Chat beside the page, open when AI is turned off or opened some way still left, is closed with Dia's own Hide Chat
-// button, which also gives the page its width back.
+// Dia's own Hide Chat button also gives the page its width back.
 static void DPCloseChat(NSViewController *sidebar) {
     if (!DPTurnOffAI.on) return;
     NSView *hide = DPFindView(sidebar.view, ^BOOL(NSView *view) { return DPHasLabel(view, @"Hide chat"); });
@@ -131,8 +130,7 @@ static BOOL DPIsAIShortcut(NSEvent *event) {
 
 static BOOL gCutOff;  // Chromium reads its host rules only as Dia starts.
 
-// Dia sends chat and fetches AI apps and skills from inside Chromium, so names that resolve nowhere stop them at once,
-// as if offline.
+// Dia sends chat and fetches AI apps and skills from inside Chromium, so names that resolve nowhere stop them as if offline.
 static void DPCutOffAIServers(void) {
     gCutOff = DPTurnOffAI.on;
     if (!gCutOff) return;
