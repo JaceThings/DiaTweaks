@@ -374,6 +374,10 @@ static void DPInstallCollapsePinned(void) {
     DPHook(DPDiaTabList, @selector(prepareForDragOperation:), (IMP)DPTabList_prepare);
     DPHook(DPDiaTabList, @selector(performDragOperation:), (IMP)DPTabList_perform);
     DPHook(DPDiaTabList, @selector(handleBackgroundDoubleClick:), (IMP)DPTabList_backgroundDoubleClick);
+    // A minimized window misses a fold made in another window of its profile, so its list is laid out again as it returns.
+    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidDeminiaturizeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        if (DPCollapsePinned.on) for (NSCollectionView *list in DPListsOf(nil)) [list.collectionViewLayout invalidateLayout];
+    }];
 }
 
 DP_PATCH(DPCollapsePinned) {
