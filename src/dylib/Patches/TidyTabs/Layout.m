@@ -34,7 +34,6 @@ static void DPTabList_layout(NSView *self, SEL _cmd) {
     row.hidden = inset < 1;
 }
 
-// In window coordinates. Dia's divider shows the broom with Close All, so it has no zone.
 NSRect DPTidyHoverZone(NSView *list) {
     NSScrollView *scroll = DPTidyListScroll(list);
     if (!scroll || DPTidySeparatorIn(list)) return NSZeroRect;

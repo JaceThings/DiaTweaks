@@ -43,5 +43,5 @@ NSRect DPTidyHoverZone(NSView *list);
 void DPTidyTabsNow(NSWindow *window);
 NSString *DPTidyUnavailableReason(void);
 
-NSDictionary<NSString *, NSString *> *DPTidyLooseTabs(NSWindow *window);  // URL to title.
+NSDictionary<NSString *, NSString *> *DPTidyLooseTabs(NSWindow *window);
 NSString *DPTidyAddress(NSString *url, NSString *host);

@@ -1,6 +1,6 @@
 #import "TidyTabs.h"
 
-static const CGFloat DPLineInset = 11;  // Dia's divider runs 11pt in from each side.
+static const CGFloat DPLineInset = 11;
 
 @implementation DPTidyRowView {
     DPTidyBrush *_brush;

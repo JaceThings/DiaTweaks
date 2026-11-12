@@ -1,6 +1,6 @@
 #import "Patches/UnloadTab/Recent.h"
 
-static NSMapTable<NSWindow *, NSMutableArray<NSString *> *> *DPRecent;  // Each window's tab IDs, the one in front last.
+static NSMapTable<NSWindow *, NSMutableArray<NSString *> *> *DPRecent;
 
 static void DPNoteFront(NSWindow *window) {
     NSString *active = window && DPUnloadTab.on ? DPActiveTabID(window) : nil;

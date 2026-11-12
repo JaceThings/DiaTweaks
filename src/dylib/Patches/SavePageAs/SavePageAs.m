@@ -17,7 +17,7 @@ static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
 
 static id DPFrontPage(void) {
     NSWindow *window = NSApp.keyWindow;
-    NSView *hit = [window.contentView.superview hitTest:window.mouseLocationOutsideOfEventStream];  // the frame view has no superview
+    NSView *hit = [window.contentView.superview hitTest:window.mouseLocationOutsideOfEventStream];
     id focused = nil, under = nil, only = nil;
     NSUInteger count = 0;
     for (id page in DPPages.allObjects) {

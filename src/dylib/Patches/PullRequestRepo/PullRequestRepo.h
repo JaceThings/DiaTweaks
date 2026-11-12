@@ -4,7 +4,7 @@ extern DPPatch DPPullRequestRepo;
 
 BOOL DPIsPRSubtitle(NSView *label);
 NSView *DPEnclosingView(NSView *view, const char *className);
-NSDictionary *DPPullRequestOf(NSView *view);  // @{repo: "hello-world #42 · Open", state, author, tab}, or nil.
+NSDictionary *DPPullRequestOf(NSView *view);
 void DPRefreshPRSubtitles(void);
 void DPInstallPRSubtitles(void);
 

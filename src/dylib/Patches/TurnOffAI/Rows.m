@@ -18,7 +18,7 @@ static BOOL DPIsAIRowView(NSTableView *table, NSView *row) {
     BOOL sidebar = DPIsKind(table.delegate, DPDiaSettingsSidebar), suggestions = DPIsKind(table.delegate, DPDiaCommandBarSuggestions);
     return DPFindView(row, ^BOOL(NSView *view) {
         if ([view isKindOfClass:NSImageView.class]) return [view.accessibilityLabel isEqual:@"chat"];
-        // A suggestion's text is what was typed or a page's title, which can start with "Chat with" too: only the icon says it's chat.
+        // Suggestion text can start with "Chat with" too: only the icon says it's chat.
         if (suggestions) return NO;
         NSString *text = [view isKindOfClass:NSTextField.class] ? [(NSTextField *)view stringValue] : view.accessibilityLabel;
         if (sidebar) return [text isEqual:@"Apps"] || [text isEqual:@"Skills"];
@@ -43,7 +43,6 @@ static NSView *DPBarOf(NSView *view) {
     return view;
 }
 
-// The first row showing whose text is what was typed, with "— Google" after it in a label of its own.
 static NSView *DPTypedCell(NSTableView *table, NSString *typed) {
     NSIndexSet *hidden = DPGet(table, &DPAIRowsKey);
     for (NSInteger row = 0; row < table.numberOfRows; row++) {
@@ -61,7 +60,6 @@ static NSImageView *DPIconIn(NSView *root) {
     return DPFirstOfClass(DPFirstOfKind(root, DPDiaIconContainer), NSImageView.class);
 }
 
-// "— Google" after a row's text, read as "Google".
 static NSString *DPTrailingName(NSView *cell, NSString *typed) {
     NSTextField *other = (NSTextField *)DPFindView(cell, ^BOOL(NSView *view) {
         NSString *text = [view isKindOfClass:NSTextField.class] ? DPTrimmed(((NSTextField *)view).stringValue) : nil;
@@ -72,8 +70,7 @@ static NSString *DPTrailingName(NSView *cell, NSString *typed) {
     return DPTrimmed([label substringFromIndex:1]);
 }
 
-// Dia's pick can't be changed from here, and while it is the hidden chat row the bar still looks like chat. So the button
-// and the icon say what Return will do instead, as Dia does when it picks that row.
+// Dia's pick can't be moved from here, so the button and icon show what Return will do instead.
 static void DPShowTypedAction(NSTableView *table) {
     if (!DPTurnOffAI.on || !DPGet(table, &DPPickKey)) return;
     NSView *bar = DPBarOf(table);
@@ -99,8 +96,7 @@ static void DPPickedHiddenRow(NSTableView *table) {
     dispatch_async(dispatch_get_main_queue(), ^{ DPShowTypedAction(table); });
 }
 
-// With no row for what was typed Return does nothing: chat is cut off, so letting it through would only open a chat that
-// can't answer.
+// No typed row: swallow Return, since letting it through opens a chat that can't answer.
 static BOOL DPOpenTypedRow(NSTextView *text) {
     NSTableView *table = (NSTableView *)DPFindView(DPBarOf(text), ^BOOL(NSView *view) {
         return [view isKindOfClass:NSTableView.class] && DPIsKind(((NSTableView *)view).delegate, DPDiaCommandBarSuggestions);
@@ -128,8 +124,7 @@ static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL comman
     return DPCallOriginal(DPInput_command, self, text, command);
 }
 
-// A hidden row has no view to look at, so the ones hidden here are shown again first. Asking a table for a view while it
-// updates throws, so rows are only looked at between updates.
+// Asking a table for a row view during an update throws, and hidden rows have none: unhide, look, hide.
 static void DPFindAIRows(NSTableView *table) {
     // Hiding and showing rows are updates too.
     static BOOL finding;
@@ -173,8 +168,7 @@ static void DPTable_reloadData(NSTableView *self, SEL _cmd) {
     if (DPFoldsRows(self)) DPFindAIRows(self);
 }
 
-// Landing on the chat row with an arrow key moves on the way the key did; picked for what was typed it isn't moved from,
-// which would fill the field with the next suggestion.
+// An arrow onto the chat row moves on; Dia's own pick of it must not, or the field fills with the next suggestion.
 static void DPTable_selectRows(NSTableView *self, SEL _cmd, NSIndexSet *rows, BOOL extend) {
     NSInteger from = self.selectedRow;
     DPCallOriginal(DPTable_selectRows, self, rows, extend);

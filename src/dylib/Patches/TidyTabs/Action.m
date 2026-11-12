@@ -10,7 +10,6 @@ static void DPTidyFail(NSString *message) {
     NSLog(@"DiaPatches: Tidy Tabs: %@", message);
 }
 
-// Untitled, so Dia's own AI names each group.
 static NSArray<NSDictionary *> *DPTidyOps(NSArray *groups, NSArray<NSDictionary *> *tabs) {
     NSMutableArray *ops = [NSMutableArray array];
     NSMutableSet<NSNumber *> *used = [NSMutableSet set];

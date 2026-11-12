@@ -3,7 +3,7 @@
 extern DPPatch DPQuietDownloads;
 
 static Class DPDownloadsMenu;
-static __weak NSView *DPPressed;  // by VoiceOver or Full Keyboard Access, until the run loop comes round
+static __weak NSView *DPPressed;
 
 static BOOL DPButton_press(NSView *self, SEL _cmd) {
     DPPressed = self;
@@ -11,12 +11,11 @@ static BOOL DPButton_press(NSView *self, SEL _cmd) {
     return DPCallOriginal(DPButton_press, self);
 }
 
-// Dia opens the list as a download starts, often while the page's link click is still the current event.
 static BOOL DPAskedFor(NSView *anchor) {
     if ([DPPressed isDescendantOf:anchor] || [anchor isDescendantOf:DPPressed]) return YES;
     NSEvent *event = NSApp.currentEvent;
     if (event.window != anchor.window || (event.type != NSEventTypeLeftMouseDown && event.type != NSEventTypeLeftMouseUp)) return NO;
-    NSView *clicked = [anchor.window.contentView.superview hitTest:event.locationInWindow];  // the frame view has no superview
+    NSView *clicked = [anchor.window.contentView.superview hitTest:event.locationInWindow];
     return [clicked isDescendantOf:anchor] || [anchor isDescendantOf:clicked];
 }
 

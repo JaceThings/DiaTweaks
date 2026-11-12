@@ -2,8 +2,6 @@
 #import "Patches/CompactTabRows/CompactTabRows.h"
 #import <objc/message.h>
 
-// Dia's list gives every tab the same height, so a row with a status line is made taller after its layout.
-
 static const CGFloat DPExtra = 14, DPTabHeight = 37;
 static NSMutableSet<NSString *> *DPTallTabs;
 static char DPStatusKey, DPLineKey, DPAdjustedKey, DPEditsKey;
@@ -36,7 +34,6 @@ void DPResetPRRows(void) {
     DPInvalidateRows();
 }
 
-// The list's items are TabList.TabListView.CollectionViewItem.tab(<tab ID>), .tabGroupHeader(…) and so on.
 static NSString *DPTabAt(id source, NSIndexPath *path) {
     NSString *item = [((id (*)(id, SEL, id))objc_msgSend)(source, @selector(itemIdentifierForIndexPath:), path) description];
     NSRange open = [item rangeOfString:@".tab("];
@@ -55,7 +52,7 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     id source = DPObjectIvar(diffable, "_impl");
     void *height = DPIvar(self, "contentHeight");
     if (![source respondsToSelector:@selector(itemIdentifierForIndexPath:)] || !height) return;
-    // Dia's own attributes, which it keeps, so changing them changes the layout; Collapse Pinned Tabs hands out moved copies.
+    // Dia's own IMP: Collapse Pinned Tabs hands out copies, and changing a copy changes nothing.
     NSArray *(*elements)(id, SEL, NSRect) = (void *)DPDiaIMP(objc_getClass(DPDiaTabListLayout), @selector(layoutAttributesForElementsInRect:));
     NSArray<NSCollectionViewLayoutAttributes *> *all = elements(self, @selector(layoutAttributesForElementsInRect:), NSMakeRect(-1e5, -1e5, 2e5, 1e7));
     NSMutableArray<NSCollectionViewLayoutAttributes *> *tall = [NSMutableArray new];
@@ -67,7 +64,7 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     if (last[0] == tall[0] && NSEqualRects([last[1] rectValue], tall[0].frame)) return;
     NSMutableArray<NSValue *> *rows = [NSMutableArray new];
     for (NSCollectionViewLayoutAttributes *a in tall) [rows addObject:[NSValue valueWithRect:a.frame]];
-    NSMutableArray *edits = [NSMutableArray new];  // Each item, and how far its top and its height moved.
+    NSMutableArray *edits = [NSMutableArray new];
     for (NSCollectionViewLayoutAttributes *a in all) {
         NSRect frame = a.frame;
         for (NSValue *value in rows) {
@@ -84,9 +81,7 @@ static void DPLayout_prepareLayout(NSCollectionViewLayout *self, SEL _cmd) {
     DPSet(self, &DPAdjustedKey, @[tall[0], [NSValue valueWithRect:tall[0].frame]]);
 }
 
-// Dia works out where a dragged tab lands from the rows as it laid them out, so the pointer goes back to the same spot in
-// those. It arrives as the list shows it, Collapse Pinned Tabs' header included: that tweak's hooks install before these and
-// so run after, so each row is taken as the list shows it too.
+// Collapse Pinned Tabs' hooks install before these and so run after: rows are read as the list shows them.
 static NSArray<NSArray<NSValue *> *> *DPMoves(NSCollectionViewLayout *layout) {
     NSMutableArray *moves = [NSMutableArray new];
     for (NSArray *edit in DPGet(layout, &DPEditsKey)) {

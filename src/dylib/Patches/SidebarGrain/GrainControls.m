@@ -6,7 +6,7 @@ static NSHashTable<NSView *> *DPGrainSliders;
 
 @interface DPGrainSliderRow : NSStackView <NSTextFieldDelegate>
 @property const DPGrainSetting *setting;
-@property (nonatomic) NSString *space;  // The profile it edits; nil edits the global values.
+@property (nonatomic) NSString *space;
 @property NSSlider *slider;
 @property NSTextField *field;
 @end
@@ -101,7 +101,6 @@ NSArray<NSView *> *DPGrainRows(void) {
     return rows;
 }
 
-// `reset` runs after the reset button.
 void DPGrainRowsFor(NSArray<NSView *> *rows, NSString *space, void (^reset)(void)) {
     for (NSView *row in rows) {
         if ([row isKindOfClass:DPGrainSliderRow.class]) ((DPGrainSliderRow *)row).space = space;

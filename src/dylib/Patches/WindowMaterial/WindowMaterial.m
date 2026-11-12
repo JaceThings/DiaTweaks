@@ -15,7 +15,7 @@ static NSString *const DPMaterials[] = {
     [NSVisualEffectMaterialToolTip] = @"Tooltip",
 };
 
-// NSGlassEffectView's `_variant`s, in AppKit's order.
+// Index is AppKit's `_variant` value: don't reorder.
 static NSString *const DPGlasses[] = {
     @"Regular", @"Clear", @"Dock", @"App Icons", @"Widgets", @"Text", @"AV Player", @"FaceTime", @"Control Center",
     @"Notification Center", @"Monogram", @"Bubbles", @"Identity", @"Focus Border", @"Focus Platter", @"Keyboard",
@@ -36,14 +36,12 @@ static NSMenu *DPMaterialChoices(void) {
     return menu;
 }
 
-// Liquid Glass needs NSGlassEffectView, which macOS 14 and 15 don't have, so they get Sidebar instead.
 static NSString *DPWindowMaterialChoice(void) {
     NSString *choice = DPChoice(&DPWindowMaterial);
     BOOL unsupported = [choice hasPrefix:@"glass."] && !DPGlassEffectView();
     return unsupported ? [NSString stringWithFormat:@"material.%ld", (long)NSVisualEffectMaterialSidebar] : choice;
 }
 
-// Dia shows and hides these views too, so its last say is kept for when the patch lets go.
 static void DPView_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     DPSet(self, &DPDiaHiddenKey, @(hidden));
     DPCallOriginal(DPView_setHidden, self, hidden || [DPGet(self, &DPHiddenKey) boolValue]);
@@ -68,7 +66,6 @@ static NSView *DPTintIn(NSView *view) {
     return nil;
 }
 
-// The tint is a white or black wash under a gradient of the profile's color. Only the wash hides the material.
 static NSView *DPWashIn(NSView *tint) {
     for (NSView *view in tint.subviews) if (DPIsKind(view, DPDiaColorView)) return view;
     return nil;
@@ -81,7 +78,6 @@ static NSVisualEffectMaterial DPWindowBackgroundMaterial(NSWindow *window) {
     return effect ? ((NSVisualEffectView *)effect).material : NSVisualEffectMaterialUnderWindowBackground;
 }
 
-// The window and the floating sidebar each stack effect views under a theme tint.
 static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
     NSView *content = tint.superview;
     if (!content) return;
@@ -150,7 +146,6 @@ static void DPFloatingSidebar_layout(NSView *self, SEL _cmd) {
     DPApplyMaterialUnder(DPTintIn(self), YES);
 }
 
-// Dia sets its own material again whenever a background redraws.
 static void DPBackgroundTile_updateLayer(NSView *self, SEL _cmd) {
     DPCallOriginal(DPBackgroundTile_updateLayer, self);
     for (NSView *host = self.superview; host; host = host.superview) {

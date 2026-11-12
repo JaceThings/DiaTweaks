@@ -22,7 +22,6 @@ static CGFloat DPRadius(void) {
     return saved ? MIN(MAX([saved doubleValue], 0), DPMaxRadius) : DPMaxRadius;
 }
 
-// A full screen window keeps the square corners macOS gives it.
 static BOOL DPInFullScreen(NSWindow *window) { return (window.styleMask & NSWindowStyleMaskFullScreen) != 0; }
 
 CGFloat DPWindowCornerGrowth(NSWindow *window) {
@@ -45,7 +44,6 @@ static void DPRoundWindow(NSWindow *window) {
     [window invalidateShadow];
 }
 
-// Icons, under 10 points, keep their corners.
 static void DPRoundLayers(CALayer *layer, CGFloat growth) {
     CGFloat dia = DPDiaRadius(layer, layer.cornerRadius);
     if (dia >= 10) {

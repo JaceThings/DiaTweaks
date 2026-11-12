@@ -3,20 +3,18 @@
 #import "Commands/GroupTabs/GroupTabs.h"
 #import <objc/message.h>
 
-enum { DPPageVisible = 2 };  // content::Visibility: hidden, occluded, visible.
+enum { DPPageVisible = 2 };
 
 static NSHashTable *DPPages;
-static NSHashTable *DPDiscarded;  // Pages Chromium says it unloaded, until they're shown again.
-static NSHashTable *DPUnloadOnHide;  // Pages to unload as soon as switching away from them takes them off screen.
+static NSHashTable *DPDiscarded;
+static NSHashTable *DPUnloadOnHide;
 
-// A split tab has more than one page and isn't offered.
 static id DPTabContent(NSView *tab) {
     NSDictionary *views = DPSwiftValue(tab, @"contentViews");
     if (views.count != 1) return nil;
     return DPSwiftValue(DPSwiftValue(views.allValues.firstObject, @"viewModel"), @"delegate");
 }
 
-// Dia's tabs don't hold their page, so it's found by address, and only when no other loaded page shares it.
 static id DPPageAt(NSURL *url) {
     id found = nil;
     for (id page in DPPages) {
@@ -27,8 +25,7 @@ static id DPPageAt(NSURL *url) {
     return found;
 }
 
-// A tab with no page of its own (never loaded, or a pinned tab that was closed) would be taken for another tab's page, so
-// the page is only offered for the one tab, in any window, that shows its address.
+// A tab with no page of its own would be taken for another tab's page at the same address.
 static id DPPageOf(id content) {
     NSURL *url = DPSwiftValue(content, @"webContentURL");
     NSString *tabID = DPUUIDsIn([DPSwiftValue(content, @"tabID") description]).firstObject;
@@ -51,14 +48,14 @@ static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
     [DPPages addObject:self];
     DPCallOriginal(DPPage_setVisibility, self, visibility);
     if (visibility == DPPageVisible) {
-        [DPDiscarded removeObject:self];  // Showing it loads it again.
+        [DPDiscarded removeObject:self];
     } else if ([DPUnloadOnHide containsObject:self]) {
         [DPUnloadOnHide removeObject:self];
         dispatch_async(dispatch_get_main_queue(), ^{ [self performSelector:@selector(discard)]; });
     }
 }
 
-// Chromium may decline, as for a page playing audio, so a page only counts as unloaded once it says it went.
+// Chromium may decline (a page playing audio), so only its finalize callback marks a page unloaded.
 static void DPWebContent_finalizeDiscard(id self, SEL _cmd, id page, BOOL discarded) {
     DPCallOriginal(DPWebContent_finalizeDiscard, self, page, discarded);
     if (discarded && page) [DPDiscarded addObject:page];
@@ -68,11 +65,9 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
     NSMenu *menu = DPCallOriginal(DPTab_menuForEvent, self, event);
     id content = menu && DPUnloadTab.on ? DPTabContent(self) : nil;
     NSView *pane = content ? DPFindView(self, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabContentView); }) : nil;
-    // An open pinned tab closes its page and stays pinned, as its minus button does, so Dia knows it has no page.
     BOOL pinned = pane && DPIsOpenPinned(pane) && [pane respondsToSelector:NSSelectorFromString(@"closeButtonClicked")];
     id page = content && !pinned ? DPPageOf(content) : nil;
     if (!pinned && (!page || [DPDiscarded containsObject:page])) return menu;
-    // Chromium won't unload a page on screen, so for the tab in front the window goes back to the one before it first.
     BOOL open = DPTabOpen(self);
     BOOL visible = page ? ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) == DPPageVisible : open;
     NSWindow *window = self.window;
@@ -81,7 +76,7 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
         if (before) DPForgetFrontTab(window);
         if (pinned) {
             if (before) DPFocusTab(before);
-            DPMarkOwnClose();  // Unloading isn't closing, so it doesn't arm Undo Closing a Tab.
+            DPMarkOwnClose();
             return (void)DPCloseKeepingTab(pane);
         }
         if (!before) return (void)[page performSelector:@selector(discard)];
@@ -95,9 +90,9 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
         });
     });
     item.image = [NSImage imageWithSystemSymbolName:@"moon.zzz" accessibilityDescription:nil];
-    // Hidden by default, unlike Dia's own items. By name: CI's SDK predates macOS 27. 1 is NSMenuItemImageVisibilityVisible.
+    // By name: CI's SDK predates macOS 27. 1 is NSMenuItemImageVisibilityVisible.
     if (@available(macOS 27, *)) [item setValue:@1 forKey:@"preferredImageVisibility"];
-    item.enabled = pinned || !visible || before;  // A page on screen elsewhere, as in another window, stays.
+    item.enabled = pinned || !visible || before;
     NSInteger close = [menu indexOfItemWithTitle:@"Close"];
     [menu insertItem:item atIndex:close < 0 ? menu.numberOfItems : close];
     return menu;
@@ -110,7 +105,6 @@ static NSMenuItem *DPUnloadItem(NSView *tab) {
     return [[tab menuForEvent:click] itemWithTitle:@"Unload Tab"];
 }
 
-// A tab showing a page no other tab shows offers Unload Tab when its page is loaded, as the one in front always is.
 static NSString *DPVerifyUnloadTab(DPPatch *patch) {
     NSArray<NSView *> *tabs = DPFindViews(DPDiaTabView);
     NSCountedSet<NSURL *> *urls = [NSCountedSet set];

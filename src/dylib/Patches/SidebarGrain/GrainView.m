@@ -58,8 +58,6 @@
     [self refreshActivity:nil];
 }
 
-// Fine's black and white specks go over the page rather than into it, so they take less opacity for the same contrast.
-// A sharp tile mixed with a soft one has less contrast than either, as they only partly agree, so the mix is boosted.
 - (void)setGrainAmount:(double)amount softness:(double)softness scale:(double)scale {
     NSString *material = DPGrainMaterial(_space);
     if (![DPGrainMaterialKeys() containsObject:material]) material = @"sand";

@@ -3,7 +3,7 @@
 @interface DPGrainMenu : NSObject
 @property (weak) NSView *sidebar;
 @property NSPoint anchor;
-@property NSString *profile, *space;  // The profile of this window, and the one the popover edits: nil edits all profiles.
+@property NSString *profile, *space;
 @property NSPopUpButton *picker;
 @property NSButton *shown;
 @property NSArray<NSView *> *rows;
@@ -85,7 +85,7 @@ static NSStackView *DPGrainLabeledRow(NSString *title, NSView *control) {
     [rows.widthAnchor constraintEqualToConstant:300].active = YES;
     NSViewController *controller = [NSViewController new];
     controller.view = rows;
-    controller.representedObject = self;  // The popover's controls only point at this.
+    controller.representedObject = self;  // Controls' targets are weak: this keeps the menu alive.
     popover.contentViewController = controller;
     BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
     NSRect anchor = horizontal ? NSMakeRect(self.anchor.x, self.anchor.y, 1, 1) :

@@ -19,7 +19,6 @@ NSView *DPEnclosingView(NSView *view, const char *className) {
 
 static BOOL DPInTabList(NSView *view) { return DPEnclosingView(view, DPDiaTabListCollection) != nil; }
 
-// From the row's live item, on its TabContentController.
 NSDictionary *DPPullRequestOf(NSView *view) {
     view = DPEnclosingView(view, DPDiaTabContentView);
     id controller = DPSwiftValue(DPSwiftValue(view, @"viewModel"), @"delegate");
@@ -35,9 +34,6 @@ NSDictionary *DPPullRequestOf(NSView *view) {
     return @{@"repo": line, @"state": state, @"author": author, @"tab": tab ?: @""};
 }
 
-// Dia's line is "author", "author •", "author • Changes Requested" or "author • Changes Requested •" (a comments icon follows
-// a trailing dot). A status that only repeats the state, like "Merged ✓", takes the state's place on the repository line.
-// Only the sidebar's list can make a row taller, so with tabs at the top the status stays on the repository line.
 static NSString *DPSplit(NSView *label, NSString *text, NSString **status, NSString **tab) {
     NSDictionary *pr = text.length ? DPPullRequestOf(label) : nil;
     if (!pr || ![text hasPrefix:pr[@"author"]]) return nil;
@@ -71,7 +67,7 @@ static void DPLabel_setStringValue(NSTextField *self, SEL _cmd, NSString *value)
     DPCallOriginal(DPLabel_setStringValue, self, shown ?: value);
 }
 
-// Catches a label Dia filled in before putting it in the row, and one that moved in or out of the sidebar's list since.
+// Dia may set the text before the label is in a row, or move the label in or out of the list later.
 static void DPLabel_layout(NSTextField *self, SEL _cmd) {
     DPCallOriginal(DPLabel_layout, self);
     if (!DPPullRequestRepo.on || !DPIsPRSubtitle(self)) return;

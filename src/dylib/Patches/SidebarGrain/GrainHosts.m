@@ -3,7 +3,6 @@
 NSHashTable<NSView *> *DPGrainHosts;
 static char DPGrainViewKey;
 
-// The footer sits beside the page, never in the page or the strip, so the search skips both.
 static BOOL DPHasSidebarFooter(NSView *view, NSView *strip) {
     if (DPIsKind(view, DPDiaSidebarFooter)) return YES;
     if (view == strip || DPIsKind(view, DPDiaContentContainer)) return NO;
@@ -13,7 +12,6 @@ static BOOL DPHasSidebarFooter(NSView *view, NSView *strip) {
 
 BOOL DPGrainHostAvailable(NSView *host) {
     if (!host.window) return NO;
-    // A hidden, auto-hiding sidebar is still a vertical layout.
     if (DPIsKind(host, DPDiaTabStrip)) return !DPHasSidebarFooter(host.window.contentView, host);
     return DPSubview(host, DPDiaSidebarFooter) != nil;
 }
@@ -26,7 +24,6 @@ NSRect DPGrainHostBounds(NSView *host) {
     });
     if (!content) return NSZeroRect;
     NSRect page = [host convertRect:content.bounds fromView:content];
-    // Dia's strip extends below its chrome to feather tab shadows; the texture stops at the page.
     CGFloat edge = host.isFlipped ? NSMinY(page) : NSMaxY(page);
     NSRect chrome = host.isFlipped ? NSMakeRect(NSMinX(bounds), NSMinY(bounds), NSWidth(bounds), MAX(0, edge - NSMinY(bounds))) :
         NSMakeRect(NSMinX(bounds), MAX(NSMinY(bounds), edge), NSWidth(bounds), MAX(0, NSMaxY(bounds) - edge));

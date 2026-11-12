@@ -1,6 +1,5 @@
 #import "TidyTabs.h"
 
-// Dia's divider shows Close All while the pointer is on it; the broom shows and hides with it.
 static char DPLineFrameKey;
 static const CGFloat DPCloseAllGap = 4;
 
@@ -37,16 +36,14 @@ static void DPCloseAll_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     if (DPIsKind(self.superview, DPDiaTabListSeparator)) DPPlaceSeparatorBrush(self.superview);
 }
 
-// Tab rows, folders, the New Tab row and a group's own row are all about as tall (and the height changes between Dia
-// builds), so a row is a tab by its cell's class where it has one. An off-screen row has no cell: it's a tab if it's the
-// height of the others. A group's tabs are rows inside the group's frame, so a row inside a taller row isn't loose.
+// Row heights change between Dia builds: a tab is known by its cell's class, an off-screen row (no cell) by its height.
 NSInteger DPTidyTabsBelowLine(NSView *list) {
     NSCollectionView *collection = (NSCollectionView *)DPTidyListScroll(list).documentView;
     if (![collection isKindOfClass:NSCollectionView.class]) return 0;
     NSView *separator = DPTidySeparatorIn(list);
     CGFloat line = separator ? NSMaxY([collection convertRect:separator.bounds fromView:separator]) - 0.5 : -CGFLOAT_MAX;
     NSMutableArray<NSValue *> *frames = [NSMutableArray array];
-    NSMutableArray<NSNumber *> *isTab = [NSMutableArray array];  // YES, NO, or nil when not on screen.
+    NSMutableArray<NSNumber *> *isTab = [NSMutableArray array];
     NSCountedSet<NSNumber *> *heights = [NSCountedSet set];
     for (NSInteger section = 0; section < collection.numberOfSections; section++)
         for (NSInteger item = 0; item < [collection numberOfItemsInSection:section]; item++) {
@@ -85,13 +82,11 @@ static NSView *DPListOf(NSView *view) {
 
 void DPPlaceSeparatorBrush(NSView *separator) {
     NSView *closeAll = DPCloseAll(separator);
-    // Close All's class is private to Dia's TabList module, so it's hooked once one turns up.
     static BOOL hooked;
     if (closeAll && !hooked) {
         hooked = YES;
         DPHookClass(object_getClass(closeAll), @selector(setHidden:), (IMP)DPCloseAll_setHidden);
     }
-    // While busy the broom still follows Close All, and the wave fills the whole line when it's away.
     BOOL shown = DPTidyTabs.on && closeAll && !closeAll.hidden && (DPTidyIsBusy() || DPTidyTabsBelowLine(DPListOf(separator)) >= DPTidyMinimumTabs);
     DPTidyBrush *brush = DPBrushIn(separator, shown);
     CALayer *line = DPSeparatorLine(separator);
@@ -123,7 +118,6 @@ static void DPSeparator_updateLayer(NSView *self, SEL _cmd) {
     DPPlaceSeparatorBrush(self);
 }
 
-// The tab list's collection view takes every click inside it, to drag tabs; a click on the broom goes to the broom.
 static NSView *DPCollection_hitTest(NSView *self, SEL _cmd, NSPoint point) {
     for (DPTidyBrush *brush in DPTidyBrushes()) {
         if (brush.hiddenOrHasHiddenAncestor || ![brush isDescendantOf:self]) continue;
