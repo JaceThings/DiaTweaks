@@ -6,6 +6,7 @@
 #define DPDiaShortcutsPane     "_TtC11Preferences45KeyboardShortcutsPreferencePaneViewController"
 #define DPDiaPreferencesTable  "_TtC11Preferences20PreferencesTableView"
 #define DPDiaSuggestionCell    "_TtC15BoostCommandBar23SuggestionTableViewCell"
+#define DPDiaIconContainer     "_TtC15BoostCommandBar17IconContainerView"
 
 static char DPAIRowsKey, DPPickKey;
 
@@ -30,9 +31,7 @@ static BOOL DPIsAIRowView(NSTableView *table, NSView *row) {
 
 #pragma mark Typed row
 
-static SEL gArrow;  // The last ↑ or ↓ the command bar was given, and when.
-static CFTimeInterval gArrowAt;
-static BOOL gShowing;
+static CFTimeInterval gArrowAt;  // When the command bar was last given ↑ or ↓.
 
 static BOOL DPArrowJustPressed(void) { return CACurrentMediaTime() - gArrowAt < 0.3; }
 
@@ -69,24 +68,51 @@ static NSInteger DPTypedRow(NSTableView *table, NSString *typed) {
     return -1;
 }
 
-// Dia's pick can't be changed from here, a table's selection only shows it, so the row Return will open is shown selected.
-static void DPShowTypedRow(NSTableView *table) {
+static NSImageView *DPIconIn(NSView *root) {
+    NSView *container = DPFindView(root, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaIconContainer); });
+    return (NSImageView *)DPFindView(container, ^BOOL(NSView *view) { return [view isKindOfClass:NSImageView.class]; });
+}
+
+// The search engine's name trailing a row's text, "— Google" read as "Google"; nil if the row has no such label.
+static NSString *DPTrailingName(NSView *cell, NSString *typed) {
+    __block NSString *label;
+    DPFindView(cell, ^BOOL(NSView *view) {
+        NSString *text = [view isKindOfClass:NSTextField.class] ? DPTrimmed(((NSTextField *)view).stringValue) : nil;
+        if (text.length && ![text isEqual:typed]) label = text;
+        return label != nil;
+    });
+    if (label.length < 2 || ![@"—–-" containsString:[label substringToIndex:1]]) return nil;
+    return DPTrimmed([label substringFromIndex:1]);
+}
+
+// Dia's pick can't be changed from here (a table's selection only shows it), and while it is the hidden chat row the bar
+// still looks like chat. So the button and the icon say what Return will do instead, as Dia does when it picks that row.
+static void DPShowTypedAction(NSTableView *table) {
     if (!DPTurnOffAI.on || !DPGet(table, &DPPickKey)) return;
+    NSView *bar = DPBarOf(table);
     NSString *typed = DPTrimmed(DPInputOf(table).string ?: @"");
     NSInteger row = typed.length ? DPTypedRow(table, typed) : -1;
-    DPSet(table, &DPPickKey, @(row));
-    if (row < 0 || table.selectedRow == row) return;
-    gShowing = YES;
-    [table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
-    gShowing = NO;
+    NSView *cell = row < 0 ? nil : DPRowCell(table, row);
+    NSString *name = DPTrailingName(cell, typed);
+    NSImageView *rowIcon = DPIconIn(cell), *fieldIcon = DPIconIn(DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarInput); }));
+    NSView *button = DPFindView(bar, ^BOOL(NSView *view) {
+        return DPIsKind(view, DPDiaCommandBarButton) && DPFindView(view, ^BOOL(NSView *sub) { return [sub isKindOfClass:NSImageView.class] && DPHasLabel(sub, @"Return"); });
+    });
+    NSTextField *label = (NSTextField *)DPFindView(button, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextField.class]; });
+    if (name && label && ![label.stringValue isEqual:name]) label.stringValue = name;
+    if (rowIcon.image && fieldIcon && fieldIcon.image != rowIcon.image) {
+        fieldIcon.image = rowIcon.image;
+        fieldIcon.accessibilityLabel = rowIcon.accessibilityLabel;
+    }
 }
 
 static void DPPickedHiddenRow(NSTableView *table) {
-    DPSet(table, &DPPickKey, @(-1));
-    dispatch_async(dispatch_get_main_queue(), ^{ DPShowTypedRow(table); });
+    DPSet(table, &DPPickKey, @YES);
+    dispatch_async(dispatch_get_main_queue(), ^{ DPShowTypedAction(table); });
 }
 
-// Return on the hidden chat row clicks the row for what was typed; with none it does nothing rather than reach chat.
+// Return on the hidden chat row clicks the row for what was typed. With none it does nothing: chat is cut off, so
+// letting it through would only open a chat that can't answer.
 static BOOL DPOpenTypedRow(NSTextView *text) {
     NSTableView *table = DPSuggestionsOf(text);
     NSString *typed = DPTrimmed(text.string);
@@ -105,7 +131,6 @@ static BOOL DPOpenTypedRow(NSTextView *text) {
 
 static BOOL DPInput_command(NSView *self, SEL _cmd, NSTextView *text, SEL command) {
     if (DPTurnOffAI.on && (command == @selector(moveUp:) || command == @selector(moveDown:))) {
-        gArrow = command;
         gArrowAt = CACurrentMediaTime();
     } else if (DPTurnOffAI.on && command == @selector(insertNewline:) && DPOpenTypedRow(text)) {
         return YES;
@@ -135,7 +160,7 @@ static void DPFindAIRows(NSTableView *table) {
     if (!DPIsKind(table.delegate, DPDiaSuggestionsView)) return;
     if (!DPTurnOffAI.on) DPSet(table, &DPPickKey, nil);
     else if (!DPGet(table, &DPPickKey) && !DPArrowJustPressed() && [rows containsIndex:table.selectedRow]) DPPickedHiddenRow(table);
-    else if (DPGet(table, &DPPickKey)) dispatch_async(dispatch_get_main_queue(), ^{ DPShowTypedRow(table); });
+    else if (DPGet(table, &DPPickKey)) dispatch_async(dispatch_get_main_queue(), ^{ DPShowTypedAction(table); });
     if (!changed) return;
     for (NSView *view = table; view; view = view.superview)
         if (DPIsKind(view, DPDiaCommandBar)) { view.needsLayout = YES; break; }
@@ -166,18 +191,14 @@ static void DPTable_reloadData(NSTableView *self, SEL _cmd) {
 static void DPTable_selectRows(NSTableView *self, SEL _cmd, NSIndexSet *rows, BOOL extend) {
     NSInteger from = self.selectedRow;
     DPCallOriginal(DPTable_selectRows, self, rows, extend);
-    if (gShowing || !DPTurnOffAI.on || !DPIsKind(self.delegate, DPDiaSuggestionsView)) return;
-    NSNumber *pick = DPGet(self, &DPPickKey);
-    NSResponder *editor = self.window.firstResponder;
-    BOOL arrow = DPArrowJustPressed(), hidden = rows.count == 1 && [DPGet(self, &DPAIRowsKey) containsIndex:rows.firstIndex];
-    if (hidden && !arrow) return DPPickedHiddenRow(self);
-    // ↓ from the row shown selected, while Dia is on the chat row, would only move Dia to that row.
-    if (!hidden && pick && arrow && gArrow == @selector(moveDown:) && rows.count == 1 && (NSInteger)rows.firstIndex <= pick.integerValue)
-        return dispatch_async(dispatch_get_main_queue(), ^{ [editor doCommandBySelector:@selector(moveDown:)]; });
+    if (!DPTurnOffAI.on || !DPIsKind(self.delegate, DPDiaSuggestionsView)) return;
+    BOOL hidden = rows.count == 1 && [DPGet(self, &DPAIRowsKey) containsIndex:rows.firstIndex];
+    if (hidden && !DPArrowJustPressed()) return DPPickedHiddenRow(self);
     DPSet(self, &DPPickKey, nil);
     if (!hidden) return;
     BOOL up = from > (NSInteger)rows.firstIndex && rows.firstIndex > 0;
     if (!up && rows.firstIndex + 1 >= (NSUInteger)self.numberOfRows) up = YES;
+    NSResponder *editor = self.window.firstResponder;
     dispatch_async(dispatch_get_main_queue(), ^{ [editor doCommandBySelector:up ? @selector(moveUp:) : @selector(moveDown:)]; });
 }
 
