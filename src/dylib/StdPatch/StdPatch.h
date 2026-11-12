@@ -101,6 +101,7 @@ void DPShowHint(NSView *view);
 // Saved under the patch's `shortcut` key as @{keyCode, modifiers, key}, key being the label to show.
 NSView *DPShortcutRow(DPPatch *patch);
 BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch);  // NO while any field is recording.
+BOOL DPShortcutRecording(void);  // YES while a field in the key window is recording, which takes every key before Dia does.
 
 #pragma mark Values
 

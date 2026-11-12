@@ -62,13 +62,16 @@ static NSString *DPCommandDigit(NSEvent *event) {
 
 // A focused page takes ⌘ and a number before the menu bar sees it.
 static void DPApplication_sendEvent(NSApplication *self, SEL _cmd, NSEvent *event) {
-    NSString *digit = DPProfileShortcuts.on && event.type == NSEventTypeKeyDown ? DPCommandDigit(event) : nil;
+    // A recording field has to see the key, and a ⌘ and number no profile item can act on is left to Dia and the page.
+    NSString *digit = DPProfileShortcuts.on && event.type == NSEventTypeKeyDown && !DPShortcutRecording() ? DPCommandDigit(event) : nil;
     NSMenuItem *item = digit
         ? DPFindItem(NSApp.mainMenu, ^BOOL(NSMenuItem *candidate) {
               return DPGet(candidate, &DPSwappedKey) && DPIsDigitShortcut(candidate, NSEventModifierFlagCommand) && [candidate.keyEquivalent isEqualToString:digit];
           })
         : nil;
-    if (!item.enabled) return DPCallOriginal(DPApplication_sendEvent, self, event);
+    // Performing an item doesn't validate it, so its enabled state is only as new as the menu's last update.
+    [item.menu update];
+    if (!item.enabled || item.hiddenOrHasHiddenAncestor || !item.action) return DPCallOriginal(DPApplication_sendEvent, self, event);
     [item.menu performActionForItemAtIndex:[item.menu indexOfItem:item]];
 }
 

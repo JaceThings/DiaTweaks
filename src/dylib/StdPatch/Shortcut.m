@@ -34,12 +34,16 @@ static NSDictionary *DPPatchShortcut(DPPatch *patch) {
     return [saved isKindOfClass:NSDictionary.class] ? saved : patch->defaultShortcut ? patch->defaultShortcut() : nil;
 }
 
-BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
-    NSDictionary *shortcut = DPPatchShortcut(patch);
+BOOL DPShortcutRecording(void) {
     // A window that loses key keeps its first responder, so only a field in the key window takes keys from Dia.
     for (NSView *field in DPRecorders)
-        if (field.window.isKeyWindow) return NO;
-    return shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode &&
+        if (field.window.isKeyWindow) return YES;
+    return NO;
+}
+
+BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
+    NSDictionary *shortcut = DPPatchShortcut(patch);
+    return !DPShortcutRecording() && shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode &&
            [shortcut[@"modifiers"] unsignedIntegerValue] == (event.modifierFlags & DPShortcutModifiers);
 }
 
