@@ -23,11 +23,14 @@ static NSURL *DPLittleDiaLink(NSAppleEventDescriptor *event) {
     return url;
 }
 
+// The worker drops a request it reaches after `until`, a little before the link gives up on its window: one that
+// opened after the link fell back to a tab would be a second copy of it.
 static BOOL DPOpenInLittleDia(NSURL *url, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window)) {
     NSRect frame = DPLittleDiaFrame();
     CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame) - NSMaxY(frame);  // Chromium measures down from the top.
+    long long until = llround((NSDate.date.timeIntervalSince1970 + DPLittleDiaWait - 0.5) * 1000);
     NSDictionary *request = @{@"action" : @"open", @"url" : url.absoluteString, @"left" : @(NSMinX(frame)), @"top" : @(top),
-                              @"width" : @(NSWidth(frame)), @"height" : @(NSHeight(frame))};
+                              @"width" : @(NSWidth(frame)), @"height" : @(NSHeight(frame)), @"until" : @(until)};
     if (!DPSendToLittleDia(request)) return NO;
     DPExpectLittleDiaWindow(frame, noted, missed, claimed);
     return YES;

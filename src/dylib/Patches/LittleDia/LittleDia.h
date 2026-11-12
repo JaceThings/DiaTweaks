@@ -37,7 +37,8 @@ void DPRefreshLittleDiaNewWindow(void);
 NSString *DPLittleDiaNewWindowProblem(void);
 
 // Window.m: which popups are Little Dia's, their page, and their title bar.
-void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window));  // A popup in the next 3 seconds is this link's, and `claimed` gets it; else `missed` runs. `noted`: what DPNoteStackForLink gave as it arrived.
+#define DPLittleDiaWait 3  // Seconds a link waits for its window.
+void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window));  // A popup in the next DPLittleDiaWait seconds is this link's, and `claimed` gets it; else `missed` runs. `noted`: what DPNoteStackForLink gave as it arrived.
 BOOL DPIsLittleDiaWindow(NSWindow *window);  // Opened by Little Dia, whether or not it's still on.
 id DPLittleDiaPage(NSWindow *window);        // Its ArcWebContents, once Chromium has handed it over.
 void DPInstallLittleDiaWindows(void);

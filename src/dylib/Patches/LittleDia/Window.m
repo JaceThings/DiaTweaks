@@ -13,7 +13,7 @@ void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(v
     NSMutableDictionary *link = [@{@"frame" : [NSValue valueWithRect:frame], @"noted" : noted, @"missed" : [missed copy]} mutableCopy];
     if (claimed) link[@"claimed"] = [claimed copy];
     [DPExpected addObject:link];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, DPLittleDiaWait * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         if ([DPExpected indexOfObjectIdenticalTo:link] == NSNotFound) return;
         [DPExpected removeObjectIdenticalTo:link];
         if (!DPExpected.count) [DPPendingPages removeAllObjects];
@@ -55,6 +55,9 @@ static void DPClaim(NSWindow *window) {
         DPSet(window, &DPPageKey, DPPendingPages.firstObject);
         [DPPendingPages removeObjectAtIndex:0];
     } else [DPWindowsAwaitingPage addPointer:(__bridge void *)window];
+    // With no link left to claim a window, a page still waiting for its window is some other popup's. Kept, it would be
+    // taken as the next window's page, and each window after would take the page before its own.
+    if (!DPExpected.count) [DPPendingPages removeAllObjects];
     // Chromium adds its title bar to the size it's given, and the title bar is gone here.
     NSRect frame = [link[@"frame"] rectValue];
     [window setFrame:frame display:YES];
