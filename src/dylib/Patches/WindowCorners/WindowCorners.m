@@ -25,15 +25,20 @@ static CGFloat DPRadius(void) {
 // AppKit takes a radius under 1 as its default.
 static CGFloat DPWindowRadius(void) { return MAX(1, DPRadius()); }
 
+// A full screen window keeps the square corners macOS gives it.
+static BOOL DPInFullScreen(NSWindow *window) { return (window.styleMask & NSWindowStyleMaskFullScreen) != 0; }
+
 CGFloat DPWindowCornerGrowth(NSWindow *window) {
-    if (!DPWindowCorners.on || !DPIsKind(window, DPDiaWindow)) return 0;
+    if (!DPWindowCorners.on || !DPIsKind(window, DPDiaWindow) || DPInFullScreen(window)) return 0;
     CGFloat current = DPCornerRadius(window);
     return DPRadius() - [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
 }
 
+static CGFloat DPWindowTarget(NSWindow *window, CGFloat dia) { return DPWindowCorners.on && !DPInFullScreen(window) ? DPWindowRadius() : dia; }
+
 static void DPRoundWindow(NSWindow *window) {
     CGFloat current = DPCornerRadius(window), dia = [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
-    CGFloat target = DPWindowCorners.on ? DPWindowRadius() : dia;
+    CGFloat target = DPWindowTarget(window, dia);
     DPOverride(window, &DPRadiusKey, @(dia), @(target));
     if (current == target) return;
     ((void (*)(id, SEL, CGFloat))objc_msgSend)(window, @selector(_setCornerRadius:), target);
@@ -183,7 +188,7 @@ static NSString *DPVerifyWindowCorners(DPPatch *patch) {
     for (NSWindow *window in NSApp.windows) {
         if (!DPIsKind(window, DPDiaWindow) || !window.isVisible) continue;
         CGFloat radius = DPCornerRadius(window), dia = [DPDiaValue(window, &DPRadiusKey, @(radius)) doubleValue];
-        if (radius != (patch->on ? DPWindowRadius() : dia))
+        if (radius != DPWindowTarget(window, dia))
             return patch->on ? @"window corners aren't the chosen radius" : @"window corners keep the chosen radius";
     }
     return nil;
@@ -246,6 +251,13 @@ static void DPInstallWindowCorners(void) {
     DPHookClass(CALayer.class, @selector(setShadowPath:), (IMP)DPLayer_setShadowPath);
     DPHookClass(CAShapeLayer.class, @selector(setPath:), (IMP)DPShapeLayer_setPath);
     for (NSString *bar in DPCornerBars) DPHook(bar.UTF8String, @selector(layout), (IMP)DPBar_layout);
+    // AppKit flips the style mask just after each will, and a screen-sized window doesn't lay out.
+    NSArray<NSNotificationName> *names = @[NSWindowWillEnterFullScreenNotification, NSWindowDidEnterFullScreenNotification,
+                                           NSWindowWillExitFullScreenNotification, NSWindowDidExitFullScreenNotification];
+    for (NSNotificationName name in names)
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *_) {
+            dispatch_async(dispatch_get_main_queue(), ^{ if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners); });
+        }];
     DPOnLaunch(^{ DPApplyWindowCorners(&DPWindowCorners); });
 }
 
