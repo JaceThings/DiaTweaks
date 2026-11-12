@@ -104,10 +104,11 @@ static CALayer *DPCornerShape(NSView *container, CGFloat *base, CGFloat *grow, C
     CALayer *layer = DPRoundedContent(container).layer;
     if (!layer) return nil;
     *right = DPFullScreen(container) ? DPEdgeToEdge.progress : 0;
-    *left = DPBesideSidebar(container) ? DPSquareSidebarCorners.progress * DPEdgeToEdge.progress : *right;
+    BOOL beside = DPBesideSidebar(container);
+    *left = beside ? DPSquareSidebarCorners.progress * DPEdgeToEdge.progress : *right;
     // Rounder window corners don't reach the corners by the sidebar.
     CGFloat growth = DPWindowCornerGrowth(container.window);
-    if (growth > 0 && layer.cornerRadius > 0 && DPBesideSidebar(container)) *left = 1 - (1 - *left) * (layer.cornerRadius - growth) / layer.cornerRadius;
+    if (growth > 0 && layer.cornerRadius > 0 && beside) *left = 1 - (1 - *left) * (layer.cornerRadius - growth) / layer.cornerRadius;
     *base = DPBaseCornerRadius(container) ?: layer.cornerRadius;
     *grow = *base > 0 ? layer.cornerRadius / *base : 1;
     return layer;
