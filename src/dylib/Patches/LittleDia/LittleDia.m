@@ -1,7 +1,7 @@
 #import "LittleDia.h"
 #import "Updates/Updates.h"
 
-static BOOL gLoadedOn;  // The extension only loads as Dia starts.
+static BOOL gLoadedOn;
 
 static void DPInstallLittleDia(void) {
     gLoadedOn = DPLittleDia.on;

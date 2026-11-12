@@ -1,9 +1,6 @@
 #import "StdPatch/StdPatch.h"
 #import "Commands/GroupTabs/GroupTabs.h"
 
-// Dia collapses a folder when its last tab or live item goes away, and leaves it shut when new ones arrive. With tabs at
-// the top a folder is a TabGroupView, not a TabGroupCellView.
-
 extern DPPatch DPKeepFoldersOpen;
 
 static char DPExpandedKey, DPClickedKey, DPReopenedKey, DPModelKey;
@@ -20,7 +17,6 @@ static NSView *DPTopHeader(NSView *folder) {
     return [header isKindOfClass:NSView.class] ? header : nil;
 }
 
-// A collapsed sidebar folder turns its chevron to point right. nil until the chevron exists.
 static NSNumber *DPFolderExpanded(NSView *folder) {
     if (DPIsKind(folder, DPDiaTabGroupView)) {
         BOOL *flag = DPIvar(folder, "shouldDisplayExpandedContainer");
@@ -68,9 +64,7 @@ static void DPCheckFolder(NSView *folder) {
     DPSet(folder, &DPExpandedKey, expanded);
     CFTimeInterval now = CACurrentMediaTime();
     if (!collapsed || !DPKeepFoldersOpen.on || now - [DPGet(folder, &DPClickedKey) doubleValue] < 1) return;
-    // Collapse All Tab Groups folds one group at a time, and a single folder on screen would look like one that emptied.
     if (now - DPFoldedAt < 2) return;
-    // Don't fight Dia if it shuts the folder again straight away.
     if (now - [DPGet(folder, &DPReopenedKey) doubleValue] < 1) return;
     if (!DPCollapsedFolders.count)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10), dispatch_get_main_queue(), ^{ DPReopenFolders(); });
@@ -94,7 +88,6 @@ static void DPHeader_mouse(NSView *self, SEL _cmd, NSEvent *event) {
     DPCallOriginal(DPHeader_mouse, self, event);
 }
 
-// Dia reuses the cell for another folder, so it forgets this one's chevron.
 static void DPFolder_prepareForReuse(NSView *self, SEL _cmd) {
     DPCallOriginal(DPFolder_prepareForReuse, self);
     DPSet(self, &DPExpandedKey, nil);

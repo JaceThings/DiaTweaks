@@ -1,7 +1,6 @@
 #import "HideToolbar.h"
 #import <Metal/Metal.h>
 
-// Dia computes its glow colors in Swift, out of reach, so they're read as it hands them to its shader.
 static char DPDiaColorsKey;
 static __weak id DPDrawing;
 static NSData *DPLastDiaColors;

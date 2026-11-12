@@ -4,13 +4,11 @@
 #define DPDiaPopupController  "_TtC5Popup29PlatformPopupWindowController"
 #define DPDiaCallbackMenuItem "_TtC5ARCUI16CallbackMenuItem"
 
-// Dia sends a popup's menu commands through a model of its page that Little Dia's page isn't part of, so here they act
-// on the page itself, and each keeps its menu item's shortcut.
 static const char *const DPPopupActionNames[] = {"copyCurrentURL:", "copyCurrentURLAsMarkdown:", "navigateTabBack:", "navigateTabForward:", "zoomIn:",
                                                  "zoomInAlternate:", "zoomOut:", "resetZoom:", "printFocusedContent:", "closeFocusedContent:"};
 
 static const SEL *DPPopupActions(void) {
-    static SEL actions[sizeof DPPopupActionNames / sizeof *DPPopupActionNames + 1];  // and NULL
+    static SEL actions[sizeof DPPopupActionNames / sizeof *DPPopupActionNames + 1];
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         for (size_t i = 0; i < sizeof DPPopupActionNames / sizeof *DPPopupActionNames; i++) actions[i] = sel_registerName(DPPopupActionNames[i]);
@@ -18,7 +16,6 @@ static const SEL *DPPopupActions(void) {
     return actions;
 }
 
-// Dia's own items for these call back into its main window, so they're greyed out in a popup.
 static SEL DPCallbackAction(NSMenuItem *item) {
     if (item.menu.supermenu != NSApp.mainMenu) return NULL;
     static NSDictionary<NSString *, NSString *> *actions;
@@ -93,7 +90,6 @@ static BOOL DPPopup_validate(NSWindowController *self, SEL _cmd, NSMenuItem *ite
     return DPCanRun(window, item.action);
 }
 
-// Every key equivalent validates the menu bar's items, so the key window is looked at before the title.
 static BOOL DPCallback_validate(NSMenuItem *self, SEL _cmd, NSMenuItem *item) {
     NSWindow *window = DPLittleWindow(NSApp.keyWindow);
     SEL action = window ? DPCallbackAction(self) : NULL;

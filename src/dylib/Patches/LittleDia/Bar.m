@@ -3,7 +3,7 @@
 
 @interface DPLittleBar : NSObject
 @property (nonatomic, weak) NSView *title;
-@property (nonatomic) NSArray<NSButton *> *leading;  // close, back, forward, reload
+@property (nonatomic) NSArray<NSButton *> *leading;
 @property (nonatomic) NSButton *open;
 @property (nonatomic) NSButton *profiles;
 @property (nonatomic) NSView *address;
@@ -27,7 +27,6 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20;
 
 NSView *DPMakeDivider(void) { return [DPBarDivider new]; }
 
-// The page's background, or failing that its theme-color. Chromium has neither for some pages: nil.
 static NSColor *DPPageColor(id page) {
     id root = [page respondsToSelector:@selector(rootBackgroundColor)] ? ((id (*)(id, SEL))objc_msgSend)(page, @selector(rootBackgroundColor)) : nil;
     float (*part)(id, SEL) = (void *)objc_msgSend;
@@ -54,7 +53,7 @@ void DPMatchPage(NSView *row, id page) {
 
 @interface DPBarButton : NSButton
 @property (nonatomic, copy) void (^handler)(void);
-@property (nonatomic) BOOL hovered, pill;  // pill: a filled button with an icon and a word, laid out like Dia's Chat button
+@property (nonatomic) BOOL hovered, pill;
 @property (nonatomic) NSImageView *pillIcon;
 @property (nonatomic) NSTextField *pillLabel;
 @property (nonatomic) CGFloat outerCorner;
@@ -81,7 +80,6 @@ void DPMatchPage(NSView *row, id page) {
 
 - (void)run:(id)sender { if (self.handler) self.handler(); }
 
-// Dia's Chat button: a 16pt icon 10pt in, the word 4pt after it, 9pt after that.
 - (NSSize)intrinsicContentSize {
     return self.pill ? NSMakeSize(30 + ceil(self.pillLabel.intrinsicContentSize.width) + 9, 28) : NSMakeSize(28, 28);
 }
@@ -92,7 +90,7 @@ void DPMatchPage(NSView *row, id page) {
 
 - (void)updateTint {
     self.contentTintColor = !self.enabled ? NSColor.tertiaryLabelColor : self.hovered || self.pill ? NSColor.labelColor : NSColor.secondaryLabelColor;
-    // labelColor with alpha keeps the appearance it was made in, so this follows the bar's light or dark look itself.
+    // labelColor with alpha freezes the appearance it was made in, so it is resolved per appearance.
     CGFloat alpha = self.hovered ? 1 : 0.85;
     self.pillIcon.contentTintColor = self.pillLabel.textColor = [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
         __block NSColor *color;
@@ -128,7 +126,6 @@ void DPMatchPage(NSView *row, id page) {
 - (void)layout {
     [super layout];
     if (!self.outerCorner) return;
-    // CALayer rounds every corner alike, so the shape is drawn: one corner follows the window's, the rest stay small.
     CGFloat small = self.layer.cornerRadius, big = MIN(self.outerCorner, NSHeight(self.bounds) / 2);
     CGFloat left = self.outerCornerOnRight ? small : big, right = self.outerCornerOnRight ? big : small;
     NSRect r = self.bounds;
@@ -271,7 +268,6 @@ static void DPPlaceBar(DPLittleBar *bar) {
     bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - chevron - open.width, top, open.width, open.height);
     bar.profiles.frame = NSMakeRect(NSMaxX(bar.open.frame) + DPGap, top, DPChevron, open.height);
     CGFloat corner = [row.window respondsToSelector:@selector(_cornerRadius)] ? ((CGFloat (*)(id, SEL))objc_msgSend)(row.window, @selector(_cornerRadius)) : 16;
-    // The first and last buttons sit in the window's top corners, so those corners of them follow the window's.
     for (DPBarButton *button in @[ bar.leading.firstObject, bar.profiles.hidden ? bar.open : bar.profiles ]) {
         NSRect inWindow = [row convertRect:button.frame toView:nil];
         button.outerCornerOnRight = button != bar.leading.firstObject;
@@ -286,8 +282,7 @@ static void DPPlaceBar(DPLittleBar *bar) {
     CGFloat hairline = 1 / MAX(1, row.window.backingScaleFactor);
     if (bar.divider.superview != row) [row addSubview:bar.divider];
     bar.divider.frame = NSMakeRect(0, row.isFlipped ? NSHeight(row.bounds) - hairline : 0, NSWidth(row.bounds), hairline);
-    // Dia's Downloads button would sit under Open in Dia. Newer Dia puts it in a stack it shows and hides it in itself, so
-    // the row's view holding it is what's hidden.
+    // Newer Dia shows and hides its Downloads button inside a stack, so hide the row's view that holds it.
     for (NSView *view in row.subviews)
         if (!view.hidden && DPFindView(view, ^BOOL(NSView *each) { return DPHasLabel(each, @"Downloads"); })) {
             view.hidden = YES;
@@ -313,7 +308,6 @@ static void DPRemoveBar(NSView *title) {
         }
 }
 
-// Dia lays out its popup bar around its address view, so this follows that view's frame to lay out Little Dia's bar.
 static char DPDiaOriginKey, DPDiaSizeKey;
 
 static BOOL DPInPopupBar(NSView *view) {

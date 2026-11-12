@@ -1,14 +1,10 @@
 #import "LittleDia.h"
 
-// A link from another app makes macOS bring Dia forward, and its main window with it. The window order is noted just
-// before that, and once the small window opens, every Dia window that was behind the app the link came from goes back.
-
 static NSArray<NSDictionary *> *DPBeforeActivating;
 static NSDate *DPNotedAt, *DPUnhiddenAt;
-static NSMutableArray<NSWindow *> *DPPutAway;  // Dia's other windows, while a link opened with Dia hidden is open.
-static NSMapTable<NSWindow *, NSNumber *> *DPVeiled;  // Windows kept see-through as Dia unhides, with their own alpha.
+static NSMutableArray<NSWindow *> *DPPutAway;
+static NSMapTable<NSWindow *, NSNumber *> *DPVeiled;
 
-// Front to back. Needs no screen recording permission.
 static NSArray<NSDictionary *> *DPWindowStack(void) {
     NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
     NSMutableArray *stack = [NSMutableArray array];
@@ -17,9 +13,8 @@ static NSArray<NSDictionary *> *DPWindowStack(void) {
     return stack;
 }
 
-// Each link keeps its own: the next can arrive before this one's window does, and the app it came from may differ.
 NSDictionary *DPNoteStackForLink(void) {
-    NSArray<NSDictionary *> *stack = nil;  // Dia was already in front: nothing to put back.
+    NSArray<NSDictionary *> *stack = nil;
     if (!NSApp.active) stack = DPWindowStack();
     else if (DPNotedAt && DPNotedAt.timeIntervalSinceNow > -2) stack = DPBeforeActivating;
     NSNumber *me = @(getpid()), *source = @0;
@@ -31,7 +26,6 @@ NSDictionary *DPNoteStackForLink(void) {
     return @{@"stack" : stack ?: @[], @"source" : source};
 }
 
-// Closing the window goes back to that app, instead of Dia bringing its main window up in its place.
 void DPReturnToSource(pid_t pid) {
     NSRunningApplication *app = pid ? [NSRunningApplication runningApplicationWithProcessIdentifier:pid] : nil;
     if (!app || app.terminated) return;
@@ -44,8 +38,6 @@ static void DPPutAwayWindow(NSWindow *window) {
     [window orderOut:nil];
 }
 
-// Dia was hidden, so bringing it forward for the link showed every window: the others go away again, until Open in
-// Dia, or Dia is hidden again when its last small window closes and comes back the usual way.
 static BOOL DPPutAwayIfHidden(void) {
     if (!DPUnhiddenAt || DPUnhiddenAt.timeIntervalSinceNow < -2) return NO;
     for (NSWindow *window in NSApp.orderedWindows)
@@ -53,8 +45,7 @@ static BOOL DPPutAwayIfHidden(void) {
     return YES;
 }
 
-// macOS unhides Dia a moment before the link that unhid it arrives, which showed every window for that moment. So as Dia
-// unhides, its windows stay see-through for a little while: long enough for a link to come and put them away.
+// macOS unhides Dia a moment before the link arrives, so its windows stay see-through until the link can put them away.
 static void DPUnveil(void) {
     for (NSWindow *window in DPVeiled) window.alphaValue = [[DPVeiled objectForKey:window] doubleValue];
     [DPVeiled removeAllObjects];
@@ -78,7 +69,6 @@ BOOL DPHideAgain(void) {
     if (!DPPutAway.count) return NO;
     for (NSWindow *window in NSApp.windows)
         if (DPIsLittleDiaWindow(window) && window.visible) return NO;
-    // A window shown or opened since is one the user is working in.
     for (NSWindow *window in NSApp.windows)
         if (window.visible && !window.miniaturized && window.level == NSNormalWindowLevel && window.canBecomeMainWindow) return NO;
     // Hiding notes which windows are showing, so they're shown first, behind everything, for unhiding to bring back.

@@ -6,7 +6,6 @@ static NSDate *gLinkAt;
 
 static NSString *const DPItemTitle = @"Open Link in Little Dia";
 
-// Dia tells its page delegate about every menu it shows, with what was clicked. The menu itself opens a moment later.
 static BOOL DPPage_willShowMenu(id self, SEL _cmd, id page, id menu, id element) {
     NSURL *url = [element respondsToSelector:@selector(linkURL)] ? [element valueForKey:@"linkURL"] : nil;
     NSString *scheme = [url isKindOfClass:NSURL.class] ? url.scheme.lowercaseString : nil;
@@ -18,7 +17,7 @@ static BOOL DPPage_willShowMenu(id self, SEL _cmd, id page, id menu, id element)
 
 static void DPAddLinkItem(NSMenu *menu) {
     for (NSMenuItem *old in menu.itemArray)
-        if (DPGet(old, &DPItemKey)) [menu removeItem:old];  // A menu that's shown again.
+        if (DPGet(old, &DPItemKey)) [menu removeItem:old];
     NSURL *url = gLink;
     BOOL fresh = gLinkAt.timeIntervalSinceNow > -2;
     gLink = nil;

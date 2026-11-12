@@ -42,8 +42,7 @@ static NSString *const kWorker = @"const popupTab = async ({ tabId, url }) => {\
     @"  await chrome.windows.remove(tab.windowId);\n"
     @"});\n";
 
-// Chromium keeps an extension's worker from its first run, whatever its version says, so a changed worker gets a new
-// folder, which makes it a new extension.
+// Chromium keeps an extension's worker from its first run, so a changed worker needs a new folder.
 static NSString *DPExtensionFolder(void) {
     uint32_t hash = 2166136261u;
     for (const char *c = kWorker.UTF8String; *c; c++) hash = (hash ^ (uint8_t)*c) * 16777619u;
@@ -53,9 +52,8 @@ static NSString *DPExtensionFolder(void) {
 static NSString *gExtensionID;
 static NSError *gWriteError;
 static NSTimeInterval gLaunchedAt;
-static const NSTimeInterval DPLaunchTime = 20;  // Dia is still launching for this long; a link waits less than this for it.
+static const NSTimeInterval DPLaunchTime = 20;
 
-// Chromium names an unpacked extension after its folder: the SHA-256 of the path, its first 32 hex digits spelt a to p.
 static NSString *DPExtensionID(NSString *folder) {
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
     const char *path = folder.fileSystemRepresentation;
@@ -108,8 +106,7 @@ static id DPExtensions(id browser) {
     return [context respondsToSelector:@selector(extensions)] ? DPMsg(context, @selector(extensions)) : nil;
 }
 
-// Without a browser it is a launch that has no window yet, but only for a while. Later it is Dia running with every window
-// closed: nothing is on its way, and the link would wait for nothing.
+// No browser means a launch with no window yet, but only for a while: later it's Dia with every window closed.
 BOOL DPLittleDiaStarting(void) {
     id extensions = DPExtensions(DPCommandBrowser());
     if (!extensions) return gExtensionID && NSProcessInfo.processInfo.systemUptime - gLaunchedAt < DPLaunchTime;
@@ -133,7 +130,6 @@ BOOL DPSendToLittleDia(NSDictionary *request) {
     NSData *json = [NSJSONSerialization dataWithJSONObject:request options:0 error:nil];
     NSString *text = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : nil;
     if (!text) return NO;
-    // The disposition is Chromium's WindowOpenDisposition; the worker ignores it.
     void (*send)(id, SEL, NSString *, NSString *, long) = (void *)objc_msgSend;
     send(DPCommandBrowser(), @selector(triggerExtensionOmniboxInput:inputText:disposition:), gExtensionID, text, 1);
     return YES;

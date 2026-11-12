@@ -15,8 +15,6 @@ NSSize DPLittleDiaSize(void) {
     return NSMakeSize(width ? width.doubleValue : 1180, height ? height.doubleValue : 860);
 }
 
-#pragma mark Settings rows
-
 @interface DPSizeRow : NSStackView <NSTextFieldDelegate>
 @property (nonatomic, copy) NSString *key;
 @property (nonatomic) NSSlider *slider;
@@ -76,12 +74,9 @@ NSArray<NSView *> *DPLittleDiaRows(void) {
     ];
 }
 
-#pragma mark Escape closes the window
-
 extern DPPatch DPLittleDiaEscape;
 
-// A Peek over the window gets Escape first. Peek's own monitor takes the key too, and which of the two sees it first
-// changes from launch to launch, so this one stands aside either way.
+// Peek's own monitor takes Escape too and may run first or second, so this one stands aside while a Peek is open.
 static BOOL DPEscapeCloses(NSEvent *event) {
     NSWindow *window = event.window;
     NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagControl);

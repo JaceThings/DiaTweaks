@@ -10,8 +10,8 @@ extern NSHashTable<NSView *> *DPPanes;
 @property (nonatomic, strong) NSTrackingArea *tracking;
 @property (nonatomic, strong) NSTimer *animation, *hideTimer, *inPlaceAnimation, *peekTimer;
 @property (nonatomic) BOOL revealed, inPlace, peeking;
-@property (nonatomic) CGFloat progress, inPlaceProgress;  // Revealed by the pointer, and kept in place by an option.
-+ (DPToolbarHover *)forPane:(NSView *)pane;  // nil until the pane is laid out.
+@property (nonatomic) CGFloat progress, inPlaceProgress;
++ (DPToolbarHover *)forPane:(NSView *)pane;
 + (DPToolbarHover *)attachToPane:(NSView *)pane;
 - (void)updateForBar:(NSView *)bar bookmarks:(NSView *)bookmarks;
 - (void)peek;
@@ -19,7 +19,7 @@ extern NSHashTable<NSView *> *DPPanes;
 @end
 
 NSRect DPLaidOutFrame(NSView *view);
-CGFloat DPTop(NSView *pane, NSRect r);  // From the pane's top, either way it's flipped.
+CGFloat DPTop(NSView *pane, NSRect r);
 CGFloat DPBottom(NSView *pane, NSRect r);
 NSView *DPBookmarksUnder(NSView *pane, NSView *bar);
 BOOL DPKeptInPlace(NSView *pane);
@@ -39,7 +39,7 @@ void DPFinishProgressLine(NSView *pane);
 void DPRemoveProgressLine(NSView *pane);
 BOOL DPShowsProgressLine(NSView *pane);
 
-CAMetalLayer *DPProgressShaderLayer(void);  // nil when Dia's loading shader can't be loaded.
+CAMetalLayer *DPProgressShaderLayer(void);
 void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, simd_float3 primary, simd_float3 secondary);
 BOOL DPProgressColorSlots(NSUInteger slots[2]);
 

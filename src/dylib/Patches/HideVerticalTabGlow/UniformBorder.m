@@ -8,7 +8,6 @@ static CAGradientLayer *DPBorderIn(NSView *shape) {
     return [layer isKindOfClass:CAGradientLayer.class] ? layer : nil;
 }
 
-// Use Dia's middle opacity: the outline stays subtle and follows its light/dark palette.
 static NSArray *DPUniformColors(NSArray *colors) {
     if (!colors.count) return colors;
     NSArray *sorted = [colors sortedArrayUsingComparator:^NSComparisonResult(id a, id b) {

@@ -1,6 +1,5 @@
 #import "LittleDia.h"
 
-// Dia's AppleScript: the app delegate lists its windows, a window its profiles; a profile takes a new tab and can be focused.
 static id DPScriptWindow(void) {
     id app = NSApp.delegate;
     if (![app respondsToSelector:@selector(appleScriptWindows)]) return nil;
@@ -13,7 +12,6 @@ NSArray<NSString *> *DPLittleDiaProfiles(void) {
     return [[DPScriptWindow() valueForKey:@"appleScriptProfiles"] valueForKey:@"name"] ?: @[];
 }
 
-// Dia fills its menus as they open.
 static NSMenu *DPFilled(NSMenu *menu) {
     if ([menu.delegate respondsToSelector:@selector(menuNeedsUpdate:)]) [menu.delegate menuNeedsUpdate:menu];
     return menu;
@@ -24,7 +22,7 @@ NSImage *DPLittleDiaProfileImage(NSString *name) {
     return [DPFilled([tabs itemWithTitle:@"Move to Profile"].submenu) itemWithTitle:name].image;
 }
 
-// The script runs off the main thread: Dia answers its Apple events there, so waiting there for the answer times out.
+// Run off the main thread: Dia answers its Apple events there, so waiting there times out.
 void DPOpenInProfile(NSString *url, NSUInteger index, void (^done)(BOOL opened)) {
     id window = DPScriptWindow();
     if (!window || !url.length) return done(NO);

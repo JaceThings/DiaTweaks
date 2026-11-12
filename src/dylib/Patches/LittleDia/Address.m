@@ -48,7 +48,7 @@
 - (BOOL)performKeyEquivalent:(NSEvent *)event {
     NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad | NSEventModifierFlagFunction);
     NSString *key = event.charactersIgnoringModifiers;
-    // On a layout without a Latin L, the key in L's place (code 37) is ⌘L, as it is in Dia's own menu.
+    // Without a Latin L on the layout, the key in L's place (code 37) is ⌘L.
     BOOL isL = [key caseInsensitiveCompare:@"l"] == NSOrderedSame || (event.keyCode == 37 && !(key.length == 1 && [key characterAtIndex:0] < 128 && isalpha([key characterAtIndex:0])));
     if (mods != NSEventModifierFlagCommand || !isL || self.window != NSApp.keyWindow) return NO;
     [self begin];
@@ -103,7 +103,7 @@
         [self.window makeFirstResponder:self.field];
         return;
     }
-    self.notice = nil;  // A notice in the label isn't an address to edit.
+    self.notice = nil;
     [self refresh];
     NSString *shown = [self.url.absoluteString isEqual:@"about:blank"] ? @"" : self.url.absoluteString;
     NSTextField *field = [NSTextField textFieldWithString:shown ?: self.label.stringValue];
@@ -121,7 +121,7 @@
     self.field = field;
     self.label.hidden = YES;
     [self refresh];
-    // selectText: focuses the field itself; focusing it first would have it end that editing straight away.
+    // selectText: focuses the field itself; focusing it first ends the editing straight away.
     self.beginning = YES;
     [field selectText:nil];
     self.beginning = NO;
@@ -170,8 +170,7 @@ static DPAddressView *DPAddressIn(NSWindow *window) {
     return (DPAddressView *)DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return [view isKindOfClass:DPAddressView.class]; });
 }
 
-// Chromium focuses the new window's page a moment after it opens, which would end the typing, so this starts after that,
-// and waits for the bar to be laid out.
+// Chromium focuses the new window's page a moment after it opens, which would end the typing.
 static void DPEditAddressSoon(NSWindow *window, int tries) {
     DPAddressView *address = DPAddressIn(window);
     if (address && window.isKeyWindow) return [address begin];
