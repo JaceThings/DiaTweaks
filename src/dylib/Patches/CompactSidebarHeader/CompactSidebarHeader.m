@@ -20,30 +20,43 @@ static NSRect DPCloseButtonInWindow(NSView *lights) {
 
 // Moved here, not after the header's layout: that makes Dia lay the header out again and put them back, which is the resize jitter.
 // Only buttons already near the corner move (a floating sidebar has them elsewhere), and never in full screen, where macOS slides them in each frame.
-static void DPButtonsRow_setFrame(NSView *self, SEL _cmd, NSRect frame) {
-    NSView *lights = DPGet(self, &DPButtonsKey);
-    NSWindow *window = self.window;
-    if (DPCompactSidebarHeader.on && lights && window && !(window.styleMask & NSWindowStyleMaskFullScreen)) {
-        NSRect old = self.frame, close = DPCloseButtonInWindow(lights);
-        BOOL flipped = self.superview.isFlipped;
-        close.origin.x += frame.origin.x - NSMinX(old);
-        close.origin.y += flipped ? frame.origin.y - NSMinY(old) : NSMinY(old) - frame.origin.y;
-        CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
-        if (!NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
-            frame.origin.x += dx;
-            frame.origin.y += flipped ? dy : -dy;
-        }
+static NSRect DPCorneredRow(NSView *row, NSRect frame) {
+    NSView *lights = DPGet(row, &DPButtonsKey);
+    NSWindow *window = row.window;
+    if (!DPCompactSidebarHeader.on || lights.superview != row || !window || (window.styleMask & NSWindowStyleMaskFullScreen)) return frame;
+    NSRect old = row.frame, close = DPCloseButtonInWindow(lights);
+    BOOL flipped = row.superview.isFlipped;
+    close.origin.x += frame.origin.x - NSMinX(old);
+    close.origin.y += flipped ? frame.origin.y - NSMinY(old) : NSMinY(old) - frame.origin.y;
+    CGFloat dx = DPTopTabsButtonInset - NSMinX(close), dy = DPTopTabsButtonInset - NSMinY(close);
+    if (!NSIsEmptyRect(close) && fabs(dx) <= 6 && fabs(dy) <= 6) {
+        frame.origin.x += dx;
+        frame.origin.y += flipped ? dy : -dy;
     }
-    DPCallOriginal(DPButtonsRow_setFrame, self, frame);
+    return frame;
+}
+
+static void DPButtonsRow_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    DPCallOriginal(DPButtonsRow_setFrame, self, DPCorneredRow(self, frame));
+}
+
+static NSView *DPNoteButtons(NSView *header) {
+    NSView *lights = DPFindView(header, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); });
+    if (lights && lights.superview != header) DPSet(lights.superview, &DPButtonsKey, lights);
+    return lights;
 }
 
 static void DPHeader_layout(NSView *self, SEL _cmd) {
-    NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
-    if (lights && row != self) DPSet(row, &DPButtonsKey, lights);
+    DPNoteButtons(self);
     DPCallOriginal(DPHeader_layout, self);
+    NSView *lights = DPNoteButtons(self), *row = lights.superview;
+    if (!lights || row == self) return;
+    // Dia may have set the row, or swapped it, without going through its setter; it must still end the pass in the corner.
+    NSRect cornered = DPCorneredRow(row, row.frame);
+    if (!NSEqualRects(cornered, row.frame) && DPMayAdjust(row)) row.frame = cornered;
     // At launch Dia lays the header out before the buttons are in it, then not again until the sidebar changes.
     NSUInteger retries = [DPGet(self, &DPRetriesKey) unsignedIntegerValue];
-    if (DPCompactSidebarHeader.on && lights && row != self && NSIsEmptyRect(DPCloseButtonInWindow(lights)) && self.window && retries < 8) {
+    if (DPCompactSidebarHeader.on && NSIsEmptyRect(DPCloseButtonInWindow(lights)) && self.window && retries < 8) {
         DPSet(self, &DPRetriesKey, @(retries + 1));
         __weak NSView *header = self;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{ header.needsLayout = YES; });
