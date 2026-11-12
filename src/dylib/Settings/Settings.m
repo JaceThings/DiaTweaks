@@ -4,10 +4,34 @@
 static char DPSettingsKey, DPSearchItemKey;
 
 // Our rows follow Dia's. Dia never sees their indexes: its cell lookup traps past the end of its items.
-typedef NS_ENUM(NSInteger, DPSidebarRow) { DPDiaRow = -1, DPDividerRow, DPHomeRow, DPPatchesRow, DPOurRowCount };
+// Panes other dylibs register come after Patches, from DPFirstRegisteredRow on, in registration order.
+typedef NS_ENUM(NSInteger, DPSidebarRow) { DPDiaRow = -1, DPDividerRow, DPHomeRow, DPPatchesRow, DPFirstRegisteredRow };
 
-static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
-    NSInteger ours = row - (table.numberOfRows - DPOurRowCount);
+@interface DPRegisteredPane : NSObject
+@property (nonatomic, copy) NSString *title, *symbol;
+@property (nonatomic, copy) NSView<DPPaneContent> *(^makeContent)(void);
+@end
+
+@implementation DPRegisteredPane
+@end
+
+static NSMutableArray<DPRegisteredPane *> *DPRegisteredPanes;
+
+void DPRegisterSettingsPane(NSString *title, NSString *symbol, NSView<DPPaneContent> *(^makeContent)(void)) {
+    DPRegisteredPane *pane = [DPRegisteredPane new];
+    pane.title = title;
+    pane.symbol = symbol;
+    pane.makeContent = makeContent;
+    if (!DPRegisteredPanes) DPRegisteredPanes = [NSMutableArray new];
+    [DPRegisteredPanes addObject:pane];
+}
+
+static NSInteger DPOurRowCount(void) {
+    return DPFirstRegisteredRow + DPRegisteredPanes.count;
+}
+
+static NSInteger DPOurRow(NSTableView *table, NSInteger row) {
+    NSInteger ours = row - (table.numberOfRows - DPOurRowCount());
     return row >= 0 && ours >= 0 ? ours : DPDiaRow;
 }
 
@@ -27,6 +51,7 @@ static void DPRemoveDiaPaneItems(NSToolbar *toolbar) {
 @property (nonatomic, weak) NSTextField *title;
 @property (nonatomic, copy) NSString *originalTitle, *shownTitle;
 @property (nonatomic, strong) DPPaneView *home, *patches;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, DPPaneView *> *registered;
 @property (nonatomic, weak) DPPaneView *shown;
 @property (nonatomic) NSWindowStyleMask mask;
 @property (nonatomic) NSWindowCollectionBehavior behavior;
@@ -55,7 +80,7 @@ static __weak DPPaneView *DPShownPane;
 - (CGFloat)fittedDividerHeight {
     NSTableView *table = self.table;
     NSClipView *clip = table.enclosingScrollView.contentView;
-    if (!clip || table.numberOfRows < DPOurRowCount) return DPDividerMinHeight;
+    if (!clip || table.numberOfRows < DPOurRowCount()) return DPDividerMinHeight;
     if (!self.watchingHeight) {
         self.watchingHeight = YES;
         clip.postsFrameChangedNotifications = clip.postsBoundsChangedNotifications = YES;
@@ -70,17 +95,22 @@ static __weak DPPaneView *DPShownPane;
 - (void)fitDivider {
     CGFloat before = self.dividerHeight;
     if ([self fittedDividerHeight] == before) return;
-    NSInteger divider = self.table.numberOfRows - DPOurRowCount + DPDividerRow;
+    NSInteger divider = self.table.numberOfRows - DPOurRowCount() + DPDividerRow;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         [self.table noteHeightOfRowsWithIndexesChanged:[NSIndexSet indexSetWithIndex:divider]];
     }];
 }
 
-- (DPPaneView *)paneFor:(DPSidebarRow)row {
+- (DPPaneView *)paneFor:(NSInteger)row {
     if (row == DPHomeRow) return self.home ?: (self.home = [[DPPaneView alloc] initWithTitle:@"Home" content:[DPHomeView new]]);
     if (row == DPPatchesRow) return self.patches ?: (self.patches = [[DPPaneView alloc] initWithTitle:@"Patches" content:[DPOverviewView new]]);
-    return nil;
+    if (row < DPFirstRegisteredRow || row >= DPOurRowCount()) return nil;
+    if (!self.registered) self.registered = [NSMutableDictionary new];
+    DPPaneView *pane = self.registered[@(row)];
+    if (pane) return pane;
+    DPRegisteredPane *registration = DPRegisteredPanes[row - DPFirstRegisteredRow];
+    return self.registered[@(row)] = [[DPPaneView alloc] initWithTitle:registration.title content:registration.makeContent()];
 }
 
 // Building and laying out a pane takes a moment, so it's done hidden as Settings opens and a click only shows it.
@@ -216,16 +246,19 @@ static NSView *DPLinkCell(NSTableView *table, NSString *title, NSString *symbol)
 }
 
 static NSInteger DPSidebar_numberOfRows(id self, SEL _cmd, NSTableView *table) {
-    return DPCallOriginal(DPSidebar_numberOfRows, self, table) + DPOurRowCount;
+    return DPCallOriginal(DPSidebar_numberOfRows, self, table) + DPOurRowCount();
 }
 
 static NSView *DPSidebar_viewForRow(id self, SEL _cmd, NSTableView *table, NSTableColumn *column, NSInteger row) {
-    DPSidebarRow ours = DPOurRow(table, row);
+    NSInteger ours = DPOurRow(table, row);
     if (ours == DPDiaRow) return DPCallOriginal(DPSidebar_viewForRow, self, table, column, row);
     DPSettings *settings = [DPSettings forTable:table];
     if (ours == DPDividerRow) return DPDividerCell(table);
     dispatch_async(dispatch_get_main_queue(), ^{ [settings preparePane:[settings paneFor:ours]]; });
-    return ours == DPHomeRow ? DPLinkCell(table, @"Home", @"house") : DPLinkCell(table, @"Patches", @"wand.and.stars");
+    if (ours == DPHomeRow) return DPLinkCell(table, @"Home", @"house");
+    if (ours == DPPatchesRow) return DPLinkCell(table, @"Patches", @"wand.and.stars");
+    DPRegisteredPane *registration = DPRegisteredPanes[ours - DPFirstRegisteredRow];
+    return DPLinkCell(table, registration.title, registration.symbol);
 }
 
 static void DPSidebar_selectionDidChange(id self, SEL _cmd, NSNotification *notification) {

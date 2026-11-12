@@ -55,6 +55,10 @@ NSURL *DPWikiURL(DPPatch *patch);
 - (void)refresh;  // Each time the pane is shown.
 @end
 
+// Adds a row below Patches in Settings, for another dylib in the same app. Call it as that dylib loads, before Settings
+// first opens. `symbol` is an SF Symbol name. `makeContent` runs once per Settings window, when its pane is first needed.
+void DPRegisterSettingsPane(NSString *title, NSString *symbol, NSView<DPPaneContent> *(^makeContent)(void));
+
 @interface DPOverviewView : NSStackView <DPPaneContent>
 @property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
 @property (nonatomic, strong) NSMapTable<NSView *, NSString *> *searchText;
