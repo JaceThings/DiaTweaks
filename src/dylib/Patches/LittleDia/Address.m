@@ -167,11 +167,15 @@ void DPRefreshAddressView(NSView *view) {
     if ([view isKindOfClass:DPAddressView.class]) [(DPAddressView *)view refresh];
 }
 
+static DPAddressView *DPAddressIn(NSWindow *window) {
+    return (DPAddressView *)DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return [view isKindOfClass:DPAddressView.class]; });
+}
+
 // Chromium focuses the new window's page a moment after it opens, which would end the typing, so this starts after that,
 // and waits for the bar to be laid out.
 static void DPEditAddressSoon(NSWindow *window, int tries) {
-    NSView *address = DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return [view isKindOfClass:DPAddressView.class]; });
-    if (address && window.isKeyWindow) return [(DPAddressView *)address begin];
+    DPAddressView *address = DPAddressIn(window);
+    if (address && window.isKeyWindow) return [address begin];
     if (tries > 0 && window.visible)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPEditAddressSoon(window, tries - 1); });
 }
@@ -182,7 +186,7 @@ void DPEditLittleDiaAddress(NSWindow *window) {
 }
 
 void DPShowLittleDiaNotice(NSWindow *window, NSString *message) {
-    DPAddressView *address = (DPAddressView *)DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return [view isKindOfClass:DPAddressView.class]; });
+    DPAddressView *address = DPAddressIn(window);
     if (!address || address.field) return;
     address.notice = message;
     NSUInteger notice = ++address.notices;
