@@ -194,11 +194,11 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 }
 
 - (void)stopRecording {
-    BOOL recording = _monitor != nil;
-    if (_monitor) [NSEvent removeMonitor:_monitor];
+    if (!_monitor) return;
+    [NSEvent removeMonitor:_monitor];
     _monitor = nil;
     [DPRecorders removeObject:self];
-    if (recording) [self refresh];
+    [self refresh];
 }
 
 - (BOOL)resignFirstResponder {
