@@ -3,14 +3,14 @@
 
 static char DPLittleKey, DPPageKey, DPChromeKey, DPSourceKey, DPPromotedKey;
 
-// Links on their way, oldest first: each {frame, missed}. Chromium makes their windows, and hands over their pages, in
-// the order it was asked, so the first window or page to arrive belongs to the first link still waiting.
+// Links on their way, oldest first: each {frame, noted, missed}. Chromium makes their windows, and hands over their pages,
+// in the order it was asked, so the first window or page to arrive belongs to the first link still waiting.
 static NSMutableArray<NSDictionary *> *DPExpected;
 static NSMutableArray *DPPendingPages;                     // Pages that came before their window.
 static NSPointerArray *DPWindowsAwaitingPage;              // Windows that came before their page.
 
-void DPExpectLittleDiaWindow(NSRect frame, void (^missed)(void), void (^claimed)(NSWindow *window)) {
-    NSMutableDictionary *link = [@{@"frame" : [NSValue valueWithRect:frame], @"missed" : [missed copy]} mutableCopy];
+void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window)) {
+    NSMutableDictionary *link = [@{@"frame" : [NSValue valueWithRect:frame], @"noted" : noted, @"missed" : [missed copy]} mutableCopy];
     if (claimed) link[@"claimed"] = [claimed copy];
     [DPExpected addObject:link];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -47,10 +47,10 @@ static void DPSetChrome(NSWindow *window, BOOL little) {
 // Claims a popup that appears while a link is on its way. Pages open popups too, but rarely in the same second.
 static void DPClaim(NSWindow *window) {
     if (!window || !DPIsKind(window, DPDiaPopupWindow) || DPGet(window, &DPLittleKey) || !DPExpected.count) return;
-    NSDictionary *link = DPExpected.firstObject;
+    NSDictionary *link = DPExpected.firstObject, *noted = link[@"noted"];
     [DPExpected removeObjectAtIndex:0];
     DPSet(window, &DPLittleKey, @YES);
-    if (DPLinkSource()) DPSet(window, &DPSourceKey, @(DPLinkSource()));
+    if ([noted[@"source"] intValue]) DPSet(window, &DPSourceKey, noted[@"source"]);
     if (DPPendingPages.count) {
         DPSet(window, &DPPageKey, DPPendingPages.firstObject);
         [DPPendingPages removeObjectAtIndex:0];
@@ -60,13 +60,12 @@ static void DPClaim(NSWindow *window) {
     [window setFrame:frame display:YES];
     [window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
-    DPRestoreStack(window);
+    DPRestoreStack(window, noted);
     // Chromium sizes and focuses the new window again a moment later, which can bring Dia's windows forward again.
     __weak NSWindow *weakWindow = window;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         [weakWindow setFrame:frame display:YES];
-        DPRestoreStack(weakWindow);
-        DPFinishStack();
+        DPRestoreStack(weakWindow, noted);
     });
     DPRefreshLittleDiaWindows();
     if (link[@"claimed"]) ((void (^)(NSWindow *))link[@"claimed"])(window);
