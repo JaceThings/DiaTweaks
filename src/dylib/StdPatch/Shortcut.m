@@ -133,8 +133,9 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 
 - (void)refresh {
     NSString *text = DPShortcutText(DPPatchShortcut(_patch));
-    _label.stringValue = text ?: @"Add new…";
-    _label.textColor = text ? NSColor.labelColor : NSColor.secondaryLabelColor;
+    BOOL recording = _monitor != nil;
+    _label.stringValue = recording ? @"Type shortcut…" : text ?: @"Add new…";
+    _label.textColor = text && !recording ? NSColor.labelColor : NSColor.secondaryLabelColor;
     _clear.hidden = !text || !_hovered;
     // Worded like Dia's Shortcuts settings.
     NSArray<NSString *> *clashes = DPShortcutClashes(_patch);
@@ -154,16 +155,35 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)canBecomeKeyView { return YES; }
-- (void)mouseDown:(NSEvent *)event { [self.window makeFirstResponder:self]; }
+- (void)mouseDown:(NSEvent *)event {
+    if ([self.window makeFirstResponder:self]) [self startRecording];
+}
 - (void)mouseEntered:(NSEvent *)event { _hovered = YES; [self refresh]; }
 - (void)mouseExited:(NSEvent *)event { _hovered = NO; [self refresh]; }
 
 - (NSRect)focusRingMaskBounds { return self.bounds; }
 - (void)drawFocusRingMask { [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill]; }
 
+// Tab and Shift-Tab move on, as from any field, and end recording.
+- (BOOL)moveFocus:(NSEvent *)event {
+    NSEventModifierFlags flags = event.modifierFlags & DPShortcutModifiers;
+    if (event.keyCode != kVK_Tab || (flags & ~NSEventModifierFlagShift)) return NO;
+    [self stopRecording];
+    if (flags) [self.window selectPreviousKeyView:nil];
+    else [self.window selectNextKeyView:nil];
+    return YES;
+}
+
+// Tabbing in only focuses the field, so ⌘W there still closes the window. A click, Space or Return starts recording.
+- (void)keyDown:(NSEvent *)event {
+    BOOL activate = (event.keyCode == kVK_Space || event.keyCode == kVK_Return) && !(event.modifierFlags & DPShortcutModifiers);
+    if (activate) [self startRecording];
+    else if (![self moveFocus:event]) [super keyDown:event];
+}
+
 // Recording takes every key before Dia's menus and other shortcuts see it.
-- (BOOL)becomeFirstResponder {
-    if (![super becomeFirstResponder]) return NO;
+- (void)startRecording {
+    if (_monitor) return;
     DPRecorders = DPRecorders ?: [NSHashTable weakObjectsHashTable];
     [DPRecorders addObject:self];
     __weak typeof(self) weak = self;
@@ -173,13 +193,15 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
         [field record:event];
         return nil;
     }];
-    return YES;
+    [self refresh];
 }
 
 - (void)stopRecording {
+    BOOL recording = _monitor != nil;
     if (_monitor) [NSEvent removeMonitor:_monitor];
     _monitor = nil;
     [DPRecorders removeObject:self];
+    if (recording) [self refresh];
 }
 
 - (BOOL)resignFirstResponder {
@@ -199,6 +221,7 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 - (void)record:(NSEvent *)event {
     NSEventModifierFlags flags = event.modifierFlags & DPShortcutModifiers;
     if (event.keyCode == kVK_Escape && !flags) return (void)[self.window makeFirstResponder:nil];
+    if ([self moveFocus:event]) return;
     if ((event.keyCode == kVK_Delete || event.keyCode == kVK_ForwardDelete) && !flags) return [self clearShortcut];
     NSString *name = DPKeyName(event);
     BOOL functionKey = name.length > 1 && [name hasPrefix:@"F"];
