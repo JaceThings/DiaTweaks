@@ -4,7 +4,7 @@ extern DPPatch DPCompactSidebarHeader;
 static const CGFloat DPHeaderTrim = 10;
 static const CGFloat DPTopTabsButtonInset = 14;
 static NSHashTable<NSView *> *DPSidebars;
-static char DPHeaderFrameKey, DPButtonsKey;
+static char DPHeaderFrameKey, DPButtonsKey, DPRetriesKey;
 
 static NSRect DPLaidOutHeader(NSView *header) {
     return [DPDiaValue(header, &DPHeaderFrameKey, @(header.frame)) rectValue];
@@ -41,6 +41,13 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     NSView *lights = DPFindView(self, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaTrafficLights); }), *row = lights.superview;
     if (lights && row != self) DPSet(row, &DPButtonsKey, lights);
     DPCallOriginal(DPHeader_layout, self);
+    // At launch Dia lays the header out before the buttons are in it, then not again until the sidebar changes.
+    NSUInteger retries = [DPGet(self, &DPRetriesKey) unsignedIntegerValue];
+    if (DPCompactSidebarHeader.on && lights && row != self && NSIsEmptyRect(DPCloseButtonInWindow(lights)) && self.window && retries < 8) {
+        DPSet(self, &DPRetriesKey, @(retries + 1));
+        __weak NSView *header = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{ header.needsLayout = YES; });
+    }
 }
 
 // Dia lays the header and the view under it out as if the header still had its full height. Trimming them after that
