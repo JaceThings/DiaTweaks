@@ -6,27 +6,20 @@
 extern DPPatch DPNewTabNextToCurrent;
 static char DPStateKey, DPRelayKey;
 
-// Dia's own new tab page has nothing a tab can be moved by. A tab made through its scripting, as `make new tab` does, is a
-// real page, which Group Tabs by Domain's way of moving a tab works on: put it in a scratch group, move the group, ungroup
-// it. So New Tab, its shortcut and the sidebar's button make that tab instead. From a pinned or favorite tab it goes to
-// the top of the unpinned tabs, and from a tab in a folder right after the folder, as in Arc.
 @interface DPNextTabs : NSObject
 @property(strong) NSSet<NSString *> *knownIDs;
 @property(copy) NSString *lastFrontID;
-@property BOOL moving;  // A new tab is being moved, which shifts the tab in front for a moment.
+@property BOOL moving;  // The front tab changes while a new tab moves; DPNote must ignore that.
 @property(strong) NSMutableDictionary<NSString *, NSString *> *originOf;
 @end
 
 @implementation DPNextTabs
 @end
 
-#pragma mark Tabs
-
 static NSArray<NSString *> *DPTabIDs(NSWindow *window) {
     return [[DPScriptWindow(window) valueForKey:@"appleScriptTabs"] valueForKey:@"tabId"] ?: @[];
 }
 
-// Dia's new tab page has no http, https or file URL.
 static BOOL DPIsBlank(NSWindow *window, NSString *tabID) {
     NSString *url = [[DPScriptTab(window, tabID) valueForKey:@"URL"] description];
     return !url.length || !([url hasPrefix:@"http:"] || [url hasPrefix:@"https:"] || [url hasPrefix:@"file:"]);
@@ -43,8 +36,6 @@ static DPNextTabs *DPStateFor(NSWindow *window) {
     DPSet(window, &DPStateKey, state);
     return state;
 }
-
-#pragma mark Opening
 
 static void DPAskGroups(id delegate, id browser, void (^done)(NSArray *groups)) {
     void (*ask)(id, SEL, id, void (^)(NSArray *)) = (void *)objc_msgSend;
@@ -79,13 +70,12 @@ static void DPDoneMoving(NSWindow *window, DPNextTabs *state) {
     state.lastFrontID = DPActiveTabID(window);
 }
 
-// `before` is the pages Dia had when the tab was made, so the new tab's page is the one it gained.
 static void DPPlace(NSWindow *window, NSString *newID, NSString *fromID, long long fromSession, NSSet<NSNumber *> *before, DPNextTabs *state, int tries) {
     id browser = DPBrowserOfWindow(window), delegate = DPGroupingDelegate(browser);
     if (!DPNewTabNextToCurrent.on || !DPScriptTab(window, newID) || !delegate) return DPDoneMoving(window, state);
     NSMutableSet<NSNumber *> *gained = [DPSessions(browser) mutableCopy];
     [gained minusSet:before];
-    if (gained.count != 1) {  // Dia may not have told us about the page yet.
+    if (gained.count != 1) {
         if (tries <= 0) return DPDoneMoving(window, state);
         return (void)dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             DPPlace(window, newID, fromID, fromSession, before, state, tries - 1);
@@ -98,7 +88,7 @@ static void DPPlace(NSWindow *window, NSString *newID, NSString *fromID, long lo
     NSUInteger fromIndex = [others indexOfObject:fromID];
     if (newIndex == NSNotFound || fromIndex == NSNotFound || newIndex == fromIndex + 1) return DPDoneMoving(window, state);
 
-    // The move also ends when Dia makes no group for the tab, as when it has closed, which DPMoveTab reports as a failure.
+    // DPMoveTab fails when the tab closes mid-move; that must clear `moving` too.
     void (^finish)(void) = ^{ DPDoneMoving(window, state); };
     // Nothing reports where the unpinned tabs start, but a tab moved to 0 lands there.
     DPMoveTab(delegate, browser, sid, 0, ^{
@@ -111,8 +101,6 @@ static void DPPlace(NSWindow *window, NSString *newID, NSString *fromID, long lo
     }, finish);
 }
 
-// What `make new tab` does. Nothing happens if Dia's scripting isn't as expected, or the tab in front is already a new
-// tab, which Dia's own New Tab only brings to the front.
 static BOOL DPOpenNextToCurrent(NSWindow *window) {
     id scripted = DPScriptWindow(window), browser = DPBrowserOfWindow(window);
     NSString *from = DPActiveTabID(window);
@@ -158,7 +146,6 @@ static NSMenuItem *DPNewTabItem(void) {
     return nil;
 }
 
-// Both Dia's shortcut for it and a click reach the item's action, so it's the one place to catch them.
 static void DPRelayMenuItem(BOOL on) {
     NSMenuItem *item = DPNewTabItem();
     DPNewTabRelay *relay = DPGet(item, &DPRelayKey);
@@ -181,15 +168,11 @@ static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     if (!(self.window && DPOpenNextToCurrent(self.window))) DPCallOriginal(DPNewTabButton_mouseDown, self, event);
 }
 
-#pragma mark Following
-
 static void DPReturnTo(NSWindow *window, NSString *originID, NSString *expectedFront) {
     id origin = DPScriptTab(window, originID);
     if (origin && [DPActiveTabID(window) isEqual:expectedFront]) DPFocusTab(origin);
 }
 
-// Tracks which tab you're on. A tab opened from another stays tied to it while you're on either, so going back and
-// forth keeps it, and a command bar tab that sends you back while it waits for a search does too.
 static void DPNote(NSWindow *window) {
     NSString *active = DPActiveTabID(window);
     NSArray<NSString *> *ids = DPTabIDs(window);
@@ -200,7 +183,6 @@ static void DPNote(NSWindow *window) {
     NSSet<NSString *> *now = [NSSet setWithArray:ids];
     BOOL switched = ![active isEqual:state.lastFrontID];
 
-    // A new tab page came to the front that Dia, not the tweak, opened: a button or shortcut this didn't catch.
     if (state.lastFrontID && switched && ![state.knownIDs containsObject:active] && [now containsObject:state.lastFrontID] && DPIsBlank(window, active))
         state.originOf[active] = state.lastFrontID;
 
@@ -236,8 +218,6 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     NSWindow *window = self.window;
     if (window && DPNewTabNextToCurrent.on) DPNote(window);
 }
-
-#pragma mark Patch
 
 static void DPInstallNewTabNextToCurrent(void) {
     DPHook(DPDiaContentPane, @selector(viewDidMoveToWindow), (IMP)DPContentPane_viewDidMoveToWindow);

@@ -2,12 +2,12 @@
 #import "Patches/LittleDia/LittleDia.h"
 
 const CGFloat DPPeekToolbarHeight = 38;
-static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30;  // Little Dia's.
+static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30;
 
 @interface DPPeekToolbar : NSView
 @property (nonatomic, weak) id page;
 @property (nonatomic, strong) NSView *row, *divider, *address, *glow;
-@property (nonatomic, strong) NSArray<NSButton *> *buttons;  // back, forward, reload
+@property (nonatomic, strong) NSArray<NSButton *> *buttons;
 @property (nonatomic, strong) NSTimer *watch;
 @property (nonatomic, strong) id clicks;
 @end
@@ -15,14 +15,13 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
 @implementation DPPeekToolbar
 - (BOOL)wantsUpdateLayer { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
-- (void)mouseDown:(NSEvent *)event {}  // Not the card's, which closes it.
+- (void)mouseDown:(NSEvent *)event {}  // Swallows the click; the card's mouseDown would close it.
 
 - (instancetype)initWithPage:(id)page {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     self.page = page;
     self.wantsLayer = YES;
     self.layer.masksToBounds = YES;
-    // Little Dia colors the row it sits in; this one sits on the card's own background, so the bar stays opaque.
     self.row = [NSView new];
     __weak DPPeekToolbar *weak = self;
     self.buttons = @[
@@ -41,11 +40,10 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
 }
 
 - (void)updateLayer { self.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor; }
-- (void)resetCursorRects { [self addCursorRect:self.bounds cursor:NSCursor.arrowCursor]; }  // Not Dia's text cursor from under the card.
+- (void)resetCursorRects { [self addCursorRect:self.bounds cursor:NSCursor.arrowCursor]; }
 
 - (void)layout {
     [super layout];
-    // Laid out at full height from the top, so the bar is cropped, not squeezed, as it shrinks into a tab.
     CGFloat h = NSHeight(self.bounds), full = DPPeekToolbarHeight;
     self.row.frame = NSMakeRect(0, h - full, NSWidth(self.bounds), full);
     CGFloat mid = full / 2, x = DPInset;
@@ -68,8 +66,7 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
     if (!self.window) return;
     __weak DPPeekToolbar *weak = self;
     self.watch = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) { [weak refresh]; }];
-    // Dia's own toolbar lies under the top of the card and takes clicks there by where they land, whatever is on top,
-    // opening the address of the tab behind. A click on this bar goes straight to this bar.
+    // Dia's own toolbar under the card takes clicks by where they land, whatever is on top, so route them to this bar first.
     self.clicks = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *event) {
         DPPeekToolbar *bar = weak;
         NSView *clip = bar.superview;
@@ -91,7 +88,6 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPAddressHeight = 30
     if (_clicks) [NSEvent removeMonitor:_clicks];
 }
 
-// The page has no change notifications that reach here.
 - (void)refresh {
     NSObject *page = self.page;
     if (!page) return;

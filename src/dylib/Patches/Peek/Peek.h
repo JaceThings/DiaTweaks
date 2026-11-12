@@ -5,7 +5,7 @@ extern DPPatch DPPeek, DPPeekPinnedLinks;
 typedef NS_ENUM(NSInteger, DPPeekExit) { DPPeekClose, DPPeekTab, DPPeekSplit };  // Also the controls' button tags.
 typedef NS_ENUM(NSInteger, DPPeekStep) { DPPeekBack, DPPeekForward, DPPeekReload };
 
-// ArcWebContentsNavigationDisposition, numbered differently from Chromium's. A Shift-click arrives as a popup.
+// Dia's ArcWebContentsNavigationDisposition, numbered differently from Chromium's.
 enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTab = 3, DPNewWindow = 5, DPPopup = 6, DPSplitView = 9 };
 
 @protocol DPPeekPage <NSObject>
@@ -20,7 +20,7 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @property (nonatomic, weak) id sourceDelegate, source;
 @property (nonatomic, weak) NSView *pane;
 @property (nonatomic, strong) id paneObserver, monitor;
-@property (nonatomic) NSRect link;    // In the card's own coordinates.
+@property (nonatomic) NSRect link;
 @property (nonatomic) CGFloat grown;
 @property (nonatomic) BOOL closing;
 @property (nonatomic) NSInteger paneMoves;
@@ -76,7 +76,7 @@ BOOL DPPeekGenie(void);
 BOOL DPPeekShowsToolbar(void);
 NSArray<NSView *> *DPPeekSettingsRows(void);
 
-extern BOOL DPPeekGiving;  // YES while a Peek hands its page to Dia as a tab, which Shift must not turn into another Peek.
+extern BOOL DPPeekGiving;
 
 void DPPeekInstallPages(void);
 BOOL DPPeekCanOpen(id source);

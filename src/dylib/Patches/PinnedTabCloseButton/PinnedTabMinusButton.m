@@ -1,14 +1,10 @@
 #import "Patches/PinnedTabCloseButton/PinnedTabs.h"
 
-// Dia gives an open tab under a folded pinned folder a minus button that closes its page and keeps the tab. Its
-// closeKeepingTab style does the same for any pinned tab, so a click is sent as that.
-
 enum { DPDismiss = 2 };  // TabUI.TabCloseButtonStyle.
 
 static NSImage *DPMinus;
 static char DPDiaImageKey;
 
-// The tab controller of an open pinned tab with one page, unless Dia already gives it a minus button.
 static id DPMinusController(NSView *content) {
     NSView *tab = DPEnclosingTab(content);
     if (!tab || !DPIsOpenPinned(content) || [DPSwiftValue(tab, @"contentViews") count] != 1) return nil;
@@ -35,7 +31,7 @@ static void DPContent_layout(NSView *self, SEL _cmd) {
     if (button.image != shown) button.image = shown;
 }
 
-// The button's icon decides, so a click does what it showed. Keeping the tab is the safe guess if the tab changed since.
+// The icon decides, so a click does what it showed; a stale icon keeps the tab rather than removing the pin.
 static void DPContent_closeButtonClicked(NSView *self, SEL _cmd) {
     BOOL minus = DPMinusOn() && DPCloseButton(self).image == DPMinus;
     if (!(minus && DPClickKeepingTab(self, ^{ DPCallOriginal(DPContent_closeButtonClicked, self); })))

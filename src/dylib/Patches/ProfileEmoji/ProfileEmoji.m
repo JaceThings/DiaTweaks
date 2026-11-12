@@ -3,7 +3,6 @@
 extern DPPatch DPProfileEmoji;
 
 static NSString *const DPEmojisKey = @"profileEmojis";
-// The gap is between what's drawn, so emoji and dots sit the same distance apart in any mix.
 static const CGFloat DPSidebarEmojiSize = 13.5, DPSidebarEmojiWidth = 16, DPSidebarDotWidth = 6, DPSidebarGap = 10;
 static NSUserDefaults *DPEmojiDefaults;
 static NSHashTable<NSViewController *> *DPProfilePanes;
@@ -54,8 +53,7 @@ static CGFloat DPSidebarItemWidth(NSView *item, NSDictionary *views) {
     return (DPEmoji(DPSpaceIDOf(item, views)) ? DPSidebarEmojiWidth : DPSidebarDotWidth) + DPSidebarGap;
 }
 
-// Dia packs items 12 points apart, which crowds emoji, so each item gets its own width and the row stays centered.
-// Dia also places items outside layout, such as after switching profiles.
+// Dia also sets frames outside layout, such as after switching profiles, so layout alone doesn't keep the row spaced.
 static void DPSidebarItem_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     NSView *switcher = self.superview;
     NSDictionary *views = DPSwiftValue(switcher, @"itemViews");

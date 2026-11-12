@@ -18,7 +18,7 @@ static double DPPeekTuned(NSString *key) {
 }
 
 double DPPeekDarkness(void) { return DPPeekTuned(DPPeekDarknessKey); }
-double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // iOS's response at 100%.
+double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }
 BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
 BOOL DPPeekShowsToolbar(void) { return DPPeekTuned(DPPeekToolbarKey) != 0; }
 
@@ -104,7 +104,7 @@ NSArray<NSView *> *DPPeekSettingsRows(void) {
     NSView *toolbar = DPPeekSwitch(@"Show Address Toolbar",
         @"Show back, forward, reload and the address across the top of the card, like Little Dia. It hides and shows with Hide Toolbar.",
         DPPeekToolbarKey);
-    toolbar.identifier = DPLeadingOption;  // Above Drag Links and Pinned Tabs.
+    toolbar.identifier = DPLeadingOption;
     return @[
         toolbar,
         DPPeekSwitch(@"Genie Effect", @"Grow the card out of the link you clicked, and shrink it back into it as it closes.", DPPeekGenieKey),

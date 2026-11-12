@@ -10,7 +10,6 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 @property (nonatomic, strong) CALayer *iconLayer;
 @end
 
-// A view's layer scales from its corner.
 CATransform3D DPPeekScaled(NSView *view, CGFloat scale) {
     CGFloat cx = NSWidth(view.bounds) / 2, cy = NSHeight(view.bounds) / 2;
     return CATransform3DTranslate(CATransform3DScale(CATransform3DMakeTranslation(cx, cy, 0), scale, scale, 1), -cx, -cy, 0);
@@ -188,7 +187,6 @@ void DPPeekLayoutHints(NSView *controls, CGFloat availableRight) {
     }
 }
 
-// Not a stack view, which squeezed the circles out of shape.
 NSView *DPPeekControls(id target, SEL action) {
     static const CGFloat side = 28, gap = 8;
     CGFloat scale = NSScreen.mainScreen.backingScaleFactor ?: 2;

@@ -2,9 +2,8 @@
 #import "Patches/HideToolbar/HideToolbar.h"
 
 static const NSTimeInterval DPGlowCycle = 2;
-// Dia's finish, timed from Little Dia's bar.
 static const NSTimeInterval DPGlowFinish = 0.3, DPGlowHold = 0.1, DPGlowFade = 0.15;
-static const CGFloat DPGlowEase = 0.15;  // While loading: how much of the gap to the page's progress it closes each frame.
+static const CGFloat DPGlowEase = 0.15;
 
 @interface DPPeekGlow : NSView
 @property (nonatomic, weak) id page;
@@ -27,7 +26,7 @@ static const CGFloat DPGlowEase = 0.15;  // While loading: how much of the gap t
     self.alphaValue = 0;
     self.shader = DPProgressShaderLayer();
     if (self.shader) {
-        CAGradientLayer *fade = [CAGradientLayer layer];  // Hide Toolbar's fade, the right way up.
+        CAGradientLayer *fade = [CAGradientLayer layer];
         fade.colors = @[(id)NSColor.blackColor.CGColor, (id)NSColor.clearColor.CGColor];
         fade.startPoint = CGPointMake(0.5, 0.35);
         fade.endPoint = CGPointMake(0.5, 1);
@@ -70,7 +69,6 @@ static const CGFloat DPGlowEase = 0.15;  // While loading: how much of the gap t
     DPDrawProgressShader(self.shader, self.shown, fmod(CACurrentMediaTime(), DPGlowCycle) / DPGlowCycle, primary, secondary);
 }
 
-// Once the page has loaded, the glow still runs on to the right edge, however fast, and only then fades, as Dia's does.
 - (void)step {
     NSObject *page = self.page;
     BOOL loading = [[page valueForKey:@"isLoading"] boolValue];

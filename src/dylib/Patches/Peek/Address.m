@@ -1,6 +1,5 @@
 #import "Patches/Peek/Peek.h"
 
-// Dia's own address field belongs to the tab behind the card, so the Peek draws its own, as Little Dia does.
 @interface DPPeekAddress : NSView <NSTextFieldDelegate>
 @property (nonatomic, weak) id page;
 @property (nonatomic) NSTextField *label, *field;
