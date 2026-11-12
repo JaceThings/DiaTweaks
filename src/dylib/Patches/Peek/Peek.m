@@ -2,6 +2,7 @@
 
 static NSURL *DPPeekHovered;
 static __weak id DPPeekHoveredPage, DPPeekHoveredDelegate;
+static NSUInteger DPPeekLookAheadTurn;
 
 static BOOL DPPeekWanted(NSInteger disposition) {
     BOOL elsewhere = disposition == DPForegroundTab || disposition == DPBackgroundTab || disposition == DPPopup || disposition == DPNewWindow;
@@ -10,6 +11,7 @@ static BOOL DPPeekWanted(NSInteger disposition) {
 }
 
 static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
+    DPPeekLookAheadTurn++;  // The link opens now; a look-ahead still waiting would load it again.
     NSWindow *window = NSApp.keyWindow;
     NSPoint origin = NSEvent.mouseLocation;
     dispatch_async(dispatch_get_main_queue(), ^{ DPPeekOpen(window, url, origin, delegate, source); });
@@ -56,12 +58,16 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
     return DPIgnoreAction;
 }
 
+// Shift is also pressed for a capital letter, so the link loads only once Shift has stood alone for a moment. A key cancels it.
 static void DPPeekLookAhead(void) {
     NSEventModifierFlags mods = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagCapsLock;
     id page = DPPeekHoveredPage;
-    if (DPPeek.on && mods == NSEventModifierFlagShift && DPPeekHovered && page && !DPPeekShows(page) && DPPeekCanOpen(page))
-        DPPeekWarm(NSApp.keyWindow, page, DPPeekHovered);
-    else DPPeekCool();
+    NSURL *url = DPPeekHovered;
+    NSUInteger turn = ++DPPeekLookAheadTurn;
+    if (!(DPPeek.on && mods == NSEventModifierFlagShift && url && page && !DPPeekShows(page) && DPPeekCanOpen(page))) return DPPeekCool();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (turn == DPPeekLookAheadTurn) DPPeekWarm(NSApp.keyWindow, page, url);
+    });
 }
 
 static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *text) {
@@ -88,8 +94,9 @@ static void DPInstallPeek(void) {
         DPHook(DPDiaWebContent, @selector(webContents:decidePolicyForNavigationAction:), (IMP)DPWebContent_decidePolicy);
         DPHook(DPDiaWebContent, @selector(webContents:didChangeStatusText:), (IMP)DPWebContent_status);
     });
-    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^NSEvent *(NSEvent *event) {
-        DPPeekLookAhead();
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged | NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+        if (event.type == NSEventTypeKeyDown) DPPeekLookAheadTurn++;
+        else DPPeekLookAhead();
         return event;
     }];
 }
