@@ -81,7 +81,6 @@ static __weak DPPaneView *DPShownPane;
     return nil;
 }
 
-// Building a pane takes a moment, so it is built hidden as Settings opens.
 - (void)preparePane:(DPPaneView *)pane {
     NSView *detail = ((NSSplitViewController *)self.table.window.contentViewController).splitViewItems.lastObject.viewController.view;
     if (!detail || pane.superview == detail) return;

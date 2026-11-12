@@ -21,7 +21,7 @@ static BOOL DPLaunchCLI(NSArray<NSString *> *args) { return [DPCLITask(args) lau
 
 static NSUserDefaults *DPUpdateDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
 
-// DiaTweaks built from source has no release.plist, which diapatch writes when it installs a release. Updating it is up to the user.
+// diapatch writes release.plist when it installs a release, so a source build has none.
 BOOL DPIsLocalBuild(NSString *part) {
     return [part isEqual:DPTweaks] && ![[NSDictionary dictionaryWithContentsOfFile:DPSupport(@"release.plist")][@"tag"] isKindOfClass:NSString.class];
 }
