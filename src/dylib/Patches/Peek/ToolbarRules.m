@@ -76,11 +76,12 @@ static BOOL DPPeekCanReveal(DPPeekBarZone *zone) { return DPHideToolbar.on && DP
         self.pinned = pinned;
         peek.needsLayout = YES;
     }
-    if (self.hidden != (!DPPeekCanReveal(self) || peek.grown > 0)) peek.needsLayout = YES;
+    BOOL canReveal = DPPeekCanReveal(self);
+    if (self.hidden != (!canReveal || peek.grown > 0)) peek.needsLayout = YES;
     // Revealed for ⌘L stays until the typing ends, then hides unless the pointer is over it.
     BOOL editing = DPPeekEditing(self);
     if (editing && !pinned) self.revealed = YES;
-    else if (self.revealed && !editing && (!DPPeekCanReveal(self) || !self.hovering) && !self.hide) self.revealed = NO;
+    else if (self.revealed && !editing && (!canReveal || !self.hovering) && !self.hide) self.revealed = NO;
     NSObject *page = (NSObject *)peek.page;
     BOOL outOfSight = !pinned && self.reveal == 0 && DPHideToolbar.progress == 1;
     if (!DPShowLoadingProgress.on || !outOfSight || peek.closing || !page) DPRemoveProgressLine(peek.clip);
