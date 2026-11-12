@@ -19,7 +19,6 @@ static NSMenu *DPFilled(NSMenu *menu) {
     return menu;
 }
 
-// The profile's dot, from Dia's own Tabs › Move to Profile menu.
 NSImage *DPLittleDiaProfileImage(NSString *name) {
     NSMenu *tabs = DPFilled([NSApp.mainMenu itemWithTitle:@"Tabs"].submenu);
     return [DPFilled([tabs itemWithTitle:@"Move to Profile"].submenu) itemWithTitle:name].image;

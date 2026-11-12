@@ -4,7 +4,6 @@
 extern DPPatch DPMouseBackForward;
 
 // Raw side buttons are 3 and 4. Drivers such as SteerMouse instead send a discrete, windowless swipe.
-// Handle either before the page can swallow it, once on release for a button, or once for a discrete swipe.
 static const NSInteger DPWebContentsHidden = 0;
 static NSHashTable *DPPages;
 

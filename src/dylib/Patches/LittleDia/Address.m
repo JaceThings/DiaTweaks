@@ -24,7 +24,6 @@
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
-// The label inside would take the click for itself; while editing, the field gets it.
 - (NSView *)hitTest:(NSPoint)point {
     NSView *hit = [super hitTest:point];
     if (!hit) return nil;

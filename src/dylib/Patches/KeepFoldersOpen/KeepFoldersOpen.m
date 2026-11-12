@@ -1,9 +1,8 @@
 #import "StdPatch/StdPatch.h"
 #import "Commands/GroupTabs/GroupTabs.h"
 
-// Dia collapses a folder when its last tab or live item goes away, and leaves it shut when new ones arrive. A folder
-// that collapses without a click on its header gets one click to open it again. With tabs at the top a folder is a
-// TabGroupView, not a TabGroupCellView.
+// Dia collapses a folder when its last tab or live item goes away, and leaves it shut when new ones arrive. With tabs at
+// the top a folder is a TabGroupView, not a TabGroupCellView.
 
 extern DPPatch DPKeepFoldersOpen;
 
