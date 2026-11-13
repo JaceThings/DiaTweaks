@@ -3,6 +3,8 @@
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
 #define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"
 #define DPDiaReloadIcon         "_TtC13NavigationBar14ReloadIconView"
+#define DPDiaReloadButton       "_TtGC13NavigationBar22InteractiveIconControlCS_14ReloadIconView_"  // Generic: match by name, not DPIsKind.
+#define DPDiaHoverableControl   "_TtC5ARCUI16HoverableControl"
 #define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
 #define DPDiaSidebarHeader      "_TtC10TabSidebar17SidebarHeaderView"
 #define DPDiaTrafficLights      "_TtC5ARCUI21WindowStandardButtons"
