@@ -3,7 +3,6 @@
 
 extern DPPatch DPSavePageAs;
 static const NSInteger DPWebContentsVisible = 2;
-static NSString *const DPSavePageShortcutKey = @"savePageAsShortcut";
 static NSHashTable *DPPages;
 static NSMenuItem *DPSaveItem;
 
@@ -12,18 +11,26 @@ static NSDictionary *DPDefaultSaveShortcut(void) {
 }
 
 static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
-    [DPPages addObject:self];
+    if ([self respondsToSelector:@selector(nativeView)] && [self respondsToSelector:@selector(visibility)] && [self respondsToSelector:@selector(hasFocus)]
+        && [self respondsToSelector:@selector(save)])
+        [DPPages addObject:self];
     DPCallOriginal(DPPage_setVisibility, self, visibility);
 }
 
 static id DPFrontPage(void) {
-    id found = nil;
+    NSWindow *window = NSApp.keyWindow;
+    NSView *hit = [window.contentView.superview hitTest:window.mouseLocationOutsideOfEventStream];
+    id focused = nil, under = nil, only = nil;
+    NSUInteger count = 0;
     for (id page in DPPages.allObjects) {
         NSView *view = [page performSelector:@selector(nativeView)];
-        if (view.window != NSApp.keyWindow || ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) != DPWebContentsVisible) continue;
-        if (!found || ((BOOL (*)(id, SEL))objc_msgSend)(page, @selector(hasFocus))) found = page;
+        if (view.window != window || ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) != DPWebContentsVisible) continue;
+        if (((BOOL (*)(id, SEL))objc_msgSend)(page, @selector(hasFocus))) focused = page;
+        if ([hit isDescendantOf:view]) under = page;
+        only = page;
+        count++;
     }
-    return found;
+    return focused ?: under ?: (count == 1 ? only : nil);
 }
 
 static void DPSaveFrontPage(void) { [DPFrontPage() performSelector:@selector(save)]; }
@@ -42,7 +49,7 @@ static void DPInstallSavePageAs(void) {
     DPSaveItem.hidden = !DPSavePageAs.on;
     DPOnLaunch(^{ DPAddSaveItem(); });
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-        if (!DPSavePageAs.on || !DPShortcutMatches(event, DPSavePageShortcutKey, DPDefaultSaveShortcut()) || !DPFrontPage()) return event;
+        if (!DPSavePageAs.on || !DPShortcutMatches(event, &DPSavePageAs) || !DPFrontPage()) return event;
         if (!event.isARepeat) DPSaveFrontPage();
         return nil;
     }];
@@ -51,12 +58,6 @@ static void DPInstallSavePageAs(void) {
 static void DPApplySavePageAs(DPPatch *patch) {
     DPAddSaveItem();
     DPSaveItem.hidden = !patch->on;
-}
-
-static NSArray<NSView *> *DPSavePageAsRows(void) {
-    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], DPShortcutField(DPSavePageShortcutKey, DPDefaultSaveShortcut()) ]];
-    row.distribution = NSStackViewDistributionEqualCentering;
-    return @[ row ];
 }
 
 static NSString *DPVerifySavePageAs(DPPatch *patch) {
@@ -77,6 +78,7 @@ DP_PATCH(DPSavePageAs) {
     .classes = DPClasses(DPDiaWebContents),
     .install = DPInstallSavePageAs,
     .apply = DPApplySavePageAs,
-    .rows = DPSavePageAsRows,
+    .shortcut = @"savePageAsShortcut",
+    .defaultShortcut = DPDefaultSaveShortcut,
     .verify = DPVerifySavePageAs,
 };

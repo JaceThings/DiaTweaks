@@ -1,17 +1,8 @@
-// Asks Apple's on-device model (FoundationModels, macOS 26+) which tabs belong together. Dia names the groups itself
-// once they exist, so the model only clusters. Objective-C calls DPTidyAskModel; FoundationModels is weak-linked, so
-// the dylib still loads on older macOS and answers with an error.
-//
-// One call. Every tab gets an answer field of its own, labelled with the tab, so the model can't mix tabs up. In it the
-// model writes what the tab is about, naming the real product, brand or topic, then a short subject, copying an earlier
-// tab's word for word when it's the same thing. Tabs whose subjects match after normalizing form a group; one-tab
-// subjects are dropped. Matching words, not numbers: numbers let a small model (about 3B parameters) fall into
-// repeating one value for every tab. Sampling is greedy, so the same tabs always give the same groups.
+// One labelled field per tab and subject words, not numbers: the ~3B model mixes tabs up and repeats one number.
 import Foundation
 import XPC
 #if canImport(FoundationModels)
 import FoundationModels
-
 
 // macOS 27 renames this samplingMode, but the macOS 26 SDK only has this spelling, so it's the one that builds on both.
 @available(macOS 26, *)
@@ -56,7 +47,6 @@ private let DPTidyInstructions = """
     tab9 about: reading email; subject: email
     """
 
-/// The subject of each tab, in order, normalized so the same thing compares equal.
 @available(macOS 26, *)
 private func DPTidySubjects(_ lines: [String]) async throws -> [String] {
     let answer = DynamicGenerationSchema(name: "Tab", properties: [
@@ -76,8 +66,6 @@ private func DPTidySubjects(_ lines: [String]) async throws -> [String] {
     }
 }
 
-// A subject that adds words to another merges into it: "cat health" joins "cat". "cat food" and "dog food" stay apart,
-// since neither holds all of the other's words.
 private func DPTidyMergeNarrower(_ subjects: [String]) -> [String] {
     let words = Dictionary(subjects.filter { !$0.isEmpty }.map { ($0, Set($0.split(separator: " "))) }, uniquingKeysWith: { a, _ in a })
     return subjects.map { subject in
@@ -87,7 +75,6 @@ private func DPTidyMergeNarrower(_ subjects: [String]) -> [String] {
     }
 }
 
-// "Cat Food", "cat foods" and " cat food." are one subject.
 private func DPTidyNormalize(_ subject: String) -> String {
     subject.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
         .map { $0.count > 3 && $0.hasSuffix("s") && !$0.hasSuffix("ss") ? String($0.dropLast()) : $0 }
@@ -105,9 +92,7 @@ private func DPTidyUnavailable(_ availability: SystemLanguageModel.Availability)
     }
 }
 
-// FoundationModels says modelNotReady both while the model downloads and when macOS won't download it at all, because
-// a setting rules Apple Intelligence out. macOS's eligibility check (domain GREYMATTER) says which: each input is 3 when
-// it passes and 2 when it fails, and its context holds the languages it compared.
+// modelNotReady also means macOS won't download the model; eligibility inputs are 3 when they pass and 2 when they fail.
 private func DPTidyIneligibleReason() -> String? {
     typealias Domain = @convention(c) (UnsafePointer<CChar>) -> Int
     typealias Answer = @convention(c) (Int, UnsafeMutablePointer<UInt64>, UnsafeMutablePointer<UInt64>,
@@ -141,7 +126,6 @@ private func DPTidyIneligibleReason() -> String? {
 }
 #endif
 
-/// Why the model can't be used now, or nil when it can. The broom's tooltip shows it.
 @_cdecl("DPTidyUnavailableReason")
 public func DPTidyUnavailableReason() -> NSString? {
     #if canImport(FoundationModels)
@@ -152,8 +136,7 @@ public func DPTidyUnavailableReason() -> NSString? {
     #endif
 }
 
-/// `tabs` holds dictionaries with "title" and "address" (host and path, no query). `done` gets an array of groups, each an array of 1-based tab
-/// numbers with two or more in it, or an error message. It's called on the main queue.
+/// `done` gets groups of two or more 1-based tab numbers, or an error, on the main queue.
 @_cdecl("DPTidyAskModel")
 public func DPTidyAskModel(_ tabs: NSArray, _ done: @escaping @convention(block) (NSArray?, NSString?) -> Void) {
     func finish(_ groups: NSArray?, _ error: String?) {

@@ -70,7 +70,7 @@ DP_PATCH(DPBoosts) {
     .detail = @"Restyle any site like Arc’s Boosts: recolor it, change its font, text size and case, hide parts of it, or add your own CSS and JavaScript.",
     .hint = @"Tip: click the paintbrush in the address field to boost the site you’re on.",
     .symbol = @"paintbrush.pointed.fill paintbrush.fill",
-    .tint = @"systemPinkColor",
+    .tint = @"systemBlueColor",
     .section = @"Page",
     .classes = DPClasses(DPDiaBrowser, DPDiaBrowserDelegate, DPDiaBrowserContextEffects, DPDiaAddressField),
     .rows = DPBoostSettingsRows,

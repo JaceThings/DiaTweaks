@@ -19,7 +19,7 @@ DP_PATCH(DPHideReloadNudge) {
     .title = @"Hide Site Not Working Prompt",
     .detail = @"Stop the “not working correctly?” prompt that offers to turn off the ad blocker after you reload a page a few times.",
     .symbol = @"exclamationmark.bubble.fill",
-    .tint = @"systemOrangeColor",
+    .tint = @"systemIndigoColor",
     .section = @"Toolbar",
     .classes = DPClasses(DPDiaReloadNudge),
     .install = DPInstallHideReloadNudge,

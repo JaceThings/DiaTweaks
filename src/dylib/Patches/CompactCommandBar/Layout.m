@@ -3,7 +3,6 @@
 static const CGFloat DPCommandBarSpacing = 14;
 static char DPCompactedKey;
 
-// Drops the bottom row, leaving as much space under the input, or the suggestions once there are some, as above the input.
 NSSize DPCompactSize(NSView *container, NSSize size) {
     NSView *commandBar = DPCommandBarPart(container, DPDiaCommandBar), *toolbar = DPCompactToolbar(commandBar);
     NSView *input = DPCommandBarPart(commandBar, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(commandBar, DPDiaCommandBarSuggestions);
@@ -11,6 +10,7 @@ NSSize DPCompactSize(NSView *container, NSSize size) {
         CGFloat emptyGap = suggestions.intrinsicContentSize.height > 0 ? 0 : NSMinY(suggestions.frame) - NSMaxY(input.frame);
         size.height -= MAX(0, NSHeight(toolbar.frame) + emptyGap - NSMinY(input.frame));
     }
+    size.height -= DPHiddenSuggestionsHeight(suggestions);
     return size;
 }
 
@@ -20,7 +20,7 @@ static void DPPopover_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     DPCallOriginal(DPPopover_setFrameSize, self, compact);
 }
 
-// Shrunk with its container, the command bar would squeeze the suggestions to keep the row, so the container clips the row instead.
+// Shrunk with its container the bar would squeeze the suggestions to keep the row, so the container clips the row.
 static void DPCommandBar_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     CGFloat trim = 0;
     for (NSView *view = self.superview; view && !trim; view = view.superview) trim = DPTrim(view);
@@ -33,8 +33,7 @@ static void DPPopover_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
     if (DPCompactToolbar(commandBar)) commandBar.needsLayout = YES;
 }
 
-// Dia sizes the popover or panel only when it wants a new size, so one whose command bar settles later, as when the switch
-// flips, the buttons' labels arrive or the new tab page comes back into a window, is trimmed again here.
+// Dia sizes the popover or panel only when it wants a new size, so one whose bar settles later is trimmed again.
 static void DPRefit(NSView *commandBar) {
     NSView *box = commandBar.superview;
     while (box && !DPIsKind(box, DPDiaPopover) && !(DPIsKind(box, DPDiaAssistantPanel) && DPTrimsPanel(box))) box = box.superview;
@@ -47,21 +46,24 @@ static void DPRefit(NSView *commandBar) {
     box.superview.superview.needsLayout = YES;  // Moves the new tab page's chat usage banner under the panel.
 }
 
-// The row moves up over the input, keeping Go at the trailing edge. The popover can run past the window's top, so Go
-// centers in the part that shows.
 static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPCommandBar_layout, self);
     DPRefit(self);
-    NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar);
+    NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar), *suggestions = DPCommandBarPart(self, DPDiaCommandBarSuggestions);
+    CGFloat hidden = DPHiddenSuggestionsHeight(suggestions);
+    BOOL compact = DPCompactToolbar(self) != nil;
+    if (hidden && toolbar && !compact) {
+        NSRect frame = toolbar.frame;
+        frame.origin.y = NSMaxY(suggestions.frame) - hidden;
+        toolbar.frame = frame;
+    }
     NSStackView *stack = toolbar.subviews.firstObject;
     if (![stack isKindOfClass:NSStackView.class]) return;
-    BOOL compact = DPCompactToolbar(self) != nil;
     if (!compact && !DPGet(stack, &DPCompactedKey)) return;
     DPSet(stack, &DPCompactedKey, compact ? @YES : nil);
-    // Faded, not hidden: the add tabs button stretches to push Go to the trailing edge.
     for (NSView *view in stack.views)
         if (view != DPGoButton(toolbar)) view.alphaValue = !compact;
-    NSView *input = DPCommandBarPart(self, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(self, DPDiaCommandBarSuggestions);
+    NSView *input = DPCommandBarPart(self, DPDiaCommandBarInput);
     if (!compact || !input || !suggestions || !self.window) return;
     CGFloat gap = NSMinY(suggestions.frame) - NSMaxY(input.frame), rowBottom = NSMinY(suggestions.frame) + NSMinY(input.frame) - gap;
     CGFloat cut = MAX(0, NSMaxY([self convertRect:self.bounds toView:nil]) - NSHeight(self.window.frame));
@@ -79,7 +81,6 @@ static void DPCommandBarInput_layout(NSView *self, SEL _cmd) {
     text.frame = frame;
 }
 
-// Labels arrive after the first layout, so a label that changes the verdict lays the command bar out again.
 static void DPCommandBarButton_setAccessibilityLabel(NSView *self, SEL _cmd, NSString *label) {
     DPCallOriginal(DPCommandBarButton_setAccessibilityLabel, self, label);
     NSView *commandBar = self;
@@ -92,7 +93,6 @@ static void DPCommandBarButton_setAccessibilityLabel(NSView *self, SEL _cmd, NSS
     for (NSView *view = commandBar; view; view = view.superview) view.needsLayout = YES;
 }
 
-// The row lies over the input, so only Go takes clicks.
 static NSView *DPCommandBarToolbar_hitTest(NSView *self, SEL _cmd, NSPoint point) {
     NSView *hit = DPCallOriginal(DPCommandBarToolbar_hitTest, self, point), *commandBar = self.superview.superview;
     if (!hit || !DPIsKind(commandBar, DPDiaCommandBar) || !DPCompactToolbar(commandBar)) return hit;

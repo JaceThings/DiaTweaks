@@ -1,40 +1,25 @@
 #import "StdPatch/StdPatch.h"
 
-@interface NSObject (DPSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;
-@end
-
 extern DPPatch DPHideSleepingTabs;
 
-static id DPField(id object, NSString *key) {
-    return [object respondsToSelector:@selector(safeSwiftValueForKey:)] ? [object safeSwiftValueForKey:key] : nil;
-}
+static id DPState(id viewModel) { return DPSwiftValue(DPSwiftValue(viewModel, @"stateSubject"), @"currentValue"); }
 
-static id DPState(id viewModel) { return DPField(DPField(viewModel, @"stateSubject"), @"currentValue"); }
-
-// The items only come through as a description, so their tab IDs are read out of it.
 static NSArray<NSString *> *DPSwitcherItems(id viewModel) {
-    NSString *items = [DPField(DPState(viewModel), @"items") description] ?: @"";
-    static NSRegularExpression *uuid;
-    if (!uuid) uuid = [NSRegularExpression regularExpressionWithPattern:@"[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" options:0 error:nil];
-    NSMutableArray *tabs = [NSMutableArray new];
-    for (NSTextCheckingResult *match in [uuid matchesInString:items options:0 range:NSMakeRange(0, items.length)])
-        [tabs addObject:[items substringWithRange:match.range]];
-    return tabs;
+    return DPUUIDsIn([DPSwiftValue(DPState(viewModel), @"items") description]);
 }
 
 static NSSet<NSString *> *DPSleepingTabs(id viewModel) {
-    NSDictionary *tabs = DPField(DPField(viewModel, @"delegate"), @"recentTabControllers");
+    NSDictionary *tabs = DPSwiftValue(DPSwiftValue(viewModel, @"delegate"), @"recentTabControllers");
     NSMutableSet *sleeping = [NSMutableSet new];
     for (id tab in tabs) {
-        NSString *state = [DPState(DPField(tabs[tab], @"viewModel")) description];
+        NSString *state = [DPState(DPSwiftValue(tabs[tab], @"viewModel")) description];
         if (state && ![state containsString:@"snapshot: Optional("]) [sleeping addObject:[tab description]];
     }
     return sleeping;
 }
 
 static NSArray<NSNumber *> *DPShownItems(id list) {
-    id viewModel = DPField(list, @"viewModel");
+    id viewModel = DPSwiftValue(list, @"viewModel");
     NSSet *sleeping = DPHideSleepingTabs.on ? DPSleepingTabs(viewModel) : nil;
     NSMutableArray *shown = [NSMutableArray new];
     [DPSwitcherItems(viewModel) enumerateObjectsUsingBlock:^(NSString *tab, NSUInteger i, BOOL *stop) {
@@ -80,13 +65,12 @@ static void DPList_select(id self, SEL _cmd, NSCollectionView *view, NSSet<NSInd
     DPCallOriginal(DPList_select, self, view, dia);
 }
 
-// Dia sizes the switcher for every tab through constraints on its content, so each one it sets is refit to the cells left.
 static const CGFloat DPSwitcherChrome = 152;  // Shadow margin and grid inset, both sides.
 static char DPWatchedKey;
 static BOOL DPFitting;
 
 static void DPFitSwitcherSize(NSLayoutConstraint *size, id list) {
-    NSCollectionView *grid = DPField(list, @"collectionView");
+    NSCollectionView *grid = DPSwiftValue(list, @"collectionView");
     NSArray *shown = DPHideSleepingTabs.on ? DPShownItems(list) : nil;
     if (DPFitting || !grid || !shown) return;
     NSSize cell = [list collectionView:grid layout:grid.collectionViewLayout sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
@@ -124,31 +108,35 @@ static void DPWatchSwitcherSize(id list) {
     }
 }
 
-static NSWindowController *DPOpenSwitcher(void) {
-    for (NSWindow *window in NSApp.windows)
-        if (window.visible && DPIsKind(window.windowController, DPDiaTabSwitcher)) return window.windowController;
-    return nil;
+static int DPStepsLeft;
+static const int64_t DPOwnKey = 0x44505353;
+
+static void DPStepPastSleeping(void);
+
+static void DPStepSoon(void) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPStepPastSleeping(); });
 }
 
-static void DPStepPastSleeping(int tries);
-
-static void DPStepSoon(int tries) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPStepPastSleeping(tries); });
-}
-
-// The switcher opens a moment after the first ⌃⇥, then moves its highlight on each ⌃⇥ until it rests on a loaded tab.
-static void DPStepPastSleeping(int tries) {
-    if (!tries) return;
-    NSWindowController *switcher = DPOpenSwitcher();
-    id viewModel = DPField(switcher, @"viewModel");
-    NSString *focused = [DPField(DPState(viewModel), @"focusedItemID") description];
-    if (!focused) return DPStepSoon(tries - 1);
-    if (![DPSleepingTabs(viewModel) containsObject:focused]) return;
-    NSEventModifierFlags mods = NSEventModifierFlagControl | (NSEvent.modifierFlags & NSEventModifierFlagShift);
-    [NSApp postEvent:[NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:mods timestamp:NSProcessInfo.processInfo.systemUptime
-                                  windowNumber:switcher.window.windowNumber context:nil characters:@"\t" charactersIgnoringModifiers:@"\t" isARepeat:NO keyCode:48]
-             atStart:NO];
-    DPStepSoon(tries - 1);
+static void DPStepPastSleeping(void) {
+    if (!DPHideSleepingTabs.on) {
+        DPStepsLeft = 0;
+        return;
+    }
+    NSWindowController *switcher = DPOpenTabSwitcher();
+    id viewModel = DPSwiftValue(switcher, @"viewModel");
+    NSString *focused = [DPSwiftValue(DPState(viewModel), @"focusedItemID") description];
+    BOOL sleeping = focused && [DPSleepingTabs(viewModel) containsObject:focused];
+    if (sleeping) {
+        NSEventModifierFlags mods = NSEventModifierFlagControl | (NSEvent.modifierFlags & NSEventModifierFlagShift);
+        NSEvent *key = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:mods timestamp:NSProcessInfo.processInfo.systemUptime
+                                    windowNumber:switcher.window.windowNumber context:nil characters:@"\t" charactersIgnoringModifiers:@"\t" isARepeat:NO keyCode:48];
+        CGEventRef tagged = key.CGEvent ? CGEventCreateCopy(key.CGEvent) : NULL;
+        if (tagged) CGEventSetIntegerValueField(tagged, kCGEventSourceUserData, DPOwnKey);
+        [NSApp postEvent:tagged ? [NSEvent eventWithCGEvent:tagged] : key atStart:NO];
+        if (tagged) CFRelease(tagged);
+    }
+    DPStepsLeft = focused && !sleeping ? 0 : DPStepsLeft - 1;
+    if (DPStepsLeft) DPStepSoon();
 }
 
 static void DPInstallHideSleepingTabs(void) {
@@ -158,7 +146,12 @@ static void DPInstallHideSleepingTabs(void) {
     DPHook(DPDiaTabSwitcherList, @selector(collectionView:didSelectItemsAtIndexPaths:), (IMP)DPList_select);
     DPHookClass(NSCollectionView.class, @selector(makeItemWithIdentifier:forIndexPath:), (IMP)DPGrid_makeItem);
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-        if (DPHideSleepingTabs.on && event.keyCode == 48 && (event.modifierFlags & NSEventModifierFlagControl)) DPStepSoon(20);
+        BOOL own = event.CGEvent && CGEventGetIntegerValueField(event.CGEvent, kCGEventSourceUserData) == DPOwnKey;
+        if (!own && DPHideSleepingTabs.on && event.keyCode == 48 && (event.modifierFlags & NSEventModifierFlagControl)) {
+            BOOL running = DPStepsLeft > 0;
+            DPStepsLeft = 20;
+            if (!running) DPStepSoon();
+        }
         return event;
     }];
 }

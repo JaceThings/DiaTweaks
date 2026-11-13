@@ -6,7 +6,6 @@ static void DPApplyTidyTabs(DPPatch *patch) {
     DPRelayoutTidyLists();
 }
 
-// Only the sidebar has a tab list; with tabs at the top there's nothing to check.
 static NSString *DPVerifyTidyTabs(DPPatch *patch) {
     for (NSView *list in DPFindViews(DPDiaTabList)) {
         if (list.hiddenOrHasHiddenAncestor) continue;

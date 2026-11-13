@@ -16,13 +16,18 @@ static void DPDescribe(NSView *view, NSUInteger depth, NSMutableString *out) {
     for (NSView *sub in view.subviews) DPDescribe(sub, depth + 1, out);
 }
 
+NSString *DPBesideDylib(NSString *name) {
+    Dl_info dylib;
+    dladdr((const void *)DPInstallDevTools, &dylib);
+    return [@(dylib.dli_fname).stringByDeletingLastPathComponent stringByAppendingPathComponent:name];
+}
+
 NSString *DPDescribeViews(NSView *root) {
     NSMutableString *out = [NSMutableString new];
     if (root) DPDescribe(root, 0, out);
     return out;
 }
 
-// Copies the front window's view tree, titlebar included, for finding the classes and labels a patch can match.
 static void DPCopyViewTree(void) {
     NSWindow *window = NSApp.keyWindow ?: NSApp.orderedWindows.firstObject;
     NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
@@ -30,65 +35,61 @@ static void DPCopyViewTree(void) {
     [pasteboard setString:DPDescribeViews(window.contentView.superview) forType:NSPasteboardTypeString];
 }
 
-// Lets a script toggle patches and read the result without touching the screen:
-//     com.diapatches.dev.set, object "hideToolbar=1"   toggles a patch the way its switch does.
-//                             object "windowMaterialChoice=glass.1"   picks a patch's choice the way its menu does.
-//     com.diapatches.dev.type, object "weather"        types into whatever has focus in the front window.
-//                              object "=weather"       replaces all of its text.
-//                              object "@moveDown:"     sends it that command, as the arrow key would.
-//     com.diapatches.dev.methods, object a class name  writes its methods, and those of a live one's delegate and data
-//                             source, to methods.txt beside the dylib.
-//     com.diapatches.dev.dump                          writes every window's view tree to views.txt beside the dylib.
+static void DPScriptSet(NSNotification *note) {
+    NSArray<NSString *> *parts = [note.object componentsSeparatedByString:@"="];
+    DPPatch *patch = parts.count == 2 ? DPPatchNamed(parts[0]) : NULL;
+    if (patch) DPSetPatch(patch, parts[1].boolValue, YES);
+    for (NSUInteger i = 0; parts.count == 2 && i < DPPatchCount; i++)
+        if ([DPPatches[i]->choice isEqualToString:parts[0]]) DPSetChoice(DPPatches[i], parts[1]);
+}
+
+static void DPScriptType(NSNotification *note) {
+    id responder = (NSApp.keyWindow ?: NSApp.orderedWindows.firstObject).firstResponder;
+    if (![responder isKindOfClass:NSTextView.class] || ![note.object isKindOfClass:NSString.class]) return;
+    NSString *text = note.object;
+    if ([text hasPrefix:@"@"]) @try { [responder doCommandBySelector:NSSelectorFromString([text substringFromIndex:1])]; } @catch (NSException *e) {}
+    else if ([text hasPrefix:@"="]) [responder insertText:[text substringFromIndex:1] replacementRange:NSMakeRange(0, [[responder string] length])];
+    else [responder insertText:text replacementRange:[responder selectedRange]];
+}
+
+static void DPScriptMethods(NSNotification *note) {
+    NSMutableString *out = [NSMutableString new];
+    NSView *live = DPFindViews([note.object UTF8String]).firstObject;
+    NSMutableArray *classes = [NSMutableArray arrayWithObjects:note.object, nil];
+    for (NSString *key in @[@"delegate", @"dataSource"])
+        if ([live respondsToSelector:NSSelectorFromString(key)]) {
+            id value = [live valueForKey:key];
+            [out appendFormat:@"%@: %s\n", key, value ? object_getClassName(value) : "nil"];
+            if (value) [classes addObject:@(object_getClassName(value))];
+        }
+    for (NSString *name in classes)
+        for (Class cls = NSClassFromString(name); cls && cls != NSObject.class && cls != NSView.class && cls != NSResponder.class; cls = class_getSuperclass(cls)) {
+            unsigned count = 0;
+            Method *methods = class_copyMethodList(cls, &count);
+            [out appendFormat:@"== %s\n", class_getName(cls)];
+            for (unsigned i = 0; i < count; i++) [out appendFormat:@"  %s %s\n", sel_getName(method_getName(methods[i])), method_getTypeEncoding(methods[i])];
+            free(methods);
+        }
+    [out writeToFile:DPBesideDylib(@"methods.txt") atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+static void DPScriptDump(NSNotification *note) {
+    NSMutableString *out = [NSMutableString new];
+    for (NSWindow *window in NSApp.windows)
+        [out appendFormat:@"== window \"%@\"\n%@", window.title, DPDescribeViews(window.contentView.superview)];
+    [out writeToFile:DPBesideDylib(@"views.txt") atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+static void DPListen(NSString *name, void (*handler)(NSNotification *)) {
+    [NSDistributedNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
+                                                           usingBlock:^(NSNotification *note) { handler(note); }];
+}
+
 static void DPListenForScripts(void) {
-    NSDistributedNotificationCenter *center = NSDistributedNotificationCenter.defaultCenter;
-    [center addObserverForName:@"com.diapatches.dev.set" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-        NSArray<NSString *> *parts = [note.object componentsSeparatedByString:@"="];
-        DPPatch *patch = parts.count == 2 ? DPPatchNamed(parts[0]) : NULL;
-        if (patch) DPSetPatch(patch, parts[1].boolValue, YES);
-        for (NSUInteger i = 0; parts.count == 2 && i < DPPatchCount; i++)
-            if ([DPPatches[i]->choice isEqualToString:parts[0]]) DPSetChoice(DPPatches[i], parts[1]);
-    }];
-    [center addObserverForName:@"com.diapatches.dev.type" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-        // Dia needn't be the active app, so its frontmost window stands in for the key window.
-        id responder = (NSApp.keyWindow ?: NSApp.orderedWindows.firstObject).firstResponder;
-        if (![responder isKindOfClass:NSTextView.class] || ![note.object isKindOfClass:NSString.class]) return;
-        NSString *text = note.object;
-        // Dia handles some commands by reading the key that sent them, which a script has none of.
-        if ([text hasPrefix:@"@"]) @try { [responder doCommandBySelector:NSSelectorFromString([text substringFromIndex:1])]; } @catch (NSException *e) {}
-        else if ([text hasPrefix:@"="]) [responder insertText:[text substringFromIndex:1] replacementRange:NSMakeRange(0, [[responder string] length])];
-        else [responder insertText:text replacementRange:[responder selectedRange]];
-    }];
-    [center addObserverForName:@"com.diapatches.dev.methods" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-        NSMutableString *out = [NSMutableString new];
-        NSView *live = DPFindViews([note.object UTF8String]).firstObject;
-        NSMutableArray *classes = [NSMutableArray arrayWithObjects:note.object, nil];
-        for (NSString *key in @[@"delegate", @"dataSource"])
-            if ([live respondsToSelector:NSSelectorFromString(key)]) {
-                id value = [live valueForKey:key];
-                [out appendFormat:@"%@: %s\n", key, value ? object_getClassName(value) : "nil"];
-                if (value) [classes addObject:@(object_getClassName(value))];
-            }
-        for (NSString *name in classes)
-            for (Class cls = NSClassFromString(name); cls && cls != NSObject.class && cls != NSView.class && cls != NSResponder.class; cls = class_getSuperclass(cls)) {
-                unsigned count = 0;
-                Method *methods = class_copyMethodList(cls, &count);
-                [out appendFormat:@"== %s\n", class_getName(cls)];
-                for (unsigned i = 0; i < count; i++) [out appendFormat:@"  %s %s\n", sel_getName(method_getName(methods[i])), method_getTypeEncoding(methods[i])];
-                free(methods);
-            }
-        Dl_info dylib;
-        dladdr((const void *)DPInstallDevTools, &dylib);
-        [out writeToFile:[@(dylib.dli_fname).stringByDeletingLastPathComponent stringByAppendingPathComponent:@"methods.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    }];
-    [center addObserverForName:@"com.diapatches.dev.dump" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *_) {
-        NSMutableString *out = [NSMutableString new];
-        for (NSWindow *window in NSApp.windows)
-            [out appendFormat:@"== window \"%@\"\n%@", window.title, DPDescribeViews(window.contentView.superview)];
-        Dl_info dylib;
-        dladdr((const void *)DPInstallDevTools, &dylib);
-        NSString *path = [@(dylib.dli_fname).stringByDeletingLastPathComponent stringByAppendingPathComponent:@"views.txt"];
-        [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    }];
+    DPListen(@"com.diapatches.dev.set", DPScriptSet);
+    DPListen(@"com.diapatches.dev.type", DPScriptType);
+    DPListen(@"com.diapatches.dev.methods", DPScriptMethods);
+    DPListen(@"com.diapatches.dev.dump", DPScriptDump);
 }
 
 void DPInstallDevTools(void) {

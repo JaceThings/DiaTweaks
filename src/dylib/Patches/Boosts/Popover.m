@@ -46,7 +46,7 @@ static DPBoostEditor *DPEditor;
 
 @end
 
-static NSWindow *DPBrowserWindow(void) {
+static NSWindow *DPFrontBrowserWindow(void) {
     if (DPIsKind(NSApp.mainWindow, DPDiaWindow)) return NSApp.mainWindow;
     for (NSWindow *window in NSApp.orderedWindows)
         if (DPIsKind(window, DPDiaWindow) && window.visible) return window;
@@ -67,7 +67,7 @@ static void DPShowPopover(NSPopover *popover, NSWindow *window) {
 }
 
 void DPShowBoostEditor(NSString *domain) {
-    NSWindow *window = DPBrowserWindow();
+    NSWindow *window = DPFrontBrowserWindow();
     if (!window) return NSBeep();
     if (DPEditor.popover.shown && [DPEditor.domain isEqual:domain]) return;
     DPCloseBoostEditor();
