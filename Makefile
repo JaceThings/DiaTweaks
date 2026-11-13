@@ -47,11 +47,15 @@ build/mouse-back-forward: tests/mouse-back-forward.m src/dylib/Patches/MouseBack
 build/vertical-tab-glow: tests/vertical-tab-glow.m $(wildcard src/dylib/Patches/HideVerticalTabGlow/*.[hm]) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $<
 
-check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/patches.json
+build/feishu-titles: tests/feishu-titles.m src/dylib/Patches/FeishuTabTitles/Title.m src/dylib/Patches/FeishuTabTitles/Title.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework Foundation -o $@ tests/feishu-titles.m src/dylib/Patches/FeishuTabTitles/Title.m
+
+check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/feishu-titles build/patches.json
 	tests/tweaks-update
 	build/group-tabs
 	build/mouse-back-forward
 	build/vertical-tab-glow
+	build/feishu-titles
 	tests/sidebar-grain
 	scripts/check-patches
 
