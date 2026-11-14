@@ -101,7 +101,7 @@ static void DPRelease(NSView *strip) {
 // A strip that isn't held, such as one made as the tab layout changes, just leaves the hidden tab out.
 static void DPLeaveOut(NSView *strip) {
     NSHashTable<NSView *> *hidden = DPGet(strip, &DPHiddenKey);
-    if (!DPHidingATab() && !DPParkingAny() && !hidden.count) return;
+    if (!DPHidingATab(strip.window) && !DPParkingAny() && !hidden.count) return;
     for (NSView *view in strip.subviews) {
         NSString *tab = DPIsKind(view, DPDiaTabView) ? DPStripTabID(view) : nil;
         BOOL out = tab && DPHidesTab(tab);
@@ -119,7 +119,7 @@ static void DPLeaveOut(NSView *strip) {
 static void DPHold(NSView *strip) {
     NSMapTable<NSView *, NSValue *> *before = DPGet(strip, &DPBeforeKey);
     if (!before) return DPLeaveOut(strip);
-    if (!DPHidingATab()) return DPRelease(strip);
+    if (!DPHidingATab(strip.window)) return DPRelease(strip);
     NSHashTable<NSView *> *hidden = DPGet(strip, &DPHiddenKey);
     for (NSView *view in strip.subviews) {
         NSValue *frame = [before objectForKey:view];

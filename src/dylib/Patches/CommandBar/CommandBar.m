@@ -291,7 +291,7 @@ void DPMakeBlank(NSView *page) {
     DPSet(page, &DPBlankKey, @YES);
     DPHidePage(page, YES);
     if (DPHasStrip(page.window)) return;
-    DPHideBlank(active, YES);
+    DPHideBlank(active, YES, page.window);
     if (DPHidesTab(active)) DPHideBars(page, YES);
 }
 
@@ -771,7 +771,7 @@ static void DPApplyCommandBar(DPPatch *patch) {
     BOOL on = DPCommandBar.on;
     for (NSWindow *window in NSApp.windows) {
         if (!on) {
-            for (NSString *blank in DPBlanks(window)) DPHideBlank(blank, NO);
+            for (NSString *blank in DPBlanks(window)) DPHideBlank(blank, NO, window);
             DPSet(window, &DPBlankKey, nil);
         }
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);

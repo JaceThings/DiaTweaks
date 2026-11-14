@@ -1,29 +1,51 @@
 #import "Patches/CommandBar/HideTab.h"
 #import "Patches/CommandBar/Tabs.h"
+#import "Patches/CommandBar/CommandBarOverlay.h"
 
 extern DPPatch DPCommandBar;
 
 static NSMutableSet<NSString *> *DPHidden, *DPParked;
+static NSMapTable<NSString *, NSWindow *> *DPOwner;  // Each hidden tab's window, weakly: a window that goes takes its hidden tabs with it.
+static __weak NSWindow *DPExpectWindow;
 static CFTimeInterval DPExpectUntil;
 static NSSet<NSString *> *DPKnown;  // The window's tabs when a new one was asked for.
 
 BOOL DPHiding(void) { return DPCommandBar.on && DPCommandBarHideTab.on; }
 static BOOL DPExpecting(void) { return CACurrentMediaTime() < DPExpectUntil; }
 
+// A tab whose window has gone isn't hidden any more.
+static BOOL DPOwned(NSString *tab) {
+    if ([DPOwner objectForKey:tab]) return YES;
+    [DPHidden removeObject:tab];
+    [DPParked removeObject:tab];
+    return NO;
+}
+
 // A parked tab is hidden with no bar open, so the lists close up around it rather than hold still.
-BOOL DPHidingATab(void) {
+BOOL DPHidingATab(NSWindow *window) {
     if (!DPHiding()) return NO;
-    for (NSString *tab in DPHidden) if (![DPParked containsObject:tab]) return YES;
-    return DPExpecting();
+    for (NSString *tab in DPHidden.allObjects)
+        if (DPOwned(tab) && ![DPParked containsObject:tab] && (!window || [DPOwner objectForKey:tab] == window)) return YES;
+    return DPExpecting() && (!window || DPExpectWindow == window);
 }
 
 BOOL DPParksTab(NSString *tab) { return DPHidesTab(tab) && [DPParked containsObject:tab]; }
-BOOL DPParkingAny(void) { return DPHiding() && DPParked.count; }
 
-void DPHideBlank(NSString *tabID, BOOL hidden) {
-    if (!tabID || (hidden && !DPHiding())) return;
-    if (hidden) [DPHidden addObject:tabID];
-    else [DPHidden removeObject:tabID];
+BOOL DPParkingAny(void) {
+    if (!DPHiding()) return NO;
+    for (NSString *tab in DPParked.allObjects) if (DPOwned(tab)) return YES;
+    return NO;
+}
+
+void DPHideBlank(NSString *tabID, BOOL hidden, NSWindow *window) {
+    if (!tabID || !window || (hidden && !DPHiding())) return;
+    if (hidden) {
+        [DPHidden addObject:tabID];
+        [DPOwner setObject:window forKey:tabID];
+    } else {
+        [DPHidden removeObject:tabID];
+        [DPOwner removeObjectForKey:tabID];
+    }
     DPParkTab(tabID, hidden);
 }
 
@@ -36,7 +58,8 @@ void DPParkTab(NSString *tabID, BOOL parked) {
 
 BOOL DPHidesTab(NSString *tab) {
     if (!DPHiding() || !tab) return NO;
-    return [DPHidden containsObject:tab] || (DPExpecting() && DPKnown && ![DPKnown containsObject:tab]);
+    if ([DPHidden containsObject:tab]) return DPOwned(tab);
+    return DPExpecting() && DPKnown && ![DPKnown containsObject:tab];
 }
 
 void DPExpectNewTab(NSWindow *window) {
@@ -49,6 +72,7 @@ void DPExpectNewTab(NSWindow *window) {
     }
     for (NSView *tab in DPFindViews(DPDiaTabView)) [known addObject:DPStripTabID(tab) ?: @""];
     DPKnown = known;
+    DPExpectWindow = window;
     CFTimeInterval until = DPExpectUntil = CACurrentMediaTime() + 1;
     DPFreezeLists(window);
     DPHoldStrips(window);
@@ -61,13 +85,17 @@ void DPExpectNewTab(NSWindow *window) {
 void DPStopExpecting(void) {
     if (!DPExpectUntil) return;
     DPExpectUntil = 0;
+    DPKnown = nil;
     DPRelayoutLists();
 }
 
+// Only a tab made for the bar is ever hidden: one that was there before the new tab was asked for never is.
 void DPHideTabRow(NSString *tabID, NSWindow *window) {
-    if (!tabID || !DPHiding()) return;
+    if (!tabID || !window || !DPHiding() || (DPExpecting() && [DPKnown containsObject:tabID])) return;
     [DPHidden addObject:tabID];
+    [DPOwner setObject:window forKey:tabID];
     DPExpectUntil = 0;
+    DPKnown = nil;
     // Already so, unless the tab came some way not seen coming: then it's hidden where it is.
     DPFreezeLists(window);
     DPHoldStrips(window);
@@ -80,7 +108,22 @@ void DPShowTabRow(NSString *tabID, BOOL closing) {
     if (closing) return (void)dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPShowTabRow(tabID, NO); });
     [DPHidden removeObject:tabID];
     [DPParked removeObject:tabID];
+    [DPOwner removeObjectForKey:tabID];
     DPRelayoutLists();
+}
+
+// A window that closes, or goes full screen and lists its tabs afresh, takes its bar and hidden tabs with it.
+void DPForgetWindow(NSWindow *window) {
+    BOOL had = DPExpectWindow == window && DPExpectUntil;
+    if (had) DPExpectUntil = 0, DPKnown = nil;
+    for (NSString *tab in DPOwner.keyEnumerator.allObjects) {
+        if ([DPOwner objectForKey:tab] != window) continue;
+        [DPHidden removeObject:tab];
+        [DPParked removeObject:tab];
+        [DPOwner removeObjectForKey:tab];
+        had = YES;
+    }
+    if (had) DPRelayoutLists();
 }
 
 static void DPApplyHideTab(DPPatch *patch) {
@@ -92,15 +135,26 @@ static void DPApplyHideTab(DPPatch *patch) {
 
 static NSString *DPVerifyHideTab(DPPatch *patch) { return DPVerifyHiddenRows(); }
 
+// Full screen lists the tabs afresh, as a new tab layout does, so a bar over a hidden tab closes.
+static void DPCloseBar(NSWindow *window) {
+    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    if (overlay.openedTab && DPHidesTab(DPTabID(overlay.openedTab))) DPCancelCommandBar(overlay);
+}
+
 static void DPInstallHideTab(void) {
     DPHidden = [NSMutableSet set];
     DPParked = [NSMutableSet set];
+    DPOwner = [NSMapTable strongToWeakObjectsMapTable];
     DPInstallFrozenLists();
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     // The New Tab menu item, however it's chosen, before it makes the tab.
-    [NSNotificationCenter.defaultCenter addObserverForName:NSMenuWillSendActionNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+    [center addObserverForName:NSMenuWillSendActionNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         NSMenuItem *item = note.userInfo[@"MenuItem"];
         if ([item.title isEqualToString:@"New Tab"] && NSApp.keyWindow) DPExpectNewTab(NSApp.keyWindow);
     }];
+    [center addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPForgetWindow(note.object); }];
+    for (NSNotificationName name in @[ NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification ])
+        [center addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) { DPCloseBar(note.object); }];
     DPInstallHiddenStripTab();
     DPInstallStandIn();
     DPInstallPress();

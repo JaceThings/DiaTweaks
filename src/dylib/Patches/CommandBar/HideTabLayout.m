@@ -27,7 +27,7 @@ void DPFreezeLists(NSWindow *window) {
 
 static NSDictionary<NSString *, NSValue *> *DPFrozen(NSCollectionView *list) {
     NSDictionary *frames = DPGet(list, &DPFrozenKey);
-    if (frames && !DPHidingATab()) DPSet(list, &DPFrozenKey, frames = nil);
+    if (frames && !DPHidingATab(list.window)) DPSet(list, &DPFrozenKey, frames = nil);
     return frames;
 }
 

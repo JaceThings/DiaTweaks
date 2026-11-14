@@ -7,11 +7,12 @@ BOOL DPHiding(void);  // Open New Tabs in Command Bar and Hide New Tab Until Ope
 void DPExpectNewTab(NSWindow *window);  // From a new tab shortcut or click: what's new next is left out at once.
 void DPStopExpecting(void);             // The new tab won't have the bar over it.
 void DPHideTabRow(NSString *tabID, NSWindow *window);
+void DPForgetWindow(NSWindow *window);  // Its hidden tabs and the wait for its new tab are let go.
 void DPShowTabRow(NSString *tabID, BOOL closing);  // closing: it stays out until it's gone.
 BOOL DPHidesTab(NSString *tabID);
-BOOL DPHidingATab(void);  // Holding the lists still: a bar is open over a hidden tab, or one is on its way.
+BOOL DPHidingATab(NSWindow *window);  // Holding its lists still: a bar is open over a hidden tab, or one is on its way.
 void DPParkTab(NSString *tabID, BOOL parked);
-void DPHideBlank(NSString *tabID, BOOL hidden);  // Kept out the same way, so an empty window shows nothing open.
+void DPHideBlank(NSString *tabID, BOOL hidden, NSWindow *window);  // Kept out the same way, so an empty window shows nothing open.
 BOOL DPParksTab(NSString *tabID);
 BOOL DPParkingAny(void);
 

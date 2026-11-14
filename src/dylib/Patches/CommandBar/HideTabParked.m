@@ -30,7 +30,7 @@ NSCollectionViewLayoutAttributes *DPClosedAttributes(NSCollectionViewLayout *lay
 
 static void DPLayout_prepare(NSCollectionViewLayout *self, SEL _cmd) {
     DPCallOriginal(DPLayout_prepare, self);
-    if (!DPParkingAny() && !DPHidingATab() && !DPGet(self, &DPParkedRowsKey)) return;
+    if (!DPParkingAny() && !DPHidingATab(self.collectionView.window) && !DPGet(self, &DPParkedRowsKey)) return;
     NSCollectionView *list = self.collectionView;
     NSMutableArray<NSValue *> *rows = [NSMutableArray array];
     for (NSInteger section = 0; section < list.numberOfSections; section++)
