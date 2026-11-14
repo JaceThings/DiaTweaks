@@ -32,8 +32,13 @@ static void DPWaitForBrowser(void) {
     }];
 }
 
+static NSString *DPSkipAccountProblem(DPPatch *patch) {
+    if (gSkipping || ![NSUserDefaults.standardUserDefaults boolForKey:@"hasUserAuthenticated"]) return nil;
+    return @"This Dia has signed in to an account before. Skip Account only works on a Dia that never has.";
+}
+
 static void DPInstallSkipAccount(void) {
-    if (!DPSkipAccount.on) return;
+    if (!DPSkipAccount.on || DPSkipAccountProblem(&DPSkipAccount)) return;
     gSkipping = DPSkipAccountStartup();
     if (gSkipping) {
         DPHookClass(NSUserDefaults.class, @selector(objectForKey:), (IMP)DPDefaults_objectForKey);
@@ -49,7 +54,7 @@ static void DPInstallSkipAccount(void) {
 }
 
 static void DPApplySkipAccount(DPPatch *patch) {
-    if (patch->on == gSkipping || patch->on != DPSavedOn(patch)) return;
+    if (patch->on == gSkipping || patch->on != DPSavedOn(patch) || DPSkipAccountProblem(patch)) return;
     NSAlert *alert = [NSAlert new];
     alert.messageText = patch->on ? @"Relaunch Dia to skip account sign-in" : @"Relaunch Dia to use account sign-in";
     [alert addButtonWithTitle:@"Relaunch"];
@@ -78,4 +83,5 @@ DP_PATCH(DPSkipAccount) {
     .install = DPInstallSkipAccount,
     .apply = DPApplySkipAccount,
     .verify = DPVerifySkipAccount,
+    .ready = DPSkipAccountProblem,
 };
