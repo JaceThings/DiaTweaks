@@ -66,11 +66,28 @@ static void DPWash_updateLayer(NSView *self, SEL _cmd) {
     DPApplyContrast(self.window);
 }
 
-// Switching profiles may keep the same Dia color, so the wash wouldn't redraw on its own.
+static char DPShownSpaceKey;
+
+// Dia recolors the wash before the switcher marks the new profile selected, so the wash would keep
+// the old profile's choice. Repaint once the selection itself changes.
+static void DPSelectionMayHaveChanged(NSView *item) {
+    NSWindow *window = item.window;
+    if (!window || ![DPSwiftValue(item, @"isSelected") boolValue]) return;
+    NSString *spaceID = DPSpaceIDOfItem(item);
+    if (!spaceID || [DPGet(window, &DPShownSpaceKey) isEqual:spaceID]) return;
+    DPSet(window, &DPShownSpaceKey, spaceID);
+    for (NSView *wash in DPWashes()) if (wash.window == window) wash.needsDisplay = YES;
+}
+
+// The selection highlight is drawn in updateLayer; layout covers items that move.
+static void DPSwitcherItem_updateLayer(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPSwitcherItem_updateLayer, self);
+    DPSelectionMayHaveChanged(self);
+}
+
 static void DPSwitcherItem_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSwitcherItem_layout, self);
-    if (![DPSwiftValue(self, @"isSelected") boolValue]) return;
-    for (NSView *wash in DPWashes()) if (wash.window == self.window) wash.needsDisplay = YES;
+    DPSelectionMayHaveChanged(self);
 }
 
 void DPRepaintProfileColors(void) {
@@ -95,6 +112,7 @@ static void DPInstallCustomProfileColor(void) {
     DPColorDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     DPHook(DPDiaColorView, @selector(updateLayer), (IMP)DPWash_updateLayer);
     DPHook(DPDiaSpaceSwitcherItem, @selector(layout), (IMP)DPSwitcherItem_layout);
+    DPHook(DPDiaSpaceSwitcherItem, @selector(updateLayer), (IMP)DPSwitcherItem_updateLayer);
     DPInstallProfileColorMenu();
 }
 
