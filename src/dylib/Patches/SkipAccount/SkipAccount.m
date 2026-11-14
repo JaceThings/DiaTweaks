@@ -37,6 +37,10 @@ static NSString *DPSkipAccountProblem(DPPatch *patch) {
     return @"This Dia has signed in to an account before. Skip Account only works on a Dia that never has.";
 }
 
+static NSString *DPSkipAccountReady(DPPatch *patch) {
+    return DPTesting ? nil : DPSkipAccountProblem(patch);
+}
+
 static void DPInstallSkipAccount(void) {
     if (!DPSkipAccount.on || DPSkipAccountProblem(&DPSkipAccount)) return;
     gSkipping = DPSkipAccountStartup();
@@ -83,5 +87,5 @@ DP_PATCH(DPSkipAccount) {
     .install = DPInstallSkipAccount,
     .apply = DPApplySkipAccount,
     .verify = DPVerifySkipAccount,
-    .ready = DPSkipAccountProblem,
+    .ready = DPSkipAccountReady,
 };
