@@ -12,22 +12,23 @@ static BOOL DPStandingIn(NSWindow *window) { return DPHidesTab(DPGet(window, &DP
 static void DPSelectButton(NSView *background, BOOL selected) {
     uintptr_t *style = DPSelectionStyle(background);
     uint8_t *shape = DPTabShape(background);
-    NSArray<NSNumber *> *saved = DPGet(background, &DPSavedKey);  // Dia's style and shape, then the style written.
+    NSArray *saved = DPGet(background, &DPSavedKey);  // Dia's style and shape, then the style and shape written, and the fill, kept so its address isn't reused.
     if (!style || !shape || selected == (saved != nil)) return;
     if (selected) {
         NSArray *look = DPSelectedLook(background.superview);
         if (!look || *style >= DPFirstFill) return;
         uintptr_t original = *style;
         *style = (uintptr_t)CFBridgingRetain(look[0]);
-        DPSet(background, &DPSavedKey, @[ @(original), @(*shape), @(*style) ]);
+        uint8_t was = *shape;
         *shape = [look[1] unsignedCharValue];
+        DPSet(background, &DPSavedKey, @[ @(original), @(was), @(*style), @(*shape), look[0] ]);
     } else {
         DPSet(background, &DPSavedKey, nil);
-        if (*style == saved[2].unsignedLongValue) {  // Unless Dia has set its own since, which it then owns.
+        if (*style == [saved[2] unsignedLongValue]) {  // Unless Dia has set its own since, which it then owns.
             CFRelease((CFTypeRef)(void *)*style);
-            *style = saved[0].unsignedLongValue;
+            *style = [saved[0] unsignedLongValue];
         }
-        *shape = saved[1].unsignedCharValue;
+        if (*shape == [saved[3] unsignedCharValue]) *shape = [saved[1] unsignedCharValue];
     }
     DPTabShapeView(background).needsLayout = YES;
     background.needsLayout = background.needsDisplay = YES;  // It shows the fill as it updates its layer.
