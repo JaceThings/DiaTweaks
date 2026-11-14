@@ -1,6 +1,7 @@
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
+#define DPDiaFieldButton        "_TtC5ARCUI16HoverableControl"
 #define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"
 #define DPDiaReloadIcon         "_TtC13NavigationBar14ReloadIconView"
 #define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
@@ -74,6 +75,7 @@
 #define DPDiaSkillsSuggestions  "_TtC17SkillsSuggestions21SkillsSuggestionsView"
 #define DPDiaNewTabButton       "_TtC7TabList14NewTabCellView"
 #define DPDiaBrowserContext     "ArcBrowserContext"
+#define DPDiaBrowserContextEffects "ArcBrowserContextEffects"
 #define DPDiaWebContentsConfiguration "ArcWebContentsConfiguration"
 #define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // A Swift class: look it up after launch.
 #define DPDiaTabList            "_TtC7TabList11TabListView"
