@@ -25,6 +25,13 @@ static NSString *DPWantedLanguage(void) { return DPBriefLanguage.on ? DPChoice(&
 
 static BOOL DPSame(NSString *a, NSString *b) { return a == b || [a isEqual:b]; }
 
+static NSString *DPKeptReason(NSString *output) {
+    NSString *prefix = @"warning: kept the Morning Brief's language: ";
+    for (NSString *line in [output componentsSeparatedByString:@"\n"])
+        if ([line hasPrefix:prefix]) return [line substringFromIndex:prefix.length];
+    return nil;
+}
+
 static void DPAlert(NSString *message, NSString *detail) {
     NSAlert *alert = [NSAlert new];
     alert.messageText = message;
@@ -42,6 +49,8 @@ static void DPRebuild(void) {
         DPBuilt = YES;
         if (DPStale) return DPStale = NO, DPRebuild();
         if (!output) return DPAlert(@"Couldn’t change the Morning Brief’s language", @"Dia keeps writing it as it does now.");
+        NSString *kept = DPKeptReason(output);
+        if (kept) return DPAlert(@"Couldn’t change the Morning Brief’s language", [NSString stringWithFormat:@"Dia keeps writing it as it does now: %@.", kept]);
         if (DPSame(DPWantedLanguage(), DPInstalledLanguage())) return;
         NSAlert *alert = [NSAlert new];
         alert.messageText = @"Relaunch Dia to change the Morning Brief’s language";
