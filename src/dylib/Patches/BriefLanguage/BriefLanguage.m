@@ -90,9 +90,7 @@ static NSString *DPSystemLanguage(void) {
     return @"English";
 }
 
-static NSString *DPDefaultLanguage;
-
-static void DPInstallBriefLanguage(void) { DPBriefLanguage.defaultChoice = DPDefaultLanguage = DPSystemLanguage(); }
+static void DPInstallBriefLanguage(void) { DPBriefLanguage.defaultChoice = DPSystemLanguage(); }
 
 static NSMenu *DPBriefLanguageChoices(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Language"];
