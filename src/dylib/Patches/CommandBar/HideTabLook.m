@@ -24,7 +24,7 @@ BOOL DPInStrip(NSView *view) {
 // The selected tab's fill, which follows the space's theme, and shape, kept as Dia draws it, for the sidebar and the
 // strip apart. The bar opens while the new tab is in front, and a favorite in front has no tab to take them from.
 void DPNoteLook(NSView *background) {
-    if (!DPIsKind(background.superview, DPDiaTabView) || !DPDrawnSelected(background) || !DPTabShape(background) || !background.window) return;
+    if (!DPHiding() || !DPIsKind(background.superview, DPDiaTabView) || !DPDrawnSelected(background) || !DPTabShape(background) || !background.window) return;
     id fill = (__bridge id)(void *)*DPSelectionStyle(background);
     if (![fill isKindOfClass:NSColor.class]) return;
     BOOL strip = DPInStrip(background);

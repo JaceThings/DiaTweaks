@@ -70,6 +70,7 @@ void DPRefreshStandIns(void) {
 }
 
 static void DPTabBackground_updateLayer(NSView *self, SEL _cmd) {
+    if (!DPHiding()) return DPCallOriginal(DPTabBackground_updateLayer, self);
     DPNoteLook(self);
     if (DPSwitchingTo(self)) DPEndSwitch(self.window);
     DPHideFrontTab(self);
@@ -77,6 +78,7 @@ static void DPTabBackground_updateLayer(NSView *self, SEL _cmd) {
 }
 
 static void DPTabBackground_layout(NSView *self, SEL _cmd) {
+    if (!DPHiding()) return DPCallOriginal(DPTabBackground_layout, self);
     DPHideFrontTab(self);
     DPCallOriginal(DPTabBackground_layout, self);
     if (DPIsNewTabButton(self.superview)) DPSelectButton(self, DPStandingIn(self.window));

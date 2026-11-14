@@ -7,7 +7,7 @@ static NSMutableSet<NSString *> *DPHidden, *DPParked;
 static CFTimeInterval DPExpectUntil;
 static NSSet<NSString *> *DPKnown;  // The window's tabs when a new one was asked for.
 
-static BOOL DPHiding(void) { return DPCommandBar.on && DPCommandBarHideTab.on; }
+BOOL DPHiding(void) { return DPCommandBar.on && DPCommandBarHideTab.on; }
 static BOOL DPExpecting(void) { return CACurrentMediaTime() < DPExpectUntil; }
 
 // A parked tab is hidden with no bar open, so the lists close up around it rather than hold still.
@@ -84,6 +84,7 @@ void DPShowTabRow(NSString *tabID, BOOL closing) {
 }
 
 static void DPApplyHideTab(DPPatch *patch) {
+    for (NSView *background in DPFindViews(DPDiaTabBackground)) DPNoteLook(background);
     DPRelayoutLists();
     DPRefreshStandIns();
 }

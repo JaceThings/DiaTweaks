@@ -2,6 +2,8 @@
 
 extern DPPatch DPCommandBarHideTab;
 
+BOOL DPHiding(void);  // Open New Tabs in Command Bar and Hide New Tab Until Opened are both on.
+
 void DPExpectNewTab(NSWindow *window);  // From a new tab shortcut or click: what's new next is left out at once.
 void DPStopExpecting(void);             // The new tab won't have the bar over it.
 void DPHideTabRow(NSString *tabID, NSWindow *window);
