@@ -251,7 +251,6 @@ void DPShowShade(DPCommandBarOverlay *overlay) {
 
 #pragma mark Presenting
 
-// Relaid out so the toolbar options for new tab pages see it come and go.
 // An empty window shows no toolbar or bookmarks bar either, as in Arc; only what was hidden here is shown again.
 static void DPHideBars(NSView *page, BOOL hidden) {
     NSView *pane = page.superview;
@@ -265,6 +264,7 @@ static void DPHideBars(NSView *page, BOOL hidden) {
     }
 }
 
+// Relaid out so the toolbar options for new tab pages see it come and go.
 static void DPHidePage(NSView *page, BOOL hidden) {
     page.hidden = hidden;
     if (!hidden) DPHideBars(page, NO);
