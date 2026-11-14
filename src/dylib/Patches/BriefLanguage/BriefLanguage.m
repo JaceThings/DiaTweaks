@@ -103,7 +103,7 @@ DP_PATCH(DPBriefLanguage) {
     .order = 117,
     .title = @"Morning Brief Language",
     .detail = @"Choose the language Dia writes your Morning Brief in, whatever language your messages and documents are in. "
-              @"Dia relaunches to change it, and the next brief it writes uses the new language.",
+              @"Dia is rebuilt with that language added to its Morning Brief prompt, then relaunches. The next brief uses it. Experimental.",
     .symbol = @"character.bubble.fill character.bubble",
     .tint = @"systemPurpleColor",
     .section = @"AI",
