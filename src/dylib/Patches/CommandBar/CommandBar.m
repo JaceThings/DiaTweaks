@@ -84,6 +84,13 @@ void DPFocusBar(DPCommandBarOverlay *overlay) {
     if (text && overlay.host.firstResponder != text) [overlay.host makeFirstResponder:text];
 }
 
+// Dia closes ⌘L's bar when a new tab opens, which DPGoBack's return to the old tab stops.
+static void DPCloseCommandBarPopover(NSWindow *window) {
+    NSView *popover = DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaPopover) && !DPIsFloatingChat(view); });
+    NSView *text = DPFindView(popover, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
+    [(NSTextView *)text doCommandBySelector:@selector(cancelOperation:)];
+}
+
 static CGFloat DPSuggestionsHeight(NSView *panel) {
     CGFloat height = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarSuggestions); }).intrinsicContentSize.height;
     return height > 0 ? height + 8 : 0;
@@ -495,6 +502,7 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
 
 static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
+    DPCloseCommandBarPopover(window);
     id openedTab = [DPScriptWindow(window) valueForKey:@"activeTab"];
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
@@ -529,7 +537,15 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     } else DPStopExpecting();
 
     DPWatch(overlay);
-    if (overlay.returnTab) DPGoBack(overlay);
+    if (!overlay.returnTab) return;
+    __weak DPCommandBarOverlay *weak = overlay;
+    // Dia can still be showing the new tab when it adds the page, and focusing another tab then crashes it (index out of range).
+    // A run loop block runs once Dia is done; a transaction held open until it has gone back keeps the new tab from being drawn.
+    [CATransaction begin];
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+        @try { if (weak.superview) DPGoBack(weak); } @finally { [CATransaction commit]; }
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
 }
 
 void DPWatch(DPCommandBarOverlay *overlay) {
