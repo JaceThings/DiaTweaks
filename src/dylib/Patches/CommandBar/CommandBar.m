@@ -578,10 +578,7 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
     if (!(newTab || DPIsShortcut(event, @"Open Command Bar"))) return event;
     DPSet(window, &DPClosedAtKey, nil);  // Closing a tab that wasn't the last leaves the stamp unread, which would hide this new tab as a blank.
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
-    if (newTab && DPIsKind(overlay.page, DPDiaPopover)) {
-        DPCancelCommandBar(overlay);
-        overlay = nil;
-    }
+    if (newTab && DPIsKind(overlay.page, DPDiaPopover)) return event;  // The new tab page swaps ⌘L's bar for its own, so nothing shows between them.
     if (overlay) DPFocusBar(overlay);
     return overlay || DPOpenOverBlank(window) ? nil : event;
 }
