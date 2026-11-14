@@ -145,6 +145,12 @@ static void DPCloseBar(NSWindow *window) {
 }
 
 static void DPInstallHideTab(void) {
+    if (!DPSelectionLayoutKnown()) {
+        DPCommandBarHideTab.unavailable = YES;
+        DPCommandBarHideTab.on = NO;
+        NSLog(@"DiaPatches: Hide New Tab Until Opened doesn't know how this Dia lays out a tab's selection, so it stays off");
+        return;
+    }
     DPHidden = [NSMutableSet set];
     DPParked = [NSMutableSet set];
     DPOwner = [NSMapTable strongToWeakObjectsMapTable];
