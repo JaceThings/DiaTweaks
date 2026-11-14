@@ -75,7 +75,7 @@ DP_PATCH(DPSkipAccount) {
     .key = @"skipAccount",
     .order = 120,
     .title = @"Skip Account",
-    .detail = @"Open Dia without signing in or creating a Dia account. Relaunch to apply. Account services still need an account. Use Turn Off AI too for plain browsing. May need an update after some Dia releases.",
+    .detail = @"Use Dia without signing in. Relaunch to apply. Hides Sign In and the Account, Morning Brief and Sync settings. Only works on a Dia that has never signed in. Chat needs an account, so pair it with Turn Off AI. Experimental.",
     .symbol = @"person.crop.circle.badge.minus person.crop.circle",
     .tint = @"systemBrownColor",
     .section = @"Window",
