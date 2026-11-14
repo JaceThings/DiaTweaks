@@ -63,6 +63,7 @@ static void DPWash_updateLayer(NSView *self, SEL _cmd) {
     DPSet(self, &DPDiaColorKey, [NSColor colorWithCGColor:self.layer.backgroundColor]);
     NSColor *custom = DPCustomColor(DPCurrentSpaceID(self.window));
     if (custom) self.layer.backgroundColor = custom.CGColor;
+    DPApplyContrast(self.window);
 }
 
 // Switching profiles may keep the same Dia color, so the wash wouldn't redraw on its own.

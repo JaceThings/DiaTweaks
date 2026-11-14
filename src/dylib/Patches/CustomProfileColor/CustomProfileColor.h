@@ -9,5 +9,6 @@ NSColor *DPDiaProfileColor(NSWindow *window);
 NSString *DPCurrentSpaceID(NSWindow *window);
 NSString *DPSpaceIDOfItem(NSView *item);
 void DPRepaintProfileColors(void);
+void DPApplyContrast(NSWindow *window);  // Dark text on a light custom color.
 
 void DPInstallProfileColorMenu(void);
