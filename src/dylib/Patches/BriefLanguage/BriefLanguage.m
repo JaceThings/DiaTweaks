@@ -62,11 +62,7 @@ static void DPRebuild(void) {
 }
 
 static void DPApplyBriefLanguage(DPPatch *patch) {
-    if (DPTesting) return;
-    if (!DPBriefPrompt()) {
-        if (patch->on) DPAlert(@"Couldn’t change the Morning Brief’s language", @"This version of Dia keeps its brief’s instructions somewhere else.");
-        return;
-    }
+    if (DPTesting || !DPBriefPrompt()) return;
     // diapatch reads only saved settings, so save the language picked from macOS before it builds.
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     if (patch->on && ![defaults stringForKey:patch->choice]) [defaults setObject:DPChoice(patch) forKey:patch->choice];
@@ -119,4 +115,5 @@ DP_PATCH(DPBriefLanguage) {
     .install = DPInstallBriefLanguage,
     .apply = DPApplyBriefLanguage,
     .verify = DPVerifyBriefLanguage,
+    .ready = DPVerifyBriefLanguage,
 };
