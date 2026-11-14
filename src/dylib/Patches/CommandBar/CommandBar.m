@@ -232,7 +232,7 @@ void DPShowShade(DPCommandBarOverlay *overlay) {
     if (self.passingThrough) return nil;
     NSView *hit = [super hitTest:point];
     if (!hit || (self.panel && [hit isDescendantOf:self.panel])) return hit;
-    return DPInTabLayout([self viewUnder:point]) ? nil : self;
+    return DPHiding() && DPInTabLayout([self viewUnder:point]) ? nil : self;
 }
 
 - (NSView *)viewUnder:(NSPoint)point {
@@ -269,6 +269,10 @@ static void DPHideBars(NSView *page, BOOL hidden) {
         else DPSet(bar, &DPBlankKey, nil);
         bar.hidden = hidden;
     }
+}
+
+void DPShowHiddenBars(void) {
+    for (NSView *page in DPFindViews(DPDiaNewTabPage)) DPHideBars(page, NO);
 }
 
 // Relaid out so the toolbar options for new tab pages see it come and go.
@@ -341,8 +345,9 @@ void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
 static void DPCloseOnNewLayout(NSWindow *window) {
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
     NSNumber *strip = DPGet(overlay, &DPLayoutKey);
-    if (overlay.openedTab && !strip) DPSet(overlay, &DPLayoutKey, @(DPHasStrip(window)));
-    else if (overlay.openedTab && strip.boolValue != DPHasStrip(window)) DPCancelCommandBar(overlay);
+    if (!overlay.openedTab || !DPHidesTab(DPTabID(overlay.openedTab))) return;
+    if (!strip) DPSet(overlay, &DPLayoutKey, @(DPHasStrip(window)));
+    else if (strip.boolValue != DPHasStrip(window)) DPCancelCommandBar(overlay);
 }
 
 static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
@@ -397,7 +402,7 @@ id DPWatchKeys(DPCommandBarOverlay *overlay) {
     return [NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *event) {
         DPCommandBarOverlay *overlay = weak;
         if (!overlay || event.window != overlay.host) return event;
-        if (event.type == NSEventTypeLeftMouseDown || event.type == NSEventTypeRightMouseDown) return DPTabLayoutMouseDown(overlay, event);
+        if (event.type == NSEventTypeLeftMouseDown || event.type == NSEventTypeRightMouseDown) return DPHiding() ? DPTabLayoutMouseDown(overlay, event) : event;
         BOOL click = event.type == NSEventTypeLeftMouseUp;
         if (click) DPTabLayoutMouseUp(overlay);
         if (click || event.keyCode == 36 || event.keyCode == 76) {
@@ -644,11 +649,11 @@ static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
 }
 
 static void DPPlusButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
-    if (!DPCommandBar.on || !DPIsKind(self.superview, DPDiaTabStripTabs) || !DPClickedNewTab(self.window)) DPCallOriginal(DPPlusButton_mouseDown, self, event);
+    if (!DPHiding() || !DPIsKind(self.superview, DPDiaTabStripTabs) || !DPClickedNewTab(self.window)) DPCallOriginal(DPPlusButton_mouseDown, self, event);
 }
 
 static void DPTabList_backgroundDoubleClick(NSView *self, SEL _cmd, id gesture) {
-    if (!DPCommandBar.on || !DPClickedNewTab(self.window)) DPCallOriginal(DPTabList_backgroundDoubleClick, self, gesture);
+    if (!DPHiding() || !DPClickedNewTab(self.window)) DPCallOriginal(DPTabList_backgroundDoubleClick, self, gesture);
 }
 
 static NSEvent *DPCommandBarKey(NSEvent *event) {
@@ -657,7 +662,7 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
     if (DPIsShortcut(event, @"Close Tab")) DPSet(window, &DPClosedAtKey, @(event.timestamp));
     // Typing into an empty window goes to its hidden bar, which keeps the keyboard, so the bar opens to show it.
     BOOL typed = !(event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) && event.characters.length && [event.characters characterAtIndex:0] >= 0x20 && [event.characters characterAtIndex:0] != 0x7f;
-    if (typed && !DPGet(window, &DPOverlayKey) && [DPBlanks(window) containsObject:DPActiveTabID(window)]) {
+    if (typed && DPHiding() && !DPGet(window, &DPOverlayKey) && [DPBlanks(window) containsObject:DPActiveTabID(window)]) {
         DPOpenOverBlank(window);
         return event;
     }

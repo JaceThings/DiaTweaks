@@ -31,6 +31,7 @@ NSView *DPBlankPage(NSWindow *window);
 NSMenuItem *DPMenuItemTitled(NSMenu *menu, NSString *title);
 NSUserDefaults *DPSettings(void);
 void DPMakeBlank(NSView *page);
+void DPShowHiddenBars(void);  // Bars hidden for an empty window come back.
 BOOL DPHasStrip(NSWindow *window);  // Tabs at the top.
 
 BOOL DPInTabLayout(NSView *view);

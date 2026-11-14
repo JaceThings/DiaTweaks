@@ -38,7 +38,7 @@ BOOL DPParkingAny(void) {
 }
 
 void DPHideBlank(NSString *tabID, BOOL hidden, NSWindow *window) {
-    if (!tabID || !window || (hidden && !DPHiding())) return;
+    if (!tabID || !window || (hidden ? !DPHiding() : ![DPHidden containsObject:tabID])) return;
     if (hidden) {
         [DPHidden addObject:tabID];
         [DPOwner setObject:window forKey:tabID];
@@ -128,7 +128,10 @@ void DPForgetWindow(NSWindow *window) {
 
 static void DPApplyHideTab(DPPatch *patch) {
     for (NSView *background in DPFindViews(DPDiaTabBackground)) DPNoteLook(background);
-    if (!DPHiding()) DPReleaseStrips();
+    if (!DPHiding()) {
+        DPReleaseStrips();
+        DPShowHiddenBars();
+    }
     DPRelayoutLists();
     DPRefreshStandIns();
 }
