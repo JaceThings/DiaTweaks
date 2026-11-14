@@ -17,8 +17,8 @@ static void DPSpring(NSView *view, BOOL down) {
     spring.fromValue = [NSValue valueWithCATransform3D:((CALayer *)layer.presentationLayer ?: layer).transform];
     spring.toValue = [NSValue valueWithCATransform3D:to];
     spring.duration = spring.settlingDuration;
-    spring.fillMode = kCAFillModeForwards;
-    spring.removedOnCompletion = NO;
+    spring.fillMode = down ? kCAFillModeForwards : kCAFillModeRemoved;  // Pressed holds until let go; once let go, the layer is Dia's again.
+    spring.removedOnCompletion = !down;
     [layer addAnimation:spring forKey:@"tabPress"];
 }
 
@@ -39,6 +39,13 @@ static void DPPress(NSView *button, void (^click)(void)) {
         monitor = nil;
         return event;
     }];
+    // A release outside Dia is never seen, so the press doesn't stay in.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (!monitor) return;
+        [NSEvent removeMonitor:monitor];
+        monitor = nil;
+        letGo();
+    });
     click();
     if (!monitor || NSEvent.pressedMouseButtons & 1) return;
     letGo();
