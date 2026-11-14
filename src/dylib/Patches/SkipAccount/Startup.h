@@ -1,7 +1,5 @@
 #import "StdPatch/StdPatch.h"
 
-#define DPSkipAccountHeader "_TtC11Preferences25SettingsSectionHeaderView"
-
 typedef struct { uint32_t value, mask; } DPSkipInstruction;
 uint32_t *DPSkipFindCode(const DPSkipInstruction *signature, NSUInteger length);
 BOOL DPSkipWriteCode(uint32_t *site, uint32_t expected, uint32_t value);

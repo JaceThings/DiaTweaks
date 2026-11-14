@@ -22,11 +22,11 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
 void DPSkipAccountSettings(void) {
     DPAccountSections = [NSHashTable weakObjectsHashTable];
     DPHookClass(NSStackView.class, @selector(setHidden:), (IMP)DPSection_setHidden);
-    DPHook(DPSkipAccountHeader, @selector(layout), (IMP)DPHeader_layout);
+    DPHook(DPDiaSettingsHeader, @selector(layout), (IMP)DPHeader_layout);
 }
 
 NSString *DPSkipVerifyAccountSettings(void) {
-    for (NSView *header in DPFindViews(DPSkipAccountHeader))
+    for (NSView *header in DPFindViews(DPDiaSettingsHeader))
         if (DPIsAccountHeader(header) && !header.isHiddenOrHasHiddenAncestor) return @"account-only settings section is visible";
     for (NSView *button in DPFindViews("NSButton"))
         if (DPHasLabel(button, @"More account options") && !button.isHiddenOrHasHiddenAncestor) return @"account options button is visible";

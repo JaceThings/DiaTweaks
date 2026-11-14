@@ -79,7 +79,7 @@ DP_PATCH(DPSkipAccount) {
     .symbol = @"person.crop.circle.badge.minus person.crop.circle",
     .tint = @"systemBrownColor",
     .section = @"Window",
-    .classes = DPClasses(DPDiaAppDelegate, DPSkipAccountHeader),
+    .classes = DPClasses(DPDiaAppDelegate, DPDiaSettingsHeader),
     .install = DPInstallSkipAccount,
     .apply = DPApplySkipAccount,
     .verify = DPVerifySkipAccount,
