@@ -89,14 +89,14 @@ void DPStopExpecting(void) {
     DPRelayoutLists();
 }
 
-// Only a tab made for the bar is ever hidden: one that was there before the new tab was asked for never is.
+// Only a tab made for the bar is ever hidden: one asked for in this window just now, and not there before. A tab that
+// came some way not seen coming, or was already open, stays in the list.
 void DPHideTabRow(NSString *tabID, NSWindow *window) {
-    if (!tabID || !window || !DPHiding() || (DPExpecting() && [DPKnown containsObject:tabID])) return;
+    if (!tabID || !window || !DPHiding() || !DPExpecting() || DPExpectWindow != window || !DPKnown || [DPKnown containsObject:tabID]) return;
     [DPHidden addObject:tabID];
     [DPOwner setObject:window forKey:tabID];
     DPExpectUntil = 0;
     DPKnown = nil;
-    // Already so, unless the tab came some way not seen coming: then it's hidden where it is.
     DPFreezeLists(window);
     DPHoldStrips(window);
     DPRelayoutLists();
