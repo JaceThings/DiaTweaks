@@ -2,7 +2,8 @@
 
 static char DPBeforeKey, DPHiddenKey, DPDiaFrameKey;
 static NSHashTable<NSView *> *DPHeldStrips;
-static void (*DPSetFrame)(NSView *, SEL, NSRect);
+static CFRunLoopObserverRef DPStripObserver;
+static BOOL DPPlacing;
 
 NSString *DPStripTabID(NSView *tabView) {
     NSView *content = DPFindView(tabView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabContentView); });
@@ -25,22 +26,53 @@ static void DPStopSliding(NSView *view) {
 }
 
 static void DPPlace(NSView *view, NSRect frame) {
-    if (!NSEqualRects(view.frame, frame))
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0;
-            context.allowsImplicitAnimation = NO;
-            [CATransaction setDisableActions:YES];
-            DPSetFrame(view, @selector(setFrame:), frame);
-        }];
+    if (NSEqualRects(view.frame, frame)) return;
+    DPPlacing = YES;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0;
+        context.allowsImplicitAnimation = NO;
+        [CATransaction setDisableActions:YES];
+        view.frame = frame;
+    }];
+    DPPlacing = NO;
 }
 
-static void DPView_setFrame(NSView *self, SEL _cmd, NSRect frame) {
-    NSView *strip = DPHeldStrips.count ? self.superview : nil;
-    if (!strip || ![DPHeldStrips containsObject:strip]) return DPSetFrame(self, _cmd, frame);
-    NSValue *before = [DPGet(strip, &DPBeforeKey) objectForKey:self];
-    DPSet(self, &DPDiaFrameKey, [NSValue valueWithRect:frame]);
-    DPSetFrame(self, _cmd, before ? before.rectValue : frame);
-    if (before) DPStopSliding(self);
+// A held strip's tabs and + button keep the frames they had, whichever Dia sets; the frame Dia meant is kept for letting go.
+static BOOL DPPin(NSView *view, NSRect *frame) {
+    NSView *strip = DPHeldStrips.count && !DPPlacing && DPHiding() ? view.superview : nil;
+    if (!strip || ![DPHeldStrips containsObject:strip]) return NO;
+    NSValue *before = [DPGet(strip, &DPBeforeKey) objectForKey:view];
+    DPSet(view, &DPDiaFrameKey, [NSValue valueWithRect:*frame]);
+    if (before) *frame = before.rectValue;
+    return before != nil;
+}
+
+static void DPTabView_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    BOOL pinned = DPPin(self, &frame);
+    DPCallOriginal(DPTabView_setFrame, self, frame);
+    if (pinned) DPStopSliding(self);
+}
+
+static void DPPlusButton_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    BOOL pinned = DPPin(self, &frame);
+    DPCallOriginal(DPPlusButton_setFrame, self, frame);
+    if (pinned) DPStopSliding(self);
+}
+
+static void DPHold(NSView *strip);
+
+// Before Core Animation commits what's drawn this turn, and only while a strip is held.
+static void DPWatchStrips(void) {
+    if (DPStripObserver) return;
+    DPStripObserver = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, YES, 0, ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
+        NSArray<NSView *> *strips = DPHeldStrips.allObjects;
+        for (NSView *strip in strips) DPHold(strip);
+        if (strips.count) return;
+        CFRunLoopObserverInvalidate(observer);
+        CFRelease(observer);
+        DPStripObserver = NULL;
+    });
+    CFRunLoopAddObserver(CFRunLoopGetMain(), DPStripObserver, kCFRunLoopCommonModes);
 }
 
 void DPHoldStrips(NSWindow *window) {
@@ -51,6 +83,7 @@ void DPHoldStrips(NSWindow *window) {
         DPSet(strip, &DPBeforeKey, before);
         DPSet(strip, &DPHiddenKey, [NSHashTable weakObjectsHashTable]);
         [DPHeldStrips addObject:strip];
+        DPWatchStrips();
     }
 }
 
@@ -94,6 +127,7 @@ static void DPHold(NSView *strip) {
         // A tab the bar isn't hiding that wasn't there before, such as one another app opened, lets the strip go.
         if (!frame && tab && !DPHidesTab(tab)) return DPRelease(strip);
         if (frame && !(tab && DPHidesTab(tab))) {
+            if (!NSEqualRects(view.frame, frame.rectValue)) DPSet(view, &DPDiaFrameKey, [NSValue valueWithRect:view.frame]);  // What a view not hooked here was given.
             DPPlace(view, frame.rectValue);
             DPStopSliding(view);
         } else if (!view.hidden) {
@@ -108,16 +142,13 @@ static void DPStrip_layout(NSView *self, SEL _cmd) {
     DPHold(self);
 }
 
+void DPReleaseStrips(void) {
+    for (NSView *strip in DPHeldStrips.allObjects) DPRelease(strip);
+}
+
 void DPInstallHiddenStripTab(void) {
-    DPHook(DPDiaTabStripTabs, @selector(layout), (IMP)DPStrip_layout);
     DPHeldStrips = [NSHashTable weakObjectsHashTable];
-    // Every view's, so it's swapped in directly rather than through DPHook, and only looks further while a strip is held.
-    Method setFrame = class_getInstanceMethod(NSView.class, @selector(setFrame:));
-    DPSetFrame = (void *)method_setImplementation(setFrame, (IMP)DPView_setFrame);
-    // Before Core Animation commits what's drawn this turn.
-    CFRunLoopObserverRef beforeDraw = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, YES, 0, ^(CFRunLoopObserverRef o, CFRunLoopActivity a) {
-        for (NSView *strip in DPHeldStrips.allObjects) DPHold(strip);
-    });
-    CFRunLoopAddObserver(CFRunLoopGetMain(), beforeDraw, kCFRunLoopCommonModes);
-    CFRelease(beforeDraw);
+    DPHook(DPDiaTabStripTabs, @selector(layout), (IMP)DPStrip_layout);
+    DPHook(DPDiaTabView, @selector(setFrame:), (IMP)DPTabView_setFrame);
+    DPHook(DPDiaTabSurfaceButton, @selector(setFrame:), (IMP)DPPlusButton_setFrame);
 }

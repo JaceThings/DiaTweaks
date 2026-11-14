@@ -31,6 +31,7 @@ NSString *DPVerifyHiddenRows(void);
 
 void DPInstallHiddenStripTab(void);
 void DPHoldStrips(NSWindow *window);
+void DPReleaseStrips(void);
 NSString *DPStripTabID(NSView *tabView);
 
 extern const uintptr_t DPFirstFill;  // A selection style below this has no fill: not selected.

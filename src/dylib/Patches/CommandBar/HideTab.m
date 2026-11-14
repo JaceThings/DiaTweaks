@@ -85,6 +85,7 @@ void DPShowTabRow(NSString *tabID, BOOL closing) {
 
 static void DPApplyHideTab(DPPatch *patch) {
     for (NSView *background in DPFindViews(DPDiaTabBackground)) DPNoteLook(background);
+    if (!DPHiding()) DPReleaseStrips();
     DPRelayoutLists();
     DPRefreshStandIns();
 }
@@ -114,7 +115,7 @@ DP_PATCH(DPCommandBarHideTab) {
     .tint = @"systemOrangeColor",
     .requires = @"commandBar",
     .section = @"Tabs",
-    .classes = DPClasses(DPDiaTabListCollection, DPDiaTabListLayout, DPDiaTabStripTabs, DPDiaTabView, DPDiaTabContentView, DPDiaTabBackground, DPDiaNewTabButton),
+    .classes = DPClasses(DPDiaTabListCollection, DPDiaTabListLayout, DPDiaTabStripTabs, DPDiaTabView, DPDiaTabContentView, DPDiaTabBackground, DPDiaNewTabButton, DPDiaTabSurfaceButton),
     .install = DPInstallHideTab,
     .apply = DPApplyHideTab,
     .verify = DPVerifyHideTab,
