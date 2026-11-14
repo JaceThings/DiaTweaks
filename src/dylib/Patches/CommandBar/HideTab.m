@@ -115,7 +115,7 @@ DP_PATCH(DPCommandBarHideTab) {
     .tint = @"systemOrangeColor",
     .requires = @"commandBar",
     .section = @"Tabs",
-    .classes = DPClasses(DPDiaTabListCollection, DPDiaTabListLayout, DPDiaTabStripTabs, DPDiaTabView, DPDiaTabContentView),
+    .classes = DPClasses(DPDiaTabListCollection, DPDiaTabListLayout, DPDiaTabStripTabs, DPDiaTabView, DPDiaTabContentView, DPDiaTabBackground, DPDiaNewTabButton),
     .install = DPInstallHideTab,
     .apply = DPApplyHideTab,
     .verify = DPVerifyHideTab,
