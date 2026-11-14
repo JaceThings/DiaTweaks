@@ -12,9 +12,9 @@ static BOOL DPTabSelected(NSView *tab) {
     return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
 }
 
-// The list keeps hidden cells it isn't showing, but a collapsed sidebar still counts.
+// The list keeps hidden cells it isn't showing, but a collapsed sidebar or an auto-hidden tab strip still counts.
 static BOOL DPTabShown(NSView *tab) {
-    for (NSView *view = tab; view && ![view isKindOfClass:NSCollectionView.class]; view = view.superview)
+    for (NSView *view = tab; view && ![view isKindOfClass:NSCollectionView.class] && !DPIsKind(view, DPDiaTabStrip); view = view.superview)
         if (view.hidden) return NO;
     return YES;
 }
