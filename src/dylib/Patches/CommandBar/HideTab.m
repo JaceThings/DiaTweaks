@@ -171,7 +171,7 @@ static void DPInstallHideTab(void) {
 
 DP_PATCH(DPCommandBarHideTab) {
     .key = @"commandBarHideTab",
-    .order = 93,
+    .order = 94,
     .title = @"Hide New Tab Until Opened",
     .detail = @"Keep the new tab out of the sidebar and the tab bar while the command bar is open. The New Tab button shows as selected instead, and clicking it again closes the bar. The tab shows once you choose a result. Experimental.",
     .symbol = @"eye.slash.fill",
