@@ -26,8 +26,9 @@ static const DPSkipInstruction DPLaunch[] = {
 };
 
 // Window creation separately rejects a signed-out user. Keep the readiness and termination checks around it.
+// The first load's field offset changes in every Dia release (0xf28, 0xf78, 0xf68), so only its registers are matched.
 static const DPSkipInstruction DPWindow[] = {
-    {0xf947bd14, 0xffffffff},
+    {0xf9400114, 0xffc003ff},
     {0xb4000014, 0xff00001f},
     {0xaa1403e0, 0xffffffff},
     {0x94000000, 0xfc000000},
