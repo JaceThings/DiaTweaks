@@ -31,11 +31,13 @@ static NSDictionary<NSString *, NSValue *> *DPFrozen(NSCollectionView *list) {
     return frames;
 }
 
+// The tab bar too, which a tab shown again isn't put back in until it lays out.
 void DPRelayoutLists(void) {
     for (NSCollectionView *list in DPFindViews(DPDiaTabListCollection)) {
         DPFrozen(list);
         [list.collectionViewLayout invalidateLayout];
     }
+    for (NSView *strip in DPFindViews(DPDiaTabStripTabs)) strip.needsLayout = YES;
 }
 
 static NSCollectionViewLayoutAttributes *DPFrozenAttributes(NSCollectionViewLayout *layout, NSCollectionViewLayoutAttributes *attributes) {
