@@ -285,7 +285,7 @@ void DPMakeBlank(NSView *page) {
     DPHidePage(page, YES);
     if (DPHasStrip(page.window)) return;
     DPHideBlank(active, YES);
-    DPHideBars(page, YES);
+    if (DPHidesTab(active)) DPHideBars(page, YES);
 }
 
 NSView *DPBlankPage(NSWindow *window) {
