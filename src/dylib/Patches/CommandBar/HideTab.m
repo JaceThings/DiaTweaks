@@ -10,7 +10,7 @@ static __weak NSWindow *DPExpectWindow;
 static CFTimeInterval DPExpectUntil;
 static NSSet<NSString *> *DPKnown;  // The window's tabs when a new one was asked for.
 
-BOOL DPHiding(void) { return DPCommandBar.on && DPCommandBarHideTab.on; }
+BOOL DPHiding(void) { return DPCommandBar.on && DPCommandBarHideTab.on && !DPCommandBarHideTab.unavailable; }
 static BOOL DPExpecting(void) { return CACurrentMediaTime() < DPExpectUntil; }
 
 // A tab whose window has gone isn't hidden any more.
