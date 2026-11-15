@@ -49,7 +49,9 @@ static NSRect DPPageArea(NSWindow *window) {
 // Like Arc: 80% of the page area's width, centred on it, and the window's height less a sliver top and bottom.
 static NSRect DPOverWindowFrame(NSWindow *source) {
     if (!source.visible) return DPLittleDiaFrame();
-    NSRect page = DPPageArea(source), window = source.frame;
+    // macOS keeps windows below the menu bar, which would take the margin from the bottom.
+    NSRect page = DPPageArea(source), window = NSIntersectionRect(source.frame, (source.screen ?: NSScreen.mainScreen).visibleFrame);
+    if (NSIsEmptyRect(window)) window = source.frame;
     CGFloat width = MAX(round(NSWidth(page) * DPTabLinkWidth), 480), height = MAX(NSHeight(window) - 2 * DPTabLinkEdge, 360);
     return NSMakeRect(round(NSMidX(page) - width / 2), round(NSMidY(window) - height / 2), width, height);
 }
