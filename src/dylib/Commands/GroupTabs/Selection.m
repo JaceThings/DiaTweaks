@@ -106,6 +106,11 @@ BOOL DPCanReadSelection(id browser) {
     return !window || DPSelection(window, DPTabControllers(window));
 }
 
+BOOL DPHasSelectedTabs(id browser) {
+    NSWindow *window = DPBrowserWindow(browser);
+    return window && DPSelectionIDKeys(DPSelection(window, DPTabControllers(window))).count >= 2;
+}
+
 NSSet<NSNumber *> *DPSelectedSessions(id browser) {
     NSWindow *window = DPBrowserWindow(browser);
     if (!window) return nil;
