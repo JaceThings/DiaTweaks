@@ -1,4 +1,5 @@
 #import "Patches/Peek/Peek.h"
+#import "Patches/LittleDia/LittleDia.h"
 
 static NSURL *DPPeekHovered;
 static __weak id DPPeekHoveredPage, DPPeekHoveredDelegate;
@@ -20,6 +21,8 @@ static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
 }
 
 static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebContent, NSURL *url, NSInteger disposition) {
+    if (!DPPeekWanted(disposition) && disposition == DPForegroundTab && DPLittleDiaTakesTabLink(webContents, url, NO))
+        return (void)DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, (NSInteger)DPIgnoreAction);
     if (!DPPeekWanted(disposition) || !(DPPeekShows(webContents) || (DPPeekIsWeb(url) && DPPeekCanOpen(webContents))))
         return (void)DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, disposition);
     DPCallOriginal(DPWebContent_didCreate, self, webContents, newWebContent, url, (NSInteger)DPIgnoreAction);
@@ -41,7 +44,8 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
     NSInteger disposition = [[action valueForKey:@"navigationDisposition"] integerValue];
     if (!DPPeekWanted(disposition)) {
         NSInteger policy = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
-        if (!DPPeek.on || !DPPeekPinnedLinks.on || policy != DPForegroundTab) return policy;
+        BOOL peeks = DPPeek.on && DPPeekPinnedLinks.on, little = DPLittleDia.on && DPLittleDiaTabLinks.on;
+        if (policy != DPForegroundTab || !(peeks || little)) return policy;
         // Ask Dia as if the link stayed in the tab: only a pinned tab turns that into a new tab.
         BOOL leaves = disposition == DPCurrentTab;
         if (disposition == DPForegroundTab && !(NSEvent.modifierFlags & NSEventModifierFlagCommand)) {
@@ -50,7 +54,8 @@ static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id
             leaves = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, staying) == DPForegroundTab;
         }
         NSURL *url = [action valueForKey:@"url"];
-        if (!leaves || !DPPeekIsWeb(url) || !DPPeekCanOpen(webContents)) return policy;
+        if (DPLittleDiaTakesTabLink(webContents, url, leaves)) return DPIgnoreAction;
+        if (!peeks || !leaves || !DPPeekIsWeb(url) || !DPPeekCanOpen(webContents)) return policy;
         DPPeekOpenLater(self, webContents, url);
         return DPIgnoreAction;
     }
