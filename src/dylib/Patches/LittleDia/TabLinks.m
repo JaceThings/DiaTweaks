@@ -9,10 +9,15 @@ static NSArray *DPList(id object, SEL sel) {
     return [list isKindOfClass:NSArray.class] ? list : @[];
 }
 
+static NSURL *DPPageURL(id page) {
+    id url = [page respondsToSelector:@selector(url)] ? DPMsg(page, @selector(url)) : nil;
+    return [url isKindOfClass:NSURL.class] ? url : nil;
+}
+
 // A page can't be asked which tab it is in: scripting tab ids are UUIDs and a page's session id is a number. So it's the pinned tab
 // showing its address, and only when no other tab shows it too.
 static BOOL DPFromPinnedTab(id page) {
-    NSString *url = DPText(DPMsg(page, @selector(url)));
+    NSString *url = DPPageURL(page).absoluteString;
     BOOL pinnedHere = NO, openHere = NO;
     for (id window in DPList(NSApp.delegate, @selector(appleScriptWindows)))
         for (id tab in DPList(window, @selector(appleScriptTabs))) {
@@ -37,7 +42,7 @@ static BOOL DPPlainClick(void) {
 
 BOOL DPLittleDiaTakesTabLink(id page, NSURL *url, BOOL leavesPinned) {
     if (!DPLittleDia.on || !DPLittleDiaTabLinks.on || !DPPeekIsWeb(url) || !DPPlainClick() || !DPLittleDiaReady()) return NO;
-    if (!page || DPInLittleDia(page) || DPPeekShows(page)) return NO;
+    if (!page || DPInLittleDia(page) || DPPeekShows(page) || !DPPeekIsWeb(DPPageURL(page))) return NO;  // Not an extension's or Dia's own page.
     if (!leavesPinned && ![DPChoice(&DPLittleDiaTabLinks) isEqual:DPFromAllTabs] && !DPFromPinnedTab(page)) return NO;
     NSWindow *source = NSApp.keyWindow;  // Where the click was; noted now, as Little Dia becomes key next.
     dispatch_async(dispatch_get_main_queue(), ^{ DPOpenTabLinkInLittleDia(url, source); });  // Not from inside Chromium's callback.
