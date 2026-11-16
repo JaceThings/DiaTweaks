@@ -9,19 +9,16 @@ static NSArray *DPList(id object, SEL sel) {
     return [list isKindOfClass:NSArray.class] ? list : @[];
 }
 
-// Dia's scripting tabs carry the same id as the page's session. A page not matched by id falls back to its address.
+// A page can't be asked which tab it is in: scripting tab ids are UUIDs and a page's session id is a number. So it's the pinned tab
+// showing its address, and only when no other tab shows it too.
 static BOOL DPFromPinnedTab(id page) {
-    long long sid = DPSessionOf(page);
     NSString *url = DPText(DPMsg(page, @selector(url)));
     BOOL pinnedHere = NO, openHere = NO;
     for (id window in DPList(NSApp.delegate, @selector(appleScriptWindows)))
         for (id tab in DPList(window, @selector(appleScriptTabs))) {
-            BOOL pinned = [tab respondsToSelector:@selector(isPinned)] && DPMsgBool(tab, @selector(isPinned));
-            long long tabID = [tab respondsToSelector:@selector(tabId)] ? DPLongID(DPMsg(tab, @selector(tabId))) : 0;
-            if (sid > 0 && tabID == sid) return pinned;
             NSString *address = [tab respondsToSelector:@selector(URL)] ? DPText(DPMsg(tab, @selector(URL))) : nil;
             if (!url.length || ![address isEqual:url]) continue;
-            if (pinned) pinnedHere = YES;
+            if ([tab respondsToSelector:@selector(isPinned)] && DPMsgBool(tab, @selector(isPinned))) pinnedHere = YES;
             else openHere = YES;
         }
     return pinnedHere && !openHere;
