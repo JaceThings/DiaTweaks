@@ -62,6 +62,7 @@ BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event);
 BOOL DPPeekIsShortcut(NSEvent *event, NSMenuItem *item);
 BOOL DPPeekZoomShortcut(DPPeekCard *peek, NSEvent *event);
 void DPPeekInstallZoom(void);
+void DPPeekInstallCursor(void);
 NSString *DPPeekZoomProblem(void);
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
 CATransform3D DPPeekScaled(NSView *view, CGFloat scale);
