@@ -122,8 +122,21 @@ static NSView *DPPeekHolder(NSWindow *window, NSView *pane) {
     return window.contentView;
 }
 
-static NSView *DPLayerView(void) {
-    NSView *view = [NSView new];
+@interface DPPeekBacking : NSView
+@end
+
+@implementation DPPeekBacking
+- (BOOL)wantsUpdateLayer { return YES; }
+- (void)viewDidMoveToWindow { [super viewDidMoveToWindow]; [self updateLayer]; }
+
+// Resolved in the card's own appearance: outside a draw pass the plain colour is the Light one, a white card in Dark Mode.
+- (void)updateLayer {
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{ self.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor; }];
+}
+@end
+
+static NSView *DPLayerView(Class kind) {
+    NSView *view = [kind new];
     view.wantsLayer = YES;
     return view;
 }
@@ -183,19 +196,18 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     peek.pane = pane;
     peek.page = page;
     peek.host = host;
-    peek.dim = DPLayerView();
+    peek.dim = DPLayerView(NSView.class);
     peek.dim.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
-    peek.card = DPLayerView();
+    peek.card = DPLayerView(NSView.class);
     NSShadow *shadow = [NSShadow new];
     shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
     shadow.shadowBlurRadius = 24;
     shadow.shadowOffset = NSMakeSize(0, -6);
-    peek.shade = DPLayerView();
+    peek.shade = DPLayerView(DPPeekBacking.class);
     peek.shade.shadow = shadow;
-    peek.clip = DPLayerView();
+    peek.clip = DPLayerView(DPPeekBacking.class);
     peek.clip.layer.masksToBounds = YES;
     for (NSView *view in @[peek.shade, peek.clip]) {
-        view.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
         view.layer.cornerRadius = 10;
         view.layer.cornerCurve = kCACornerCurveContinuous;
     }
