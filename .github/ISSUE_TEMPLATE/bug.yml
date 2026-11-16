@@ -28,6 +28,7 @@ body:
         - Show Toolbar on New Tabs
         - Show Toolbar with Sidebar
         - Show Toolbar with Tabs at the Top
+        - Show Address in Sidebar
         - Keep Bookmarks Bar
         - Show Loading Progress
         - Hide Site Color in Tab Bar
