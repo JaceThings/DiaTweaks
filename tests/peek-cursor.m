@@ -1,6 +1,7 @@
 #import "Patches/Peek/Peek.h"
 #import "StdPatch/Hook.m"
 
+DPPatch DPPeek = { .on = YES };
 static DPPeekCard *card;
 static NSPoint pointer;
 DPPeekCard *DPPeekCardIn(NSWindow *window) { return card.window == window ? card : nil; }
@@ -69,6 +70,13 @@ int main(void) {
         NSCAssert(area == 800 * 600 - 600 * 400, @"all uncovered cursor area is preserved");
         [peek addCursorRect:peek.bounds cursor:NSCursor.pointingHandCursor];
         NSCAssert(peek.rects.count == 1 && NSEqualRects(peek.rects[0].rectValue, peek.bounds), @"Peek keeps its renderer cursor rectangles");
+        [under.rects removeAllObjects];
+        DPPeek.on = NO;
+        pointer = NSMakePoint(300, 300);
+        NSCAssert(under.shouldChangeCurrentCursor, @"with Peek off the page keeps Chromium's answer");
+        [under addCursorRect:under.bounds cursor:NSCursor.IBeamCursor];
+        NSCAssert(under.rects.count == 1 && NSEqualRects(under.rects[0].rectValue, under.bounds), @"with Peek off cursor rectangles pass through");
+        DPPeek.on = YES;
         [under.rects removeAllObjects];
         [card removeFromSuperview];
         NSCAssert(under.shouldChangeCurrentCursor, @"closing Peek restores immediate updates");

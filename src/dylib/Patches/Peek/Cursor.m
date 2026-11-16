@@ -1,7 +1,7 @@
 #import "Patches/Peek/Peek.h"
 
 static BOOL DPPeekCursorAllowed(NSView *view, NSPoint point) {
-    if (!DPPeekCardIn(view.window)) return YES;
+    if (!DPPeek.on || !DPPeekCardIn(view.window)) return YES;
     NSView *root = view.window.contentView;
     NSView *hit = [root hitTest:[root.superview convertPoint:point fromView:nil]];
     return hit == view || [hit isDescendantOf:view];
@@ -12,7 +12,7 @@ static BOOL DPWeb_shouldChangeCurrentCursor(NSView *self, SEL _cmd) {
 }
 
 static void DPWeb_addCursorRect(NSView *self, SEL _cmd, NSRect rect, NSCursor *cursor) {
-    DPPeekCard *peek = DPPeekCardIn(self.window);
+    DPPeekCard *peek = DPPeek.on ? DPPeekCardIn(self.window) : nil;
     if (!peek || [self isDescendantOf:peek]) return (void)DPCallOriginal(DPWeb_addCursorRect, self, rect, cursor);
     // Cursor rectangles, like Chromium's immediate cursor updates, ignore overlapping siblings.
     NSRect covered = NSIntersectionRect(rect, [self convertRect:peek.bounds fromView:peek]);
