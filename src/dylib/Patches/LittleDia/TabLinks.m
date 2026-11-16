@@ -39,7 +39,7 @@ static BOOL DPPlainClick(void) {
 }
 
 BOOL DPLittleDiaTakesTabLink(id page, NSURL *url, BOOL leavesPinned) {
-    if (!DPLittleDia.on || !DPLittleDiaTabLinks.on || !DPPeekIsWeb(url) || !DPPlainClick() || !DPLittleDiaReady()) return NO;
+    if (!DPLittleDia.on || !DPLittleDiaTabLinks.on || DPPeekGiving || !DPPeekIsWeb(url) || !DPPlainClick() || !DPLittleDiaReady()) return NO;
     if (!page || DPInLittleDia(page) || DPPeekShows(page)) return NO;
     if (!leavesPinned && ![DPChoice(&DPLittleDiaTabLinks) isEqual:DPFromAllTabs] && !DPFromPinnedTab(page)) return NO;
     NSWindow *source = NSApp.keyWindow;  // Where the click was; noted now, as Little Dia becomes key next.
