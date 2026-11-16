@@ -22,7 +22,7 @@ NSArray<NSView *> *DPLittleDiaRows(void);
 
 void DPInstallLittleDiaRoute(void);
 void DPOpenLinkInLittleDia(NSURL *url);
-#define DPTabLinkWidth 0.8  // Of the page area, as Arc sizes a link from a tab.
+#define DPTabLinkWidth 0.8  // Of the page area's width.
 #define DPTabLinkEdge 12    // Points kept above and below.
 void DPOpenTabLinkInLittleDia(NSURL *url, NSWindow *source);  // Falls back to a tab, so the link is never lost.
 void DPOpenBlankLittleDia(void);

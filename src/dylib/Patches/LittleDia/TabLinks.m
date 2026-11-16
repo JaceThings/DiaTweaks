@@ -68,8 +68,8 @@ DP_PATCH(DPLittleDiaTabLinks) {
     .key = @"littleDiaTabLinks",
     .order = 104,
     .title = @"Open Links from Tabs",
-    .detail = @"Links that would open a new tab open in Little Dia over the page instead, sized like Arc's. "
-              @"Choose pinned tabs only, including links that leave a pinned tab's site, or every tab. Hold Option, Command or Shift for a tab.",
+    .detail = @"Links that would open a new tab open in Little Dia over the page instead. "
+              @"Choose pinned tabs only, including links that leave a pinned tab's site, or every tab. Clicks with Option, Command, Shift or Control held keep their usual meaning.",
     .symbol = @"arrow.up.forward.app arrow.up.right.square",
     .tint = @"systemMintColor",
     .requires = @"littleDia",

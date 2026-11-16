@@ -1,7 +1,7 @@
 #import "LittleDia.h"
 #import "Patches/HideToolbar/HideToolbar.h"
 
-// A Little Dia opened from a tab sits over that tab's window, like Arc's: its toolbar hides, and a click on it closes Little Dia.
+// A Little Dia opened from a tab sits over that tab's window: its toolbar hides, and a click on it closes Little Dia.
 static NSMapTable<NSWindow *, NSWindow *> *gOver;  // Dia's window -> the Little Dia over it.
 
 static NSArray<NSView *> *DPToolbars(NSWindow *window) {
@@ -55,6 +55,6 @@ void DPInstallLittleDiaOver(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:clicks handler:^NSEvent *(NSEvent *event) {
         if (!DPLittleDia.on || !DPLittleDiaIsOver(event.window)) return event;
         [[gOver objectForKey:event.window] performClose:nil];
-        return nil;  // Like Arc, the click only closes it.
+        return nil;  // The click only closes it.
     }];
 }
