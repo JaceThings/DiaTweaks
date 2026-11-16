@@ -82,10 +82,11 @@ void DPOpenLinkInLittleDia(NSURL *url) {
 void DPOpenTabLinkInLittleDia(NSURL *url, NSWindow *source) {
     NSRect frame = DPOverWindowFrame(source);
     __weak NSWindow *over = source.visible ? source : nil;
-    DPOpenFramed(url, frame, DPNoteStackForLink(), ^{
+    void (^asTab)(void) = ^{
         [NSWorkspace.sharedWorkspace openURLs:@[ url ] withApplicationAtURL:NSBundle.mainBundle.bundleURL
                                 configuration:[NSWorkspaceOpenConfiguration configuration] completionHandler:nil];
-    }, ^(NSWindow *little) { DPPutLittleDiaOver(little, over); });
+    };
+    if (!DPOpenFramed(url, frame, DPNoteStackForLink(), asTab, ^(NSWindow *little) { DPPutLittleDiaOver(little, over); })) asTab();
 }
 
 void DPOpenBlankLittleDia(void) {
