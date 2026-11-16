@@ -78,6 +78,7 @@ void DPRelayoutViews(NSHashTable<NSView *> *views);
 BOOL DPMayAdjust(NSView *view);
 void *DPIvar(id object, const char *name);
 id DPSwiftValue(id object, NSString *key);
+NSMenu *DPTabContextMenu(NSView *tab);
 NSArray<NSString *> *DPUUIDsIn(NSString *text);
 NSWindowController *DPOpenTabSwitcher(void);
 
