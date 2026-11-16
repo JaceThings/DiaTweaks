@@ -61,6 +61,8 @@ NSURL *DPPeekSearchURL(id page, NSString *text);
 BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event);
 BOOL DPPeekIsShortcut(NSEvent *event, NSMenuItem *item);
 BOOL DPPeekZoomShortcut(DPPeekCard *peek, NSEvent *event);
+BOOL DPPeekFindShortcut(DPPeekCard *peek, NSEvent *event, NSEventModifierFlags mods);
+BOOL DPPeekHideFind(DPPeekCard *peek);
 void DPPeekInstallZoom(void);
 NSString *DPPeekZoomProblem(void);
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
