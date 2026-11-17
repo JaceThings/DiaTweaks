@@ -56,9 +56,15 @@ build/vertical-tab-glow: tests/vertical-tab-glow.m $(wildcard src/dylib/Patches/
 build/peek-cursor: tests/peek-cursor.m src/dylib/Patches/Peek/Cursor.m src/dylib/Patches/Peek/Peek.h src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $<
 
-check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/split-client-hello build/peek-cursor build/patches.json
+TIDY := src/dylib/Patches/TidyTabs/Tabs.m src/dylib/Patches/CommandBar/Tabs.m src/dylib/Commands/GroupTabs/Messages.m
+
+build/tidy-tabs: tests/tidy-tabs.m $(TIDY) | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $^
+
+check: build/diapatch build/group-tabs build/tidy-tabs build/mouse-back-forward build/vertical-tab-glow build/split-client-hello build/peek-cursor build/patches.json
 	tests/tweaks-update
 	build/group-tabs
+	build/tidy-tabs
 	build/mouse-back-forward
 	build/vertical-tab-glow
 	build/split-client-hello
