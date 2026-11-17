@@ -688,7 +688,7 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
     }
     if (overlay) DPFocusBar(overlay);
     if (overlay || DPOpenOverBlank(window)) return nil;
-    DPExpectNewTab(window);
+    if (newTab) DPExpectNewTab(window);
     return event;
 }
 
