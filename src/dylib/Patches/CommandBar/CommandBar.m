@@ -670,7 +670,7 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
     if (DPIsShortcut(event, @"Close Tab")) DPSet(window, &DPClosedAtKey, @(event.timestamp));
     // Typing into an empty window goes to its hidden bar, which keeps the keyboard, so the bar opens to show it.
     BOOL typed = !(event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) && event.characters.length && [event.characters characterAtIndex:0] >= 0x20 && [event.characters characterAtIndex:0] != 0x7f;
-    if (typed && DPHiding() && !DPGet(window, &DPOverlayKey) && [DPBlanks(window) containsObject:DPActiveTabID(window)]) {
+    if (typed && DPHiding() && !DPGet(window, &DPOverlayKey) && DPBlanks(window).count && [DPBlanks(window) containsObject:DPActiveTabID(window)]) {
         DPOpenOverBlank(window);
         return event;
     }
