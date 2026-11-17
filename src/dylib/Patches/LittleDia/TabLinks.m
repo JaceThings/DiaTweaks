@@ -14,9 +14,9 @@ static NSURL *DPPageURL(id page) {
     return [url isKindOfClass:NSURL.class] ? url : nil;
 }
 
-// A page can't be asked which tab it is in: scripting tab ids are UUIDs and a page's session id is a number. So it's the pinned tab
+// A page can't be asked which tab it is in: scripting tab ids are UUIDs and a page's session id is a number. So it's the pinned icon
 // showing its address, and only when no other tab shows it too.
-static BOOL DPFromPinnedTab(id page) {
+static BOOL DPOnPinnedIcon(id page) {
     NSString *url = DPPageURL(page).absoluteString;
     BOOL pinnedHere = NO, openHere = NO;
     for (id window in DPList(NSApp.delegate, @selector(appleScriptWindows)))
@@ -28,6 +28,9 @@ static BOOL DPFromPinnedTab(id page) {
         }
     return pinnedHere && !openHere;
 }
+
+// Scripting calls only the icons pinned; a pinned row says so in its menu.
+static BOOL DPFromPinnedTab(id page) { return DPOnPinnedIcon(page) || DPPeekInPinnedRow(NSApp.keyWindow, page); }
 
 static BOOL DPInLittleDia(id page) {
     for (NSWindow *window in NSApp.windows)
