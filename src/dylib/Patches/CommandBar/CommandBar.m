@@ -1,5 +1,6 @@
 #import "StdPatch/StdPatch.h"
 #import "Patches/CommandBar/Tabs.h"
+#import "Patches/CommandBar/AutoPip.h"
 #import "Patches/CompactCommandBar/CompactCommandBar.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarInteractive, DPCommandBarKeepText;
@@ -567,7 +568,9 @@ static void DPCapability_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
 
 static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     DPSet(self.window, &DPClosedAtKey, nil);
-    if (!DPOpenOverBlank(self.window)) DPCallOriginal(DPNewTabButton_mouseDown, self, event);
+    if (DPOpenOverBlank(self.window)) return;
+    DPHoldAutoPip();
+    DPCallOriginal(DPNewTabButton_mouseDown, self, event);
 }
 
 static NSEvent *DPCommandBarKey(NSEvent *event) {
@@ -608,6 +611,13 @@ static void DPShowWhenBuilt(DPCommandBarOverlay *overlay) {
         overlay.alphaValue = overlay.shade.alphaValue = 1;
     }];
     [NSRunLoop.mainRunLoop addTimer:check forMode:NSRunLoopCommonModes];
+}
+
+// Dia closes ⌘L's bar on a click its popover doesn't hit, and the lifted bar is neither in the hidden popover nor where it is.
+static NSView *DPPopover_hitTest(NSView *self, SEL _cmd, NSPoint point) {
+    DPCommandBarOverlay *overlay = DPGet(self, &DPOverlayKey);
+    NSRect bar = overlay.panel && !overlay.passingThrough ? [self.superview convertRect:overlay.panel.bounds fromView:overlay.panel] : NSZeroRect;
+    return NSPointInRect(point, bar) ? self : DPCallOriginal(DPPopover_hitTest, self, point);
 }
 
 static void DPPopover_viewDidMoveToWindow(NSView *self, SEL _cmd) {
@@ -717,7 +727,9 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
 
 static void DPInstallCommandBar(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPCommandBarKey(event); }];
+    DPInstallAutoPipHold();
     DPHook(DPDiaPopover, @selector(viewDidMoveToWindow), (IMP)DPPopover_viewDidMoveToWindow);
+    DPHook(DPDiaPopover, @selector(hitTest:), (IMP)DPPopover_hitTest);
     DPHook(DPDiaNewTabButton, @selector(mouseDown:), (IMP)DPNewTabButton_mouseDown);
     DPHook(DPDiaContentPane, @selector(viewDidMoveToWindow), (IMP)DPContentPane_viewDidMoveToWindow);
     DPHook(DPDiaNewTabPage, @selector(viewDidMoveToWindow), (IMP)DPNewTabPage_viewDidMoveToWindow);
