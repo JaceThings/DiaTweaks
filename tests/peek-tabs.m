@@ -6,6 +6,7 @@ static int failures;
 NSString *DPActiveTabID(NSWindow *window) { return front; }
 id DPSwiftValue(id object, NSString *key) { return nil; }
 BOOL DPIsKind(id object, const char *name) { return NO; }
+NSMenu *DPTabContextMenu(NSView *tab) { return nil; }
 NSArray *DPFindViews(const char *name) { return strcmp(name, "DPPeekCard") == 0 ? cards : @[]; }
 
 @implementation DPPeekCard
