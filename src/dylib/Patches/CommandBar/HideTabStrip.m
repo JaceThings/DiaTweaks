@@ -1,6 +1,6 @@
 #import "Patches/CommandBar/HideTab.h"
 
-static char DPBeforeKey, DPHiddenKey, DPDiaFrameKey;
+static char DPBeforeKey, DPHiddenKey, DPDiaFrameKey, DPSettledKey;
 static NSHashTable<NSView *> *DPHeldStrips;
 static CFRunLoopObserverRef DPStripObserver;
 static BOOL DPPlacing;
@@ -82,6 +82,7 @@ void DPHoldStrips(NSWindow *window) {
         for (NSView *view in strip.subviews) [before setObject:[NSValue valueWithRect:view.frame] forKey:view];
         DPSet(strip, &DPBeforeKey, before);
         DPSet(strip, &DPHiddenKey, [NSHashTable weakObjectsHashTable]);
+        DPSet(strip, &DPSettledKey, [NSHashTable weakObjectsHashTable]);
         [DPHeldStrips addObject:strip];
         DPWatchStrips();
     }
@@ -96,6 +97,7 @@ static void DPRelease(NSView *strip) {
     }
     DPSet(strip, &DPBeforeKey, nil);
     DPSet(strip, &DPHiddenKey, nil);
+    DPSet(strip, &DPSettledKey, nil);
 }
 
 // A strip that isn't held, such as one made as the tab layout changes, just leaves the hidden tab out.
@@ -120,16 +122,19 @@ static void DPHold(NSView *strip) {
     NSMapTable<NSView *, NSValue *> *before = DPGet(strip, &DPBeforeKey);
     if (!before) return DPLeaveOut(strip);
     if (!DPHidingATab(strip.window)) return DPRelease(strip);
-    NSHashTable<NSView *> *hidden = DPGet(strip, &DPHiddenKey);
+    NSHashTable<NSView *> *hidden = DPGet(strip, &DPHiddenKey), *settled = DPGet(strip, &DPSettledKey);
     for (NSView *view in strip.subviews) {
         NSValue *frame = [before objectForKey:view];
-        NSString *tab = DPIsKind(view, DPDiaTabView) ? DPStripTabID(view) : nil;
+        // Which tab a view shows costs a few reads, every pass of the run loop while the bar is open: a tab that was there
+        // before and isn't hidden is asked once.
+        NSString *tab = !(frame && [settled containsObject:view]) && DPIsKind(view, DPDiaTabView) ? DPStripTabID(view) : nil;
         // A tab the bar isn't hiding that wasn't there before, such as one another app opened, lets the strip go.
         if (!frame && tab && !DPHidesTab(tab)) return DPRelease(strip);
         if (frame && !(tab && DPHidesTab(tab))) {
             if (!NSEqualRects(view.frame, frame.rectValue)) DPSet(view, &DPDiaFrameKey, [NSValue valueWithRect:view.frame]);  // What a view not hooked here was given.
             DPPlace(view, frame.rectValue);
             DPStopSliding(view);
+            [settled addObject:view];
         } else if (!view.hidden) {
             view.hidden = YES;
             [hidden addObject:view];
