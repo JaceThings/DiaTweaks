@@ -18,19 +18,19 @@ static NSURL *DPPageURL(id page) {
 // showing its address, and only when no other tab shows it too.
 static BOOL DPOnPinnedIcon(id page) {
     NSString *url = DPPageURL(page).absoluteString;
-    BOOL pinnedHere = NO, openHere = NO;
+    BOOL pinnedHere = NO;
     for (id window in DPList(NSApp.delegate, @selector(appleScriptWindows)))
         for (id tab in DPList(window, @selector(appleScriptTabs))) {
             NSString *address = [tab respondsToSelector:@selector(URL)] ? DPText(DPMsg(tab, @selector(URL))) : nil;
             if (!url.length || ![address isEqual:url]) continue;
-            if ([tab respondsToSelector:@selector(isPinned)] && DPMsgBool(tab, @selector(isPinned))) pinnedHere = YES;
-            else openHere = YES;
+            if (![tab respondsToSelector:@selector(isPinned)] || !DPMsgBool(tab, @selector(isPinned))) return NO;
+            pinnedHere = YES;
         }
-    return pinnedHere && !openHere;
+    return pinnedHere;
 }
 
 // Scripting calls only the icons pinned; a pinned row says so in its menu.
-static BOOL DPFromPinnedTab(id page) { return DPOnPinnedIcon(page) || DPPeekInPinnedRow(NSApp.keyWindow, page); }
+static BOOL DPFromPinnedTab(id page) { return DPPeekInPinnedRow(NSApp.keyWindow, page) || DPOnPinnedIcon(page); }
 
 static BOOL DPInLittleDia(id page) {
     for (NSWindow *window in NSApp.windows)
