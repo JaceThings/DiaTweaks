@@ -13,6 +13,7 @@ BOOL DPInTabLayout(NSView *view) {
 }
 
 NSEvent *DPTabLayoutMouseDown(DPCommandBarOverlay *overlay, NSEvent *event) {
+    if ([overlay.panel hitTest:[overlay convertPoint:event.locationInWindow fromView:nil]]) return event;  // In the bar, which may lie over the sidebar.
     NSView *under = [overlay viewUnder:[overlay.superview convertPoint:event.locationInWindow fromView:nil]];
     NSView *button = under, *tabView = under;
     while (button && !DPIsNewTabButton(button)) button = button.superview;
