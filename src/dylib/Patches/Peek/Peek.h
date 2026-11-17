@@ -61,6 +61,8 @@ NSURL *DPPeekSearchURL(id page, NSString *text);
 BOOL DPPeekCopyURL(DPPeekCard *peek, NSEvent *event);
 BOOL DPPeekIsShortcut(NSEvent *event, NSMenuItem *item);
 BOOL DPPeekZoomShortcut(DPPeekCard *peek, NSEvent *event);
+BOOL DPPeekFindShortcut(DPPeekCard *peek, NSEvent *event, NSEventModifierFlags mods);
+BOOL DPPeekHideFind(DPPeekCard *peek);
 void DPPeekInstallZoom(void);
 void DPPeekInstallCursor(void);
 NSString *DPPeekZoomProblem(void);
@@ -68,6 +70,7 @@ void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
 CATransform3D DPPeekScaled(NSView *view, CGFloat scale);
 CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio);
 
+BOOL DPPeekInPinnedRow(NSWindow *window, id page);
 void DPPeekShowTabBadge(DPPeekCard *peek, id source);
 void DPPeekHideTabBadge(DPPeekCard *peek);
 
