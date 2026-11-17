@@ -1,5 +1,6 @@
 #import "StdPatch/StdPatch.h"
 #import "Patches/CommandBar/Tabs.h"
+#import "Patches/CommandBar/AutoPip.h"
 #import "Patches/CommandBar/HideTab.h"
 #import "Patches/CommandBar/CommandBarOverlay.h"
 #import "Patches/CompactCommandBar/CompactCommandBar.h"
@@ -325,6 +326,11 @@ id DPDismiss(DPCommandBarOverlay *overlay, BOOL closing) {
     return overlay.openedTab;
 }
 
+static BOOL DPNowhereToGo(DPCommandBarOverlay *overlay) {
+    NSWindow *host = overlay.host;
+    return !overlay.returnTab || (!DPScriptTab(host, DPTabID(overlay.returnTab)) && [[DPScriptWindow(host) valueForKey:@"appleScriptTabs"] count] < 2);
+}
+
 static id DPDismissCommandBar(DPCommandBarOverlay *overlay) { return DPDismiss(overlay, NO); }
 
 void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
@@ -332,11 +338,10 @@ void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
     else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
-    NSWindow *host = overlay.host;
-    BOOL nowhereToGo = !overlay.returnTab || (!DPScriptTab(host, DPTabID(overlay.returnTab)) && [[DPScriptWindow(host) valueForKey:@"appleScriptTabs"] count] < 2);
-    // Closing a window's only tab would close the window, and Dia with it.
+    BOOL nowhereToGo = DPNowhereToGo(overlay);
     id tab = DPDismiss(overlay, !overBlank && !nowhereToGo);
     if (!tab) return;
+    // Closing a window's only tab would close the window, and Dia with it.
     if (overBlank || nowhereToGo) DPMakeBlank(page);
     else DPCloseTab(tab);
 }
@@ -645,9 +650,12 @@ static BOOL DPClickedNewTab(NSWindow *window) {
 }
 
 static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
-    if (!DPClickedNewTab(self.window)) DPCallOriginal(DPNewTabButton_mouseDown, self, event);
+    if (DPClickedNewTab(self.window)) return;
+    DPHoldAutoPip();
+    DPCallOriginal(DPNewTabButton_mouseDown, self, event);
 }
 
+// The + button and the double click hold picture in picture in AutoPip.m's hooks, which these two call through to.
 static void DPPlusButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     if (!DPHiding() || !DPIsKind(self.superview, DPDiaTabStripTabs) || !DPClickedNewTab(self.window)) DPCallOriginal(DPPlusButton_mouseDown, self, event);
 }
@@ -666,9 +674,14 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
         DPOpenOverBlank(window);
         return event;
     }
-    if (!(DPIsShortcut(event, @"New Tab") || DPIsShortcut(event, @"Open Command Bar"))) return event;
+    BOOL newTab = DPIsShortcut(event, @"New Tab");
+    if (!(newTab || DPIsShortcut(event, @"Open Command Bar"))) return event;
     DPSet(window, &DPClosedAtKey, nil);  // Closing a tab that wasn't the last leaves the stamp unread, which would hide this new tab as a blank.
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    if (newTab && DPIsKind(overlay.page, DPDiaPopover)) {  // The new tab page swaps ⌘L's bar for its own, so nothing shows between them.
+        DPExpectNewTab(window);
+        return event;
+    }
     if (overlay) DPFocusBar(overlay);
     if (overlay || DPOpenOverBlank(window)) return nil;
     DPExpectNewTab(window);
@@ -700,6 +713,13 @@ static void DPShowWhenBuilt(DPCommandBarOverlay *overlay) {
         overlay.alphaValue = overlay.shade.alphaValue = 1;
     }];
     [NSRunLoop.mainRunLoop addTimer:check forMode:NSRunLoopCommonModes];
+}
+
+// Dia closes ⌘L's bar on a click its popover doesn't hit, and the lifted bar is neither in the hidden popover nor where it is.
+static NSView *DPPopover_hitTest(NSView *self, SEL _cmd, NSPoint point) {
+    DPCommandBarOverlay *overlay = DPGet(self, &DPOverlayKey);
+    NSRect bar = overlay.panel && !overlay.passingThrough ? [self.superview convertRect:overlay.panel.bounds fromView:overlay.panel] : NSZeroRect;
+    return NSPointInRect(point, bar) ? self : DPCallOriginal(DPPopover_hitTest, self, point);
 }
 
 static void DPPopover_viewDidMoveToWindow(NSView *self, SEL _cmd) {
@@ -785,8 +805,9 @@ static void DPApplyCommandBar(DPPatch *patch) {
             DPShowShade(overlay);
             continue;
         }
+        BOOL nowhereToGo = DPNowhereToGo(overlay);
         id tab = DPDismissCommandBar(overlay);
-        if (tab && overlay.returnTab) DPFocusTab(tab);
+        if (tab && !nowhereToGo) DPCloseTab(tab);
     }
     for (NSView *page in DPFindViews(DPDiaNewTabPage)) {
         BOOL blank = DPGet(page, &DPBlankKey) != nil;
@@ -825,7 +846,9 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
 
 static void DPInstallCommandBar(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPCommandBarKey(event); }];
+    DPInstallAutoPipHold();
     DPHook(DPDiaPopover, @selector(viewDidMoveToWindow), (IMP)DPPopover_viewDidMoveToWindow);
+    DPHook(DPDiaPopover, @selector(hitTest:), (IMP)DPPopover_hitTest);
     DPHook(DPDiaNewTabButton, @selector(mouseDown:), (IMP)DPNewTabButton_mouseDown);
     DPHook(DPDiaTabSurfaceButton, @selector(mouseDown:), (IMP)DPPlusButton_mouseDown);
     DPHook(DPDiaTabList, @selector(handleBackgroundDoubleClick:), (IMP)DPTabList_backgroundDoubleClick);

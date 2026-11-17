@@ -12,18 +12,11 @@ static BOOL DPTabSelected(NSView *tab) {
     return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
 }
 
-// The list keeps hidden cells it isn't showing, but a collapsed sidebar still counts.
+// The list keeps hidden cells it isn't showing, but a collapsed sidebar or an auto-hidden tab strip still counts.
 static BOOL DPTabShown(NSView *tab) {
-    for (NSView *view = tab; view && ![view isKindOfClass:NSCollectionView.class]; view = view.superview)
+    for (NSView *view = tab; view && ![view isKindOfClass:NSCollectionView.class] && !DPIsKind(view, DPDiaTabStrip); view = view.superview)
         if (view.hidden) return NO;
     return YES;
-}
-
-static NSMenu *DPTabMenu(NSView *tab) {
-    NSPoint point = [tab convertPoint:NSMakePoint(NSMidX(tab.bounds), NSMidY(tab.bounds)) toView:nil];
-    NSEvent *click = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
-                                    windowNumber:tab.window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
-    return [tab menuForEvent:click];
 }
 
 static NSMenuItem *DPShownItem(NSMenuItem *item) { return item && !item.hidden && item.enabled ? item : nil; }
@@ -71,7 +64,7 @@ static NSView *DPSelectedTab(NSWindow *window) {
 // Only while it's still on the page it was pinned at, so a tab selected meanwhile keeps its own.
 static void DPPinCurrentURL(NSWindow *window, NSURL *url, int tries) {
     NSView *tab = DPSelectedTab(window);
-    DPHeld NSMenu *menu = tab && [DPTabURL(tab) isEqual:url] ? DPTabMenu(tab) : nil;
+    DPHeld NSMenu *menu = tab && [DPTabURL(tab) isEqual:url] ? DPTabContextMenu(tab) : nil;
     if (DPShownItem([menu itemWithTitle:@"Unpin"])) {
         NSMenuItem *replace = DPFindShownItem(menu, @"Replace Pinned URL with Current");
         if (replace) DPRunItem(replace);
@@ -87,7 +80,7 @@ static void DPInstallPinTabShortcut(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         if (!DPPinTabShortcut.on || !event.window || !DPShortcutMatches(event, &DPPinTabShortcut)) return event;
         NSView *tab = DPSelectedTab(event.window);
-        DPHeld NSMenu *menu = tab ? DPTabMenu(tab) : nil;
+        DPHeld NSMenu *menu = tab ? DPTabContextMenu(tab) : nil;
         NSMenuItem *item = DPPinItem(menu);
         if (!item) return event;
         if (event.isARepeat) return nil;
@@ -103,7 +96,7 @@ static NSString *DPVerifyPinTabShortcut(DPPatch *patch) {
     NSArray<NSView *> *tabs = DPShownTabs(nil);
     if (!patch->on || !tabs.count) return nil;
     for (NSView *tab in tabs)
-        if (DPPinItem(DPTabMenu(tab))) return nil;
+        if (DPPinItem(DPTabContextMenu(tab))) return nil;
     return @"no tab's menu has Pin as Tab or Unpin";
 }
 
