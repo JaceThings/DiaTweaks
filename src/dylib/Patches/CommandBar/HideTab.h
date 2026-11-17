@@ -20,7 +20,7 @@ void DPInstallFrozenLists(void);
 void DPFreezeLists(NSWindow *window);
 NSString *DPRowName(NSCollectionView *list, NSIndexPath *path);
 NSString *DPTabIn(NSString *rowName);  // The tab a row shows, if it shows one.
-NSArray<NSString *> *DPListedTabs(NSWindow *window);
+NSArray<NSString *> *DPListedTabs(NSWindow *window);  // nil: every window's.
 void DPRelayoutLists(void);
 NSRect DPDiaRowFrame(NSCollectionViewLayout *layout, NSIndexPath *path);
 void DPInstallParkedRows(void);

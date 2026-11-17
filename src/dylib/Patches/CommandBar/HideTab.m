@@ -65,11 +65,9 @@ BOOL DPHidesTab(NSString *tab) {
 void DPExpectNewTab(NSWindow *window) {
     if (!DPHiding()) return;
     // Every window's, so one waiting for its own new tab doesn't take another's tabs for new.
-    NSMutableSet *known = [NSMutableSet set];
-    for (NSWindow *each in NSApp.windows) {
-        [known addObjectsFromArray:DPListedTabs(each)];
-        for (id tab in [DPScriptWindow(each) valueForKey:@"appleScriptTabs"]) [known addObject:DPTabID(tab) ?: @""];
-    }
+    NSMutableSet *known = [NSMutableSet setWithArray:DPListedTabs(nil)];
+    for (id scripted in [(id)NSApp.delegate valueForKey:@"appleScriptWindows"])
+        for (id tab in [scripted valueForKey:@"appleScriptTabs"]) [known addObject:DPTabID(tab) ?: @""];
     for (NSView *tab in DPFindViews(DPDiaTabView)) [known addObject:DPStripTabID(tab) ?: @""];
     DPKnown = known;
     DPExpectWindow = window;

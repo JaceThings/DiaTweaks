@@ -17,7 +17,7 @@ NSString *DPTabIn(NSString *rowName) {
 NSArray<NSString *> *DPListedTabs(NSWindow *window) {
     NSMutableArray *tabs = [NSMutableArray array];
     for (NSCollectionView *list in DPFindViews(DPDiaTabListCollection))
-        for (NSInteger section = 0; list.window == window && section < list.numberOfSections; section++)
+        for (NSInteger section = 0; (!window || list.window == window) && section < list.numberOfSections; section++)
             for (NSInteger item = 0; item < [list numberOfItemsInSection:section]; item++)
                 [tabs addObject:DPTabIn(DPRowName(list, [NSIndexPath indexPathForItem:item inSection:section])) ?: @""];
     return tabs;
