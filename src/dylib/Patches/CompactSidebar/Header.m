@@ -1,6 +1,6 @@
 #import "CompactSidebar.h"
 
-static char DPLightsKey, DPPrioritiesKey;
+static char DPLightsKey, DPPrioritiesKey, DPRetriesKey;
 
 // The window buttons sit over the toolbar, so they hide and show with it as hide toolbar fades it.
 CGFloat DPToolbarAlpha(NSWindow *window) {
@@ -69,7 +69,17 @@ static void DPPlaceLights(NSView *header, BOOL strip) {
     }
     NSView *close = [header.window standardWindowButton:NSWindowCloseButton];
     CGFloat want = DPToolbarButtonsMiddle(header.window);
-    if (isnan(want) || ![close isDescendantOf:lights] || close.hiddenOrHasHiddenAncestor) return;
+    // A new window lays the header out before the toolbar has its buttons, or the row its window buttons, and doesn't
+    // lay it out again after; it tries again shortly, as they arrive.
+    if (isnan(want) || ![close isDescendantOf:lights] || close.hiddenOrHasHiddenAncestor) {
+        NSUInteger retries = [DPGet(header, &DPRetriesKey) unsignedIntegerValue];
+        if (retries >= 20) return;
+        DPSet(header, &DPRetriesKey, @(retries + 1));
+        __weak NSView *weakHeader = header;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10), dispatch_get_main_queue(), ^{ weakHeader.needsLayout = YES; });
+        return;
+    }
+    DPSet(header, &DPRetriesKey, nil);
     CGFloat have = NSMidY([close convertRect:close.bounds toView:nil]);
     if (fabs(want - have) < 0.25) return;
     // Through the row's bounds: constraints place its frame, and moving that would lay the header out again and again.

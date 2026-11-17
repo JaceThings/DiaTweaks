@@ -79,6 +79,7 @@
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
 #define DPDiaReloadNudge        "_TtC13NavigationBar39AdBlockReloadNudgeContentViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
+#define DPDiaToastClip          "_TtC11DiaToastsV217ToastClippingView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
 #define DPDiaHoverableControl   "_TtC5ARCUI16HoverableControl"  // Dia's toolbar buttons that take a closure.

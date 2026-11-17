@@ -3,7 +3,7 @@
 // Dia's downloads button follows the window buttons in their row, so in the strip it shows over the toolbar with them.
 // There it looks like the toolbar's buttons: Dia's own highlight is the sidebar's, larger and rounder, and its hover
 // doesn't track reliably that far outside the header, so the toolbar draws the hover behind it instead.
-static char DPHoverKey, DPHidHighlightKey;
+static char DPHoverKey, DPHidHighlightKey, DPFollowKey;
 
 NSView *DPDownloadsIn(NSView *root) {
     NSView *header = root ? DPSubview(root, DPDiaSidebarHeader) : nil;
@@ -57,7 +57,7 @@ void DPMatchDownloads(NSWindow *window) {
 
 // The toolbar's buttons' hover and press, behind the downloads icon. It takes no clicks: they go to Dia's button.
 @interface DPDownloadsHover : NSView
-@property (nonatomic, weak) NSView *look;  // The toolbar's sidebar button, whose colors and corners it takes.
+@property (nonatomic, weak) NSView *look;  // The toolbar's sidebar button, whose colors and corners it takes, shown or not.
 @property (nonatomic) BOOL hovered, pressed;
 @end
 
@@ -86,8 +86,17 @@ void DPMatchDownloads(NSWindow *window) {
     });
 }
 
-- (void)setHovered:(BOOL)hovered { _hovered = hovered; [self restyle]; }
-- (void)setPressed:(BOOL)pressed { _pressed = pressed; [self restyle]; }
+- (void)setHovered:(BOOL)hovered {
+    if (hovered != _hovered) hovered ? DPShowDownloadsTooltip(self) : DPHideDownloadsTooltip();
+    _hovered = hovered;
+    [self restyle];
+}
+
+- (void)setPressed:(BOOL)pressed {
+    if (pressed) DPHideDownloadsTooltip();  // As the toolbar's buttons' tooltips go once clicked.
+    _pressed = pressed;
+    [self restyle];
+}
 - (void)mouseEntered:(NSEvent *)event { self.hovered = YES; }
 - (void)mouseExited:(NSEvent *)event { self.hovered = NO; }
 - (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; [self restyle]; }
@@ -116,8 +125,9 @@ void DPPlaceDownloadsHover(NSView *bar) {
     NSView *look = DPFindView(bar, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaHoverableControl) && [v.accessibilityLabel isEqualToString:@"Toggle sidebar"]; });
     DPDownloadsHover *hover = DPGet(bar, &DPHoverKey);
     CGFloat mid = DPDownloadsMid(bar.window);
-    BOOL show = items && look.superview == items && !look.hidden && !isnan(mid);
+    BOOL show = items && look.superview == items && !isnan(mid);  // Auto-Hide Tabs hides the sidebar button itself.
     if (!show) {
+        if (hover.hovered) hover.hovered = NO;
         hover.hidden = YES;
         return;
     }
@@ -131,9 +141,60 @@ void DPPlaceDownloadsHover(NSView *bar) {
     hover.look = look;
     hover.hidden = NO;
     CGFloat x = [items convertPoint:NSMakePoint(mid, 0) fromView:nil].x;
-    NSRect frame = NSMakeRect(x - NSWidth(look.frame) / 2, NSMinY(look.frame), NSWidth(look.frame), NSHeight(look.frame));
+    // The size of the toolbar's buttons: the sidebar button's, or the back button's beside it once that's laid out at none.
+    NSRect size = look.frame;
+    if (NSIsEmptyRect(size))
+        for (NSView *item in items.subviews)
+            if (item != look && item != hover && !item.hidden && NSWidth(item.frame) > 0 && NSWidth(item.frame) <= NSHeight(item.frame) + 0.5) { size = item.frame; break; }
+    NSRect frame = NSMakeRect(x - NSWidth(size) / 2, NSMinY(size), NSWidth(size), NSHeight(size));
     if (!NSEqualRects(hover.frame, frame)) DPNow(^{ hover.frame = frame; });
     [hover restyle];  // Dia retints its buttons for themes and appearance in layout.
 }
 
 BOOL DPIsDownloadsHover(NSView *view) { return [view isKindOfClass:DPDownloadsHover.class]; }
+
+// The row lays the button out after the header, as a download starts or the button grows, so the header's own pass
+// misses it and the toolbar's first button would stay under it. The toolbar's buttons follow it once it's in place.
+static void DPFollowDownloads(NSView *downloads) {
+    NSWindow *window = downloads.window;
+    if (!window || !DPStripPresent(window) || DPGet(window, &DPFollowKey)) return;
+    DPSet(window, &DPFollowKey, @YES);
+    __weak NSWindow *weakWindow = window;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSWindow *strong = weakWindow;
+        if (!strong) return;
+        DPSet(strong, &DPFollowKey, nil);
+        DPMatchDownloads(strong);
+        DPClearLightsIn(strong);
+    });
+}
+
+static void DPDownloads_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    BOOL moved = !NSEqualRects(self.frame, frame);
+    DPCallOriginal(DPDownloads_setFrame, self, frame);
+    if (moved) DPFollowDownloads(self);
+}
+
+static void DPDownloads_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
+    BOOL moved = !NSEqualSizes(self.frame.size, size);
+    DPCallOriginal(DPDownloads_setFrameSize, self, size);
+    if (moved) DPFollowDownloads(self);
+}
+
+static void DPDownloads_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
+    BOOL changed = self.hidden != hidden;
+    DPCallOriginal(DPDownloads_setHidden, self, hidden);
+    if (changed) DPFollowDownloads(self);
+}
+
+static void DPDownloads_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPDownloads_viewDidMoveToWindow, self);
+    DPFollowDownloads(self);
+}
+
+void DPInstallCompactDownloads(void) {
+    DPHook(DPDiaDownloadsButton, @selector(setFrame:), (IMP)DPDownloads_setFrame);
+    DPHook(DPDiaDownloadsButton, @selector(setFrameSize:), (IMP)DPDownloads_setFrameSize);
+    DPHook(DPDiaDownloadsButton, @selector(setHidden:), (IMP)DPDownloads_setHidden);
+    DPHook(DPDiaDownloadsButton, @selector(viewDidMoveToWindow), (IMP)DPDownloads_viewDidMoveToWindow);
+}

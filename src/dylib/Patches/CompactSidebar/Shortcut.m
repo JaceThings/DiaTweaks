@@ -71,7 +71,7 @@ static NSWindow *DPBrowserWindow(void) {
 static void DPItem_performWithSender(NSMenuItem *self, SEL _cmd, id sender) {
     NSWindow *window = DPBrowserWindow();
     NSView *host = DPHostIn(window);
-    if (!DPCompactSidebar.on || !DPIsAutoHideItem(self) || !DPDiaParked(host))
+    if (!DPCompactSidebar.on || !DPIsAutoHideItem(self) || !DPDiaParked(host) || DPInFullScreen(window))
         return DPCallOriginal(DPItem_performWithSender, self, sender);
     DPSlideStrip(host, !DPStripHiddenIn(window));
 }
@@ -85,7 +85,7 @@ static BOOL DPIsSidebarButton(NSView *view) {
 }
 
 static BOOL DPTakesSidebarButton(NSView *button) {
-    return DPCompactSidebar.on && DPIsSidebarButton(button) && DPDiaParked(DPHostIn(button.window));
+    return DPCompactSidebar.on && DPIsSidebarButton(button) && DPDiaParked(DPHostIn(button.window)) && !DPInFullScreen(button.window);
 }
 
 static void DPButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {

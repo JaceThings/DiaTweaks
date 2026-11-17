@@ -28,7 +28,7 @@ NSView *DPHostIn(NSWindow *window);
 NSRect DPDiaHostFrame(NSView *host);     // Where Dia put it.
 BOOL DPDiaParked(NSView *host);          // Dia has it parked, as tabs auto-hide, or shows it from the strip.
 BOOL DPDiaRevealing(NSView *host);       // Dia shows it from the strip, at the window's edge.
-BOOL DPStripOn(NSView *host);            // On, with Dia's host parked and the strip not hidden with ⌘S.
+BOOL DPStripOn(NSView *host);            // On, with Dia's host parked, the strip not hidden with ⌘S and not in full screen.
 BOOL DPStripShown(NSWindow *window);
 CGFloat DPStripRight(NSWindow *window);  // Where the page starts, from the window's left edge.
 void DPPlaceHost(NSView *host);          // Shows it as the strip, open, or where Dia put it.
@@ -91,6 +91,14 @@ CGFloat DPHeaderButtonsRight(NSWindow *window);  // Its right edge while it show
 void DPMatchDownloads(NSWindow *window);         // Fades it with the toolbar, or shows it as Dia does once the sidebar opens.
 void DPPlaceDownloadsHover(NSView *bar);         // The toolbar's hover behind it, at the toolbar's buttons' size.
 BOOL DPIsDownloadsHover(NSView *view);
+void DPInstallCompactDownloads(void);
+// Tooltip.m: the downloads button's tooltip over the toolbar, like the toolbar's buttons'.
+void DPShowDownloadsTooltip(NSView *view);  // After a moment, under it.
+void DPHideDownloadsTooltip(void);           // The toolbar's buttons make room as the button appears or grows.
+
+// FullScreen.m: the strip steps aside in full screen, for Dia's own Auto-Hide Tabs.
+BOOL DPInFullScreen(NSWindow *window);
+void DPInstallCompactFullScreen(void);
 
 // Backdrop.m: the strip blurs with the page while the command bar is open.
 void DPInstallCompactBackdrop(void);
@@ -99,3 +107,4 @@ void DPInstallCompactBackdrop(void);
 BOOL DPStripExpanded(NSView *host);
 void DPAttachStrip(NSView *host);  // Adds the background and hover tracking once.
 void DPLayoutStrip(NSView *host);  // Shows the strip flat, or as a floating card while open.
+void DPInstallCompactCard(void);   // Keeps Dia's card outline off the flat strip.

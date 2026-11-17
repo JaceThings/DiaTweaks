@@ -102,6 +102,42 @@ void DPAttachStrip(NSView *host) {
     [strip track];
 }
 
+// The card's outline and rounded clip, which the container and the view inside it apply themselves, and Dia applies
+// again as it lays the container out or redraws it, which left a focus-like outline round the strip. Flat, the window
+// buttons reach past the strip. Each value Dia set is kept, and set again once the sidebar opens.
+static void DPFlattenCard(NSView *host, BOOL flat) {
+    NSNumber *border = DPGet(host, &DPBorderKey);
+    if (!border || (host.layer.borderWidth != 0 && host.layer.borderWidth != border.doubleValue)) DPSet(host, &DPBorderKey, border = @(host.layer.borderWidth));
+    CGFloat width = flat ? 0 : border.doubleValue;
+    if (host.layer.borderWidth != width) DPNow(^{ host.layer.borderWidth = width; });
+    NSView *inner = DPFloatInner(host);
+    for (NSView *view in inner ? @[ host, inner ] : @[ host ]) {
+        NSNumber *clips = DPGet(view, &DPClipsKey);
+        if (!clips) DPSet(view, &DPClipsKey, clips = @(view.layer.masksToBounds));
+        BOOL masks = !flat && clips.boolValue;
+        if (view.layer.masksToBounds != masks) view.layer.masksToBounds = masks;
+    }
+}
+
+static BOOL DPFlatNow(NSView *host) {
+    return DPStripOf(host) && DPStripPresent(host.window) && !DPStripExpanded(host);
+}
+
+static void DPCard_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPCard_layout, self);
+    if (DPFlatNow(self)) DPFlattenCard(self, YES);
+}
+
+static void DPCard_updateLayer(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPCard_updateLayer, self);
+    if (DPFlatNow(self)) DPFlattenCard(self, YES);
+}
+
+void DPInstallCompactCard(void) {
+    DPHook(DPDiaFloatingSidebar, @selector(layout), (IMP)DPCard_layout);
+    DPHook(DPDiaFloatingSidebar, @selector(updateLayer), (IMP)DPCard_updateLayer);
+}
+
 void DPLayoutStrip(NSView *host) {
     DPStrip *strip = DPStripOf(host);
     if (!strip) return;
@@ -120,21 +156,7 @@ void DPLayoutStrip(NSView *host) {
         if (view.alphaValue != alpha) view.alphaValue = alpha;
     }
 
-    // And the card's outline and rounded clip, which the container and the view inside it apply themselves. Flat, the
-    // window buttons reach past the strip.
-    if (floating) {
-        NSNumber *border = DPGet(host, &DPBorderKey);
-        if (!border) DPSet(host, &DPBorderKey, border = @(host.layer.borderWidth));
-        CGFloat width = flat ? 0 : border.doubleValue;
-        if (host.layer.borderWidth != width) DPNow(^{ host.layer.borderWidth = width; });
-        NSView *inner = DPFloatInner(host);
-        for (NSView *view in inner ? @[ host, inner ] : @[ host ]) {
-            NSNumber *clips = DPGet(view, &DPClipsKey);
-            if (!clips) DPSet(view, &DPClipsKey, clips = @(view.layer.masksToBounds));
-            BOOL masks = !flat && clips.boolValue;
-            if (view.layer.masksToBounds != masks) view.layer.masksToBounds = masks;
-        }
-    }
+    if (floating) DPFlattenCard(host, flat);
 
     // The window's margin round the page, in the strip's color too, so the two are one surface.
     NSView *space = card.superview, *fill = DPLayerView(space);

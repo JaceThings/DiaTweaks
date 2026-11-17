@@ -11,6 +11,9 @@ static void DPInstallCompactSidebar(void) {
     DPInstallCompactShortcut();
     DPInstallCompactReveal();
     DPInstallCompactBackdrop();
+    DPInstallCompactFullScreen();
+    DPInstallCompactDownloads();
+    DPInstallCompactCard();
 }
 
 static void DPApplyCompactSidebar(DPPatch *patch) {
@@ -29,6 +32,7 @@ static NSString *DPVerifyCompactSidebar(DPPatch *patch) {
         NSWindow *window = host.window;
         if (!window.isVisible || DPStripSliding(window) || NSMaxX(DPDiaHostFrame(host)) > 0) continue;
         BOOL showing = !host.hidden && NSMaxX(host.frame) > 0;
+        if (DPInFullScreen(window)) continue;  // Dia's own Auto-Hide Tabs, which shows the sidebar from the edge.
         if (!patch->on || DPStripHiddenIn(window)) {
             if (showing) return patch->on ? @"strip shows after ⌘S hid it" : @"strip still shows";
             continue;
@@ -65,7 +69,7 @@ DP_PATCH(DPCompactSidebar) {
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaWindowController, DPDiaFloatingSidebar, DPDiaSidebarRoot, DPDiaSidebarController, DPDiaSidebarHeader,
                          DPDiaTrafficLights, DPDiaContentContainer, DPDiaContentPane, DPDiaToolbar, DPDiaAddressField, DPDiaCallbackMenuItem, DPDiaTabListLayout,
-                         DPDiaHoverableControl, DPDiaShadowView, DPDiaPopoverBackground, DPDiaLibraryCell),
+                         DPDiaHoverableControl, DPDiaShadowView, DPDiaPopoverBackground, DPDiaLibraryCell, DPDiaDownloadsButton),
     .install = DPInstallCompactSidebar,
     .apply = DPApplyCompactSidebar,
     .verify = DPVerifyCompactSidebar,

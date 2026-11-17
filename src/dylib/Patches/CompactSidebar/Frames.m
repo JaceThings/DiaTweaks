@@ -35,7 +35,7 @@ static BOOL DPIsHost(NSView *view) { return DPIsKind(view, DPDiaFloatingSidebar)
 // Dia showing the sidebar itself, from the window's edge, where the strip is: it's the strip, open.
 static BOOL DPDiaReveals(NSView *host, NSRect dia) {
     return DPCompactSidebar.on && DPIsKind(host, DPDiaFloatingSidebar) && NSMaxX(dia) > 0 && ![DPGet(host, &DPHiddenKey) boolValue]
-        && !DPStripHiddenIn(host.window);
+        && !DPStripHiddenIn(host.window) && !DPInFullScreen(host.window);
 }
 
 BOOL DPDiaRevealing(NSView *host) { return host && DPDiaReveals(host, DPDiaHostFrame(host)); }
@@ -47,7 +47,7 @@ static BOOL DPParked(NSView *host, NSRect dia) {
 }
 
 BOOL DPDiaParked(NSView *host) { return host && DPIsHost(host) && DPParked(host, DPDiaHostFrame(host)); }
-BOOL DPStripOn(NSView *host) { return DPCompactSidebar.on && DPDiaParked(host) && !DPStripHiddenIn(host.window); }
+BOOL DPStripOn(NSView *host) { return DPCompactSidebar.on && DPDiaParked(host) && !DPStripHiddenIn(host.window) && !DPInFullScreen(host.window); }
 BOOL DPStripShown(NSWindow *window) { return DPStripOn(DPHostIn(window)); }
 
 // From where the strip settles, not where an animation has it now.
@@ -66,7 +66,7 @@ static NSRect DPHostTarget(NSView *host) {
     }
     // Dia sliding the sidebar in from the window's edge stops at the edge, as the strip opens it, not 3pt in.
     // Unless the strip doesn't open on hover: then it stays the strip while Dia thinks it shows the sidebar.
-    if (DPDiaRevealing(host) && DPCompactSidebarHover.on) return NSMakeRect(MIN(NSMinX(dia), 0), NSMinY(dia), NSWidth(dia), NSHeight(dia));
+    if (DPDiaRevealing(host) && DPCompactSidebarHover.on && !DPInFullScreen(host.window)) return NSMakeRect(MIN(NSMinX(dia), 0), NSMinY(dia), NSWidth(dia), NSHeight(dia));
     if (!DPStripOn(host)) return dia;
     BOOL open = DPStripExpanded(host);
     CGFloat strip = MIN(NSWidth(dia), DPStripWidth + DPRevealRoom(host.window) * DPLightsReveal(host.window));
