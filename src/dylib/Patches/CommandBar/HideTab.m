@@ -63,7 +63,7 @@ BOOL DPHidesTab(NSString *tab) {
 }
 
 void DPExpectNewTab(NSWindow *window) {
-    if (!DPHiding()) return;
+    if (!DPHiding() || (DPExpecting() && DPExpectWindow == window)) return;  // The key and the menu item it chooses both ask.
     // Every window's, so one waiting for its own new tab doesn't take another's tabs for new.
     NSMutableSet *known = [NSMutableSet setWithArray:DPListedTabs(nil)];
     for (id scripted in [(id)NSApp.delegate valueForKey:@"appleScriptWindows"])
