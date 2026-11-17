@@ -2,8 +2,8 @@
 
 // The selection code writes Swift fields by their address, so it runs only on the layout it was made for, read from
 // Dia's own type records: a tab background's selectionStyle is a SelectionStyle? whose one payload is a
-// SelectedTabBackgroundStyle whose one payload is an NSColor, which makes a fill the color's address and every other case a
-// small number; its shape view's shape is a two case enum, one byte.
+// SelectedTabBackgroundStyle whose one payload is an NSColor, which makes an opaque fill the color's address, the translucent
+// one 0 and every other case a small number; its shape view's shape is a two case enum, one byte.
 
 enum { DPClassType = 16, DPEnumType = 18 };  // A Swift type descriptor's kind.
 

@@ -21,16 +21,16 @@ static uintptr_t DPNoSelection;  // The style Dia gives what isn't selected, as 
 static uintptr_t DPFindNoSelection(void) {
     for (NSView *view in DPFindViews(DPDiaTabBackground)) {
         uintptr_t *style = DPSelectionStyle(view);
-        if (style && *style < DPFirstFill) return DPNoSelection = *style;
+        if (style && DPStyleNone(*style)) return DPNoSelection = *style;
     }
     return 0;
 }
 
 void DPUnselectFrontTab(NSView *background, BOOL standingIn) {
     uintptr_t *style = DPSelectionStyle(background);
-    if (style && *style < DPFirstFill) DPNoSelection = *style;
+    if (style && DPStyleNone(*style)) DPNoSelection = *style;
     if (standingIn && !DPNoSelection) DPFindNoSelection();
-    if (!standingIn || !style || *style < DPFirstFill || !DPNoSelection || !DPIsKind(background.superview, DPDiaTabView)) return;
+    if (!standingIn || !style || !DPStyleSelected(*style) || !DPNoSelection || !DPIsKind(background.superview, DPDiaTabView)) return;
     DPTakenSelection *taken = DPGet(background, &DPTakenKey) ?: [DPTakenSelection new];
     if (taken.selection) CFRelease((CFTypeRef)(void *)taken.selection);  // Dia has set a newer one since.
     taken.selection = *style;

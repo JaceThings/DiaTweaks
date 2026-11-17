@@ -16,16 +16,16 @@ static void DPSelectButton(NSView *background, BOOL selected) {
     if (!style || !shape || selected == (saved != nil)) return;
     if (selected) {
         NSArray *look = DPSelectedLook(background.superview);
-        if (!look || *style >= DPFirstFill) return;
+        if (!look || DPStyleSelected(*style)) return;
         uintptr_t original = *style;
-        *style = (uintptr_t)CFBridgingRetain(look[0]);
+        *style = look[0] == NSNull.null ? 0 : (uintptr_t)CFBridgingRetain(look[0]);
         uint8_t was = *shape;
         *shape = [look[1] unsignedCharValue];
         DPSet(background, &DPSavedKey, @[ @(original), @(was), @(*style), @(*shape), look[0] ]);
     } else {
         DPSet(background, &DPSavedKey, nil);
         if (*style == [saved[2] unsignedLongValue]) {  // Unless Dia has set its own since, which it then owns.
-            CFRelease((CFTypeRef)(void *)*style);
+            if (*style >= DPFirstFill) CFRelease((CFTypeRef)(void *)*style);
             *style = [saved[0] unsignedLongValue];
         }
         if (*shape == [saved[3] unsignedCharValue]) *shape = [saved[1] unsignedCharValue];

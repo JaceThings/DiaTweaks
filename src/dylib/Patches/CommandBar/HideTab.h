@@ -36,7 +36,9 @@ void DPReleaseStrips(void);
 NSString *DPStripTabID(NSView *tabView);
 
 BOOL DPSelectionLayoutKnown(void);  // Dia lays out a tab's selection style and shape as the code below writes them.
-extern const uintptr_t DPFirstFill;  // A selection style below this has no fill: not selected.
+extern const uintptr_t DPFirstFill;  // A selection style from here up is an NSColor, a fill of its own.
+BOOL DPStyleSelected(uintptr_t style);  // A color, or zero: the translucent fill.
+BOOL DPStyleNone(uintptr_t style);  // The style of a tab that isn't selected, as opposed to the two lower cases.
 NSView *DPIvarView(NSView *view, const char *name);
 uintptr_t *DPSelectionStyle(NSView *background);
 NSView *DPTabShapeView(NSView *background);
