@@ -798,6 +798,7 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     id blank = [blanks containsObject:previous] ? DPScriptTab(window, previous) : nil;
     if (blank) {
         [blanks removeObject:previous];
+        DPShowTabRow(previous, YES);
         DPCloseTab(blank);
     }
     // The bar takes its size from the page, which has none until its pane lays it out.
