@@ -23,6 +23,20 @@ NSArray<NSString *> *DPListedTabs(NSWindow *window) {
     return tabs;
 }
 
+// An empty window's replacement tab is the only one it lists besides the pinned tabs, which sit above the pinned separator,
+// and the tab that is closing as it opens.
+BOOL DPOnlyListedTab(NSString *tab, NSString *closing, NSWindow *window) {
+    NSMutableArray<NSString *> *regular = [NSMutableArray array];
+    for (NSCollectionView *list in DPFindViews(DPDiaTabListCollection))
+        for (NSInteger section = 0; list.window == window && section < list.numberOfSections; section++)
+            for (NSInteger item = 0; item < [list numberOfItemsInSection:section]; item++) {
+                NSString *name = DPRowName(list, [NSIndexPath indexPathForItem:item inSection:section]);
+                if ([name containsString:@"SectionID.pinned"]) [regular removeAllObjects];
+                else if (DPTabIn(name) && ![DPTabIn(name) isEqual:closing]) [regular addObject:DPTabIn(name)];
+            }
+    return !regular.count || (regular.count == 1 && [regular.firstObject isEqual:tab]);
+}
+
 NSString *DPVerifyHiddenRows(void) {
     for (NSCollectionView *list in DPFindViews(DPDiaTabListCollection)) {
         if (list.isHiddenOrHasHiddenAncestor) continue;

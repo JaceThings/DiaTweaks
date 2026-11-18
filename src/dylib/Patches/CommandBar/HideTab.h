@@ -21,6 +21,7 @@ void DPFreezeLists(NSWindow *window);
 NSString *DPRowName(NSCollectionView *list, NSIndexPath *path);
 NSString *DPTabIn(NSString *rowName);  // The tab a row shows, if it shows one.
 NSArray<NSString *> *DPListedTabs(NSWindow *window);  // nil: every window's.
+BOOL DPOnlyListedTab(NSString *tabID, NSString *closingID, NSWindow *window);  // No tab but the pinned ones and the closing one is listed besides it.
 void DPRelayoutLists(void);
 NSRect DPDiaRowFrame(NSCollectionViewLayout *layout, NSIndexPath *path);
 void DPInstallParkedRows(void);

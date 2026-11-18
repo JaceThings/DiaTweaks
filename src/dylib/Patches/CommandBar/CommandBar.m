@@ -290,16 +290,18 @@ BOOL DPHasStrip(NSWindow *window) {
     return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabStripTabs) && !view.isHiddenOrHasHiddenAncestor; }) != nil;
 }
 
-void DPMakeBlank(NSView *page) {
+static void DPMakeBlankClosing(NSView *page, NSString *closing) {
     NSString *active = DPActiveTabID(page.window);
     if (!active) return;
     [DPBlanks(page.window) addObject:active];
     DPSet(page, &DPBlankKey, @YES);
     DPHidePage(page, YES);
-    if (DPHasStrip(page.window)) return;
+    if (DPHasStrip(page.window) || DPInSplit(page) || !DPOnlyListedTab(active, closing, page.window)) return;
     DPHideBlank(active, YES, page.window);
     if (DPHidesTab(active)) DPHideBars(page, YES);
 }
+
+void DPMakeBlank(NSView *page) { DPMakeBlankClosing(page, nil); }
 
 NSView *DPBlankPage(NSWindow *window) {
     return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaNewTabPage) && DPGet(view, &DPBlankKey); });
@@ -790,7 +792,7 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     BOOL justClosed = closedAt && NSProcessInfo.processInfo.systemUptime - closedAt.doubleValue < 1;
     BOOL closing = DPIsShortcut(NSApp.currentEvent, @"Close Tab") || justClosed || (previous && !DPScriptTabIn(scriptWindow, previous));
     if (active && ([blanks containsObject:active] || closing)) {
-        DPMakeBlank(self);
+        DPMakeBlankClosing(self, previous);
         if (overlay.returnTab && !DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab))) DPCancelCommandBar(overlay);
         return;
     }
