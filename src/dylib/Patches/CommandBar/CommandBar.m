@@ -460,7 +460,8 @@ static void DPGoBack(DPCommandBarOverlay *overlay) {
     }
     dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (!weak.superview) return;
+        // Focusing the tab that is already in front makes Dia refocus its page and lose what the bar was doing, such as a Return typed just before.
+        if (!weak.superview || [DPActiveTabID(weak.host) isEqual:DPTabID(weak.returnTab)]) return;
         DPFocusTab(weak.returnTab);
         dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
     });
@@ -513,6 +514,8 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     return overlay;
 }
 
+static BOOL DPHasURL(id tab) { return [[[tab valueForKey:@"URL"] description] length] > 0; }
+
 static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
     DPCloseCommandBarPopover(window);
@@ -520,12 +523,19 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
     if (![recent.lastObject isEqual:openedID]) returnID = recent.lastObject;
+    id returnTab = overBlank || !returnID ? nil : DPScriptTabIn(scriptWindow, returnID);
+    static NSMutableSet<NSString *> *keptIDs;
+    keptIDs = keptIDs ?: [NSMutableSet set];
+    BOOL hasPage = openedID && !overBlank && (DPHasURL(openedTab) || [keptIDs containsObject:openedID]);
+    BOOL returnsToPage = returnTab && [keptIDs containsObject:returnID] && !DPHasURL(returnTab);
+    // Back, switching tabs and moving a tab bring its new tab page back: a tab that had a page keeps Dia's own, and a new tab from one showing it does, as going back would put that page under the bar.
     // Going back to a split while Dia is still switching tabs crashes it, so new tabs in or from one keep Dia's own page.
-    if (DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) {
+    if (hasPage || returnsToPage || DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) {
+        if (openedID) [keptIDs addObject:openedID];
         DPStopExpecting();
         return (void)DPSet(page, &DPOwnBarKey, @YES);
     }
-    DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, overBlank || !returnID ? nil : DPScriptTabIn(scriptWindow, returnID)) : nil;
+    DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, returnTab) : nil;
     if (!overlay) return DPStopExpecting();
     if (overBlank) {
         [DPBlanks(window) removeObject:openedID];
