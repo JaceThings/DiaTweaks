@@ -84,15 +84,15 @@ void DPRestoreStack(NSWindow *little, NSDictionary *noted) {
     NSNumber *me = @(getpid());
     NSUInteger front = [stack indexOfObjectPassingTest:^BOOL(NSDictionary *window, NSUInteger i, BOOL *stop) { return ![window[@"pid"] isEqual:me]; }];
     if (front == NSNotFound) return;
-    NSInteger anchor = [stack[front][@"number"] integerValue];
-    // Back to front, so each lands just behind that window and they keep their order.
-    NSMutableArray<NSWindow *> *behind = [NSMutableArray array];
-    for (NSWindow *window in NSApp.orderedWindows) {
+    // Back to front, so each lands just behind the closest window above it that isn't Dia's, and they keep their order.
+    for (NSWindow *window in NSApp.orderedWindows.reverseObjectEnumerator) {
         if (window == little || !window.visible || window.level != NSNormalWindowLevel) continue;
         NSUInteger at = [stack indexOfObjectPassingTest:^BOOL(NSDictionary *each, NSUInteger i, BOOL *stop) { return [each[@"number"] integerValue] == window.windowNumber; }];
-        if (at != NSNotFound && at > front) [behind insertObject:window atIndex:0];
+        if (at == NSNotFound || at <= front) continue;
+        NSUInteger above = at - 1;
+        while ([stack[above][@"pid"] isEqual:me]) above--;
+        [window orderWindow:NSWindowBelow relativeTo:[stack[above][@"number"] integerValue]];
     }
-    for (NSWindow *window in behind) [window orderWindow:NSWindowBelow relativeTo:anchor];
 }
 
 static void DPVeilWindows(void) {
