@@ -102,6 +102,8 @@ check: build/diapatch build/group-tabs build/mouse-back-forward build/vertical-t
 	build/tracking
 	build/little-dia-over
 	tests/sidebar-grain
+	tests/agent-transport
+	tests/chat-models
 	scripts/check-patches
 
 test: build/DiaPatches.dylib
