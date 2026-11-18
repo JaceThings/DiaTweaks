@@ -5,7 +5,7 @@ static NSDate *DPNotedAt, *DPUnhiddenAt;
 static NSMutableArray<NSWindow *> *DPPutAway;
 static NSMapTable<NSWindow *, NSNumber *> *DPVeiled;
 
-static NSArray<NSDictionary *> *DPWindowStack(void) {
+NSArray<NSDictionary *> *DPWindowStack(void) {
     NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
     NSMutableArray *stack = [NSMutableArray array];
     for (NSDictionary *info in list)
@@ -24,13 +24,6 @@ NSDictionary *DPNoteStackForLink(void) {
             break;
         }
     return @{@"stack" : stack ?: @[], @"source" : source};
-}
-
-void DPReturnToSource(pid_t pid) {
-    NSRunningApplication *app = pid ? [NSRunningApplication runningApplicationWithProcessIdentifier:pid] : nil;
-    if (!app || app.terminated) return;
-    if (@available(macOS 14, *)) [app activateFromApplication:NSRunningApplication.currentApplication options:0];
-    else [app activateWithOptions:0];
 }
 
 static void DPPutAwayWindow(NSWindow *window) {
@@ -78,9 +71,7 @@ BOOL DPHideAgain(void) {
     return YES;
 }
 
-void DPRestoreStack(NSWindow *little, NSDictionary *noted) {
-    if (DPPutAwayIfHidden()) return;
-    NSArray<NSDictionary *> *stack = noted[@"stack"];
+static void DPOrderBehind(NSWindow *little, NSArray<NSDictionary *> *stack) {
     NSNumber *me = @(getpid());
     NSUInteger front = [stack indexOfObjectPassingTest:^BOOL(NSDictionary *window, NSUInteger i, BOOL *stop) { return ![window[@"pid"] isEqual:me]; }];
     if (front == NSNotFound) return;
@@ -93,6 +84,19 @@ void DPRestoreStack(NSWindow *little, NSDictionary *noted) {
         while ([stack[above][@"pid"] isEqual:me]) above--;
         [window orderWindow:NSWindowBelow relativeTo:[stack[above][@"number"] integerValue]];
     }
+}
+
+void DPReturnToSource(pid_t pid, NSWindow *little, NSArray<NSDictionary *> *stack) {
+    NSRunningApplication *app = pid ? [NSRunningApplication runningApplicationWithProcessIdentifier:pid] : nil;
+    if (!app || app.terminated) return;
+    if (@available(macOS 14, *)) [app activateFromApplication:NSRunningApplication.currentApplication options:0];
+    else [app activateWithOptions:0];
+    DPOrderBehind(little, stack);  // Dia brings its next window forward as the key one closes.
+}
+
+void DPRestoreStack(NSWindow *little, NSDictionary *noted) {
+    if (DPPutAwayIfHidden()) return;
+    DPOrderBehind(little, noted[@"stack"]);
 }
 
 static void DPVeilWindows(void) {
