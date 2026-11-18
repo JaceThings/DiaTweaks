@@ -300,12 +300,14 @@ BOOL DPHasStrip(NSWindow *window) {
     return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabStripTabs) && !view.isHiddenOrHasHiddenAncestor; }) != nil;
 }
 
+static BOOL DPHasURL(id tab);
+
 static void DPMakeBlank(NSView *page, NSString *tab, NSString *closing) {
     if (!tab || DPInSplit(page)) return;
     [DPBlanks(page.window) addObject:tab];
     DPSet(page, &DPBlankKey, @YES);
     DPHidePage(page, YES);
-    if (DPHasStrip(page.window) || !DPOnlyListedTab(tab, closing, page.window)) return;
+    if (DPHasStrip(page.window) || !DPOnlyListedTab(tab, closing, page.window) || DPHasURL(DPScriptTab(page.window, tab))) return;
     DPHideBlank(tab, YES, page.window);
     if (DPHidesTab(tab)) DPHideBars(page, YES);
 }
