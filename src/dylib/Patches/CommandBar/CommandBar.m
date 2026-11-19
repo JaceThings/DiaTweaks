@@ -4,6 +4,7 @@
 #import "Patches/CommandBar/HideTab.h"
 #import "Patches/CommandBar/CommandBarOverlay.h"
 #import "Patches/CompactCommandBar/CompactCommandBar.h"
+#import "Patches/Peek/Peek.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarInteractive, DPCommandBarKeepText;
 char DPOverlayKey;
@@ -52,6 +53,7 @@ static NSMutableSet<NSString *> *DPSeenTabs, *DPKeptTabs;
 
 static NSString *DPNoteActiveTab(NSWindow *window, id scriptWindow, BOOL *seen) {
     NSString *active = DPActiveTabIDIn(scriptWindow);
+    DPPeekSelectionChanged(window, scriptWindow, active);
     DPSeenTabs = DPSeenTabs ?: [NSMutableSet set];
     if (scriptWindow && !DPGet(window, &DPSeenKey)) {
         DPSet(window, &DPSeenKey, @YES);

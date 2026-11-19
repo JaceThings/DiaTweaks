@@ -18,6 +18,9 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @property (nonatomic, strong) NSView *dim, *card, *shade, *clip, *host, *controls, *tabBadge, *toolbar, *toolbarZone;
 @property (nonatomic, strong) id<DPPeekPage> page;
 @property (nonatomic, weak) id sourceDelegate, source;
+@property (nonatomic, copy) NSURL *requestedURL;
+@property (nonatomic, copy) NSString *originTabID;
+@property (nonatomic, weak) NSWindow *originWindow;
 @property (nonatomic, weak) NSView *pane;
 @property (nonatomic, strong) id paneObserver, monitor;
 @property (nonatomic) NSRect link;
@@ -26,13 +29,18 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @property (nonatomic) NSInteger paneMoves;
 - (NSRect)cardFrame;
 - (void)close:(DPPeekExit)exit;
-- (void)handOver;
+- (void)handOverTo:(NSView *)destination attach:(void (^)(void))attach;
+@end
+
+@interface DPPeekCard (Origin)
+- (void)setOriginVisible:(BOOL)visible;
 @end
 
 @interface DPPeekCard (Motion)
 - (void)animateIn;
 - (void)animateOut:(void (^)(void))completion;
 - (void)animateExpand:(void (^)(void))completion;
+- (void)cancelExpansion;
 @end
 
 @interface DPPeekCard (Handoff)
@@ -40,7 +48,11 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @end
 
 DPPeekCard *DPPeekCardIn(NSWindow *window);
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink);
+DPPeekCard *DPPeekShowCard(NSWindow *window, NSString *originTabID, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink);
+NSArray<DPPeekCard *> *DPPeekCardsIn(NSWindow *window);
+void DPPeekTrackCard(DPPeekCard *peek);
+void DPPeekForgetCard(DPPeekCard *peek);
+void DPPeekSelectionChanged(NSWindow *window, id scriptWindow, NSString *active);
 NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page);
 
 NSView *DPPeekControls(id target, SEL action);
@@ -83,10 +95,13 @@ NSArray<NSView *> *DPPeekSettingsRows(void);
 extern BOOL DPPeekGiving;
 
 void DPPeekInstallPages(void);
+void DPPeekPrepareHandoff(DPPeekCard *peek, void (^complete)(void));
+void DPPeekCompleteHandoff(DPPeekCard *peek, NSView *destination);
+void DPPeekHandoffSelectionChanged(NSWindow *window, NSString *active);
 BOOL DPPeekCanOpen(id source);
 BOOL DPPeekShows(id page);
 void DPPeekLoad(id page, NSURL *url);
-void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source);
+void DPPeekOpen(NSWindow *window, NSString *originTabID, NSURL *url, NSPoint origin, id delegate, id source);
 void DPPeekWarm(NSWindow *window, id source, NSURL *url);
 void DPPeekCool(void);
 void DPPeekOpenDragged(NSURL *url, NSPoint origin);

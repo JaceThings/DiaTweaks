@@ -1,5 +1,6 @@
 #import "Patches/Peek/Peek.h"
 #import "Commands/GroupTabs/GroupTabs.h"
+#import "Patches/CommandBar/Tabs.h"
 #import <objc/message.h>
 
 static NSMapTable *DPPeekFactories;
@@ -28,12 +29,18 @@ static id DPBrowser_create(id self, SEL _cmd, id configuration) {
 
 static void DPPage_attach(id self, SEL _cmd, NSView *host) {
     for (NSWindow *window in NSApp.windows) {
-        DPPeekCard *peek = (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
-            return [view isKindOfClass:DPPeekCard.class] && ((DPPeekCard *)view).page == self;
-        });
-        if (peek && host != peek.host) [peek handOver];
+        for (DPPeekCard *peek in DPPeekCardsIn(window)) {
+            if (peek.page != self || host == peek.host) continue;
+            [peek handOverTo:host attach:^{ DPCallOriginal(DPPage_attach, self, host); }];
+            return;
+        }
     }
     DPCallOriginal(DPPage_attach, self, host);
+    NSWindow *window = host.window;
+    if (DPPeekCardsIn(window).count || window.childWindows.count) {
+        id scriptWindow = DPScriptWindow(window);
+        DPPeekSelectionChanged(window, scriptWindow, DPActiveTabIDIn(scriptWindow));
+    }
 }
 
 // Restored tabs' pages skip the hooked createWebContents, so they fall back to the window's browser for the profile in front.
@@ -174,15 +181,15 @@ void DPPeekCool(void) {
     DPPeekForgetWarm();
 }
 
-static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegate, id source, id warmPage, NSView *warmHost) {
-    if (!window || !url || DPPeekCardIn(window)) {
+static void DPPeekOpenFrom(NSWindow *window, NSString *originTabID, NSURL *url, NSRect link, id delegate, id source, id warmPage, NSView *warmHost) {
+    if (!window || !url || DPPeekCardIn(window) || (originTabID && ![originTabID isEqual:DPActiveTabID(window)])) {
         if (warmPage) DPPeekDiscard(warmPage, warmHost);
         return;
     }
     __block DPPeekCard *peek = nil;
-    id page = warmPage ?: DPPeekMakePage(window, source, ^(id page) { peek = DPPeekShowCard(window, page, nil, link); });
+    id page = warmPage ?: DPPeekMakePage(window, source, ^(id page) { peek = DPPeekShowCard(window, originTabID, page, nil, link); });
     if (!page) return;
-    if (warmPage) peek = DPPeekShowCard(window, page, warmHost, link);
+    if (warmPage) peek = DPPeekShowCard(window, originTabID, page, warmHost, link);
     else DPPeekLoad(page, url);
     if (!peek) {
         DPPeekDetach(page, warmHost);
@@ -191,31 +198,46 @@ static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegat
     }
     peek.sourceDelegate = delegate;
     peek.source = source;
+    peek.requestedURL = url;
     DPPeekShowTabBadge(peek, source);
 }
 
-void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source) {
+void DPPeekOpen(NSWindow *window, NSString *originTabID, NSURL *url, NSPoint origin, id delegate, id source) {
     // Taken now, before releasing Shift can cool it.
     BOOL warm = DPPeekWarmPage && [url isEqual:DPPeekWarmURL] && DPPeekWarmView.window == window;
     id warmPage = warm ? DPPeekWarmPage : nil;
     NSView *warmHost = warm ? DPPeekWarmView : nil;
     if (warm) DPPeekForgetWarm();
     DPPeekCool();
-    DPPeekFindLink(window, source, origin, warmHost, ^(NSRect link) { DPPeekOpenFrom(window, url, link, delegate, source, warmPage, warmHost); });
+    DPPeekFindLink(window, source, origin, warmHost, ^(NSRect link) { DPPeekOpenFrom(window, originTabID, url, link, delegate, source, warmPage, warmHost); });
+}
+
+static NSURL *DPPeekLiveURL(NSObject *page) {
+    NSURL *url = [page valueForKey:@"url"];
+    return [url isKindOfClass:NSURL.class] && url.scheme.length && ![url.absoluteString isEqualToString:@"about:blank"] ? url : nil;
 }
 
 @implementation DPPeekCard (Handoff)
 
-- (void)finish:(DPPeekExit)exit {
+- (void)finishExit:(DPPeekExit)exit {
     NSObject *page = (NSObject *)self.page;
-    [self.window makeKeyWindow];
-    if (exit != DPPeekClose && DPPeekGive(page, self.sourceDelegate, self.source, [page valueForKey:@"url"], exit)) {
+    if (!page) return;
+    if (exit != DPPeekClose || !self.hidden) [self.window makeKeyWindow];
+    NSURL *url = nil;
+    if (exit == DPPeekTab) url = DPPeekLiveURL(page) ?: self.requestedURL;
+    else if (exit != DPPeekClose) url = [page valueForKey:@"url"];
+    if (exit != DPPeekClose && DPPeekGive(page, self.sourceDelegate, self.source, url, exit)) {
         // DPPage_attach takes the card down once Dia shows the page.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ if (self.superview) [self handOver]; });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ if (self.superview) [self handOverTo:nil attach:nil]; });
         return;
     }
-    [self handOver];
+    [self handOverTo:nil attach:nil];
     DPPeekDiscard(page, nil);
+}
+
+- (void)finish:(DPPeekExit)exit {
+    if (exit == DPPeekTab) DPPeekPrepareHandoff(self, ^{ [self finishExit:exit]; });
+    else [self finishExit:exit];
 }
 
 @end
@@ -226,6 +248,14 @@ void DPPeekInstallPages(void) {
     DPHook(DPDiaBrowser, @selector(createWebContents:), (IMP)DPBrowser_create);
     DPHook(DPDiaWebContents, @selector(attachToPaneHostView:), (IMP)DPPage_attach);
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-        [DPPeekCardIn(note.object) close:DPPeekClose];
+        NSWindow *window = note.object;
+        DPPeekHandoffSelectionChanged(window, nil);
+        for (DPPeekCard *peek in [DPPeekCardsIn(window) copy]) {
+            [peek cancelExpansion];
+            NSObject *page = (NSObject *)peek.page;
+            [peek handOverTo:nil attach:nil];
+            peek.page = nil;
+            if (page) DPPeekDiscard(page, nil);
+        }
     }];
 }

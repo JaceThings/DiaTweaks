@@ -1,6 +1,7 @@
 #import "Patches/Peek/Peek.h"
 #import "Commands/GroupTabs/GroupTabs.h"
 #import "Patches/LittleDia/LittleDia.h"
+#import "Patches/CommandBar/Tabs.h"
 
 static NSURL *DPPeekHovered;
 static __weak id DPPeekHoveredPage, DPPeekHoveredDelegate;
@@ -28,8 +29,9 @@ BOOL DPPeekIsWeb(NSURL *url) { return [url isKindOfClass:NSURL.class] && [@[ @"h
 static void DPPeekOpenLater(id delegate, id source, NSURL *url) {
     DPPeekLookAheadTurn++;  // The link opens now; a look-ahead still waiting would load it again.
     NSWindow *window = NSApp.keyWindow;
+    NSString *originTabID = DPActiveTabID(window);
     NSPoint origin = NSEvent.mouseLocation;
-    dispatch_async(dispatch_get_main_queue(), ^{ DPPeekOpen(window, url, origin, delegate, source); });
+    dispatch_async(dispatch_get_main_queue(), ^{ DPPeekOpen(window, originTabID, url, origin, delegate, source); });
 }
 
 static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebContent, NSURL *url, NSInteger disposition) {
@@ -127,7 +129,8 @@ static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *tex
 void DPPeekOpenDragged(NSURL *url, NSPoint origin) {
     id page = DPPeekHoveredPage;
     if (DPPeekShows(page)) return DPPeekLoad(page, url);
-    if (DPPeekCanOpen(page)) DPPeekOpen(NSApp.keyWindow, url, origin, DPPeekHoveredDelegate, page);
+    NSWindow *window = NSApp.keyWindow;
+    if (DPPeekCanOpen(page)) DPPeekOpen(window, DPActiveTabID(window), url, origin, DPPeekHoveredDelegate, page);
 }
 
 static void DPInstallPeek(void) {
