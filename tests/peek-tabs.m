@@ -203,6 +203,7 @@ NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void
 #import "Patches/Peek/ChatContext.m"
 #import "Patches/Peek/Card.m"
 #import "Patches/Peek/Pages.m"
+#import "Patches/Peek/Handoff.m"
 #import "Patches/Peek/Zoom.m"
 
 static int failures;
@@ -510,7 +511,7 @@ int main(void) {
             [ntpPeekPage close];
             Check(ntpPeek.closing && DPPeekCardIn(window) == nil,
                   "window.close() on visible Peek page immediately begins closing Peek card");
-            [ntpPeek handOver];
+            [ntpPeek handOverTo:nil attach:nil];
 
             // Parked (hidden) Peek receiving closeWithForegroundCommitTiming: synchronously tears down.
             DPPeekOpenFrom(window, @"C", [NSURL URLWithString:@"https://parked-close.example"], NSMakeRect(100, 100, 80, 20), delegate, ntpSource, nil, nil);

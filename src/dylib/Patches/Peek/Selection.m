@@ -72,6 +72,7 @@ void DPPeekSyncTabs(NSWindow *window) {
     @try {
         id scriptWindow = DPScriptWindow(window);
         NSString *active = scriptWindow ? DPActiveTabIDIn(scriptWindow) : DPActiveTabID(window);
+        if (active) DPPeekHandoffSelectionChanged(window, active);
         NSString *lastActive = DPGet(window, &DPPeekLastActiveKey);
         if (active && ![active isEqual:lastActive]) {
             DPSet(window, &DPPeekLastActiveKey, active);
