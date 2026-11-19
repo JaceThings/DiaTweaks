@@ -9,6 +9,7 @@ BOOL DPBesideSidebar(NSView *view) { return NO; }
 static BOOL gLittleDiaOver;
 BOOL DPLittleDiaIsOver(NSWindow *window) { return gLittleDiaOver; }
 void DPRepaintTabs(NSWindow *window) {}
+void DPPlaceNavigationButtons(NSWindow *window) {}
 BOOL DPToolbarHasPermissionRequest(DPToolbarHover *hover) { return NO; }
 static NSUInteger frameWrites, alphaWrites;
 @interface CountingView : NSView

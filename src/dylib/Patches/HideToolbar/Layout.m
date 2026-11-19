@@ -181,6 +181,7 @@ void DPApplyToolbar(NSView *pane) {
     }
     hover.touched = active;
     if (!active && !DPToolbarHasPermissionRequest(hover)) [hover detach];
+    DPPlaceNavigationButtons(pane.window);
 }
 
 void DPRelayoutPanes(void) { DPRelayoutViews(DPPanes); }

@@ -4,6 +4,7 @@ DPPatch DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab,
 BOOL DPBesideSidebar(NSView *view) { return NO; }
 BOOL DPLittleDiaIsOver(NSWindow *window) { return NO; }
 void DPRepaintTabs(NSWindow *window) {}
+void DPPlaceNavigationButtons(NSWindow *window) {}
 
 @interface _TtC11ContentPane15ContentPaneView : NSView
 @end

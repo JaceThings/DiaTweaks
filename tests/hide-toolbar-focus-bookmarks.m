@@ -15,6 +15,7 @@ static NSUInteger DPEvent_pressedMouseButtons(NSEvent *self, SEL _cmd) { return 
 BOOL DPBesideSidebar(NSView *container) { return NO; }
 BOOL DPLittleDiaIsOver(NSWindow *window) { return gLittleDiaOver; }
 void DPRepaintTabs(NSWindow *window) {}
+void DPPlaceNavigationButtons(NSWindow *window) {}
 NSString *DPChoice(DPPatch *patch) { return @"dia"; }
 
 @interface _TtC11ContentPane15ContentPaneView : NSView
