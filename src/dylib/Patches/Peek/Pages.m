@@ -31,7 +31,10 @@ static void DPPage_attach(id self, SEL _cmd, NSView *host) {
         DPPeekCard *peek = (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
             return [view isKindOfClass:DPPeekCard.class] && ((DPPeekCard *)view).page == self;
         });
-        if (peek && host != peek.host) [peek handOver];
+        if (peek && host != peek.host) {
+            [peek handOverTo:host attach:^{ DPCallOriginal(DPPage_attach, self, host); }];
+            return;
+        }
     }
     DPCallOriginal(DPPage_attach, self, host);
 }
@@ -191,6 +194,7 @@ static void DPPeekOpenFrom(NSWindow *window, NSURL *url, NSRect link, id delegat
     }
     peek.sourceDelegate = delegate;
     peek.source = source;
+    peek.requestedURL = url;
     DPPeekShowTabBadge(peek, source);
 }
 
@@ -204,18 +208,31 @@ void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id so
     DPPeekFindLink(window, source, origin, warmHost, ^(NSRect link) { DPPeekOpenFrom(window, url, link, delegate, source, warmPage, warmHost); });
 }
 
+static NSURL *DPPeekLiveURL(NSObject *page) {
+    NSURL *url = [page valueForKey:@"url"];
+    return [url isKindOfClass:NSURL.class] && url.scheme.length && ![url.absoluteString isEqualToString:@"about:blank"] ? url : nil;
+}
+
 @implementation DPPeekCard (Handoff)
 
-- (void)finish:(DPPeekExit)exit {
+- (void)finishExit:(DPPeekExit)exit {
     NSObject *page = (NSObject *)self.page;
     [self.window makeKeyWindow];
-    if (exit != DPPeekClose && DPPeekGive(page, self.sourceDelegate, self.source, [page valueForKey:@"url"], exit)) {
+    NSURL *url = nil;
+    if (exit == DPPeekTab) url = DPPeekLiveURL(page) ?: self.requestedURL;
+    else if (exit != DPPeekClose) url = [page valueForKey:@"url"];
+    if (exit != DPPeekClose && DPPeekGive(page, self.sourceDelegate, self.source, url, exit)) {
         // DPPage_attach takes the card down once Dia shows the page.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ if (self.superview) [self handOver]; });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ if (self.superview) [self handOverTo:nil attach:nil]; });
         return;
     }
-    [self handOver];
+    [self handOverTo:nil attach:nil];
     DPPeekDiscard(page, nil);
+}
+
+- (void)finish:(DPPeekExit)exit {
+    if (exit == DPPeekTab) DPPeekPrepareHandoff(self, ^{ [self finishExit:exit]; });
+    else [self finishExit:exit];
 }
 
 @end

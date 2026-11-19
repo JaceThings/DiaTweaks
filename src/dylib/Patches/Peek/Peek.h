@@ -18,6 +18,7 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @property (nonatomic, strong) NSView *dim, *card, *shade, *clip, *host, *controls, *tabBadge, *toolbar, *toolbarZone;
 @property (nonatomic, strong) id<DPPeekPage> page;
 @property (nonatomic, weak) id sourceDelegate, source;
+@property (nonatomic, copy) NSURL *requestedURL;
 @property (nonatomic, weak) NSView *pane;
 @property (nonatomic, strong) id paneObserver, monitor;
 @property (nonatomic) NSRect link;
@@ -26,7 +27,7 @@ enum { DPIgnoreAction = 0, DPCurrentTab = 1, DPForegroundTab = 2, DPBackgroundTa
 @property (nonatomic) NSInteger paneMoves;
 - (NSRect)cardFrame;
 - (void)close:(DPPeekExit)exit;
-- (void)handOver;
+- (void)handOverTo:(NSView *)destination attach:(void (^)(void))attach;
 @end
 
 @interface DPPeekCard (Motion)
@@ -83,6 +84,8 @@ NSArray<NSView *> *DPPeekSettingsRows(void);
 extern BOOL DPPeekGiving;
 
 void DPPeekInstallPages(void);
+void DPPeekPrepareHandoff(DPPeekCard *peek, void (^complete)(void));
+void DPPeekCompleteHandoff(DPPeekCard *peek, NSView *destination);
 BOOL DPPeekCanOpen(id source);
 BOOL DPPeekShows(id page);
 void DPPeekLoad(id page, NSURL *url);

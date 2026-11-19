@@ -86,14 +86,30 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
     else [self finish:exit];
 }
 
-- (void)handOver {
+- (void)handOverTo:(NSView *)destination attach:(void (^)(void))attach {
     NSWindow *window = self.window;
     [self stopWatching];
+    BOOL promoting = destination && self.grown >= 1;
+    if (promoting) {
+        // Keep the expanded card in place until its web view is attached to the tab.
+        [CATransaction begin];
+        id<DPPeekPage> page = self.page;
+        self.page = nil;  // Ignore nested attachment while the closing card is still mounted.
+        [page detachFromPaneHostView:self.host];
+        attach();
+    }
     [self removeFromSuperview];
     [window resetCursorRects];
+    if (promoting) {
+        [CATransaction commit];
+        DPPeekCompleteHandoff(self, destination);
+        return;
+    }
     // The card must be off screen before the page detaches, or it flashes blank.
     if (self.grown < 1) [CATransaction flush];
     [self.page detachFromPaneHostView:self.host];
+    if (attach) attach();
+    DPPeekCompleteHandoff(self, nil);
 }
 
 @end
