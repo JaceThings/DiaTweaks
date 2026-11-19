@@ -6,12 +6,10 @@ static const NSUInteger DPTidyMaxTabs = 50;  // Keeps the prompt inside the on-d
 
 void DPTidyAskModel(NSArray *tabs, void (^done)(NSArray *groups, NSString *error));
 
-// A tidy that didn't happen shows nothing; the broom just stops.
 static void DPTidyFail(NSString *message) {
     NSLog(@"DiaPatches: Tidy Tabs: %@", message);
 }
 
-// Untitled, so Dia's own AI names each group.
 static NSArray<NSDictionary *> *DPTidyOps(NSArray *groups, NSArray<NSDictionary *> *tabs) {
     NSMutableArray *ops = [NSMutableArray array];
     NSMutableSet<NSNumber *> *used = [NSMutableSet set];
@@ -52,10 +50,11 @@ static void DPTidyGroup(id browser, id delegate, NSArray<NSDictionary *> *tabs) 
 
 void DPTidyTabsNow(NSWindow *window) {
     if (DPTidyIsBusy()) return;
-    id browser = DPCommandBrowser();
+    window = window ?: NSApp.keyWindow;
+    id browser = DPBrowserOfWindow(window);
     id delegate = browser ? DPGroupingDelegate(browser) : nil;
     if (![delegate respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)]) return DPTidyFail(@"Dia’s tabs aren’t ready yet.");
-    NSDictionary<NSString *, NSString *> *loose = DPTidyLooseTabs(window ?: NSApp.keyWindow);
+    NSDictionary<NSString *, NSString *> *loose = DPTidyLooseTabs(window);
     NSMutableArray<NSDictionary *> *candidates = [NSMutableArray array];
     for (id contents in DPTrackedContents(browser)) {
         long long sid = DPSessionOf(contents);

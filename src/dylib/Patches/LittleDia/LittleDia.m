@@ -1,15 +1,17 @@
 #import "LittleDia.h"
 #import "Updates/Updates.h"
 
-static BOOL gLoadedOn;  // The extension only loads as Dia starts.
+static BOOL gLoadedOn;
 
 static void DPInstallLittleDia(void) {
     gLoadedOn = DPLittleDia.on;
     DPInstallLittleDiaExtension();
     DPInstallLittleDiaRoute();
     DPInstallLittleDiaWindows();
+    DPInstallLittleDiaOver();
     DPInstallLittleDiaLinkMenu();
     DPInstallLittleDiaNewWindow();
+    DPInstallLittleDiaShortcuts();
 }
 
 static void DPApplyLittleDia(DPPatch *patch) {
@@ -25,7 +27,6 @@ static void DPApplyLittleDia(DPPatch *patch) {
     if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
 }
 
-// Only checks open Little Dia windows: their bar has its buttons while on, and Dia's own bar is back while off.
 static NSString *DPLittleDiaProblem(DPPatch *patch) { return DPLittleDiaExtensionProblem(); }
 
 static NSString *DPVerifyLittleDia(DPPatch *patch) {
@@ -36,7 +37,7 @@ static NSString *DPVerifyLittleDia(DPPatch *patch) {
         if (!patch->on && button) return @"Open in Dia button still showing";
         if (patch->on && little && bar.window.titleVisibility != NSWindowTitleHidden) return @"title bar still showing";
     }
-    return DPLittleDiaNewWindowProblem() ?: (patch->on ? DPLittleDiaLinkMenuProblem() : nil);
+    return DPLittleDiaNewWindowProblem() ?: (patch->on ? DPLittleDiaLinkMenuProblem() ?: DPLittleDiaShortcutsProblem() : nil);
 }
 
 DP_PATCH(DPLittleDia) {

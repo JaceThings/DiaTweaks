@@ -1,6 +1,3 @@
-// Little Dia opens links from other apps, and Open Link in Little Dia on a page's links, in Dia's own popup window, the one sites get from window.open, instead of a new
-// tab. Only Chromium can make that window, so a small extension makes it with chrome.windows.create: the dylib wakes the
-// extension's worker with an omnibox event, the one event Dia lets native code send it.
 #import "StdPatch/StdPatch.h"
 
 #define DPDiaOpenURLEvents "_TtC13OpenURLClient19OpenURLEventManager"
@@ -8,70 +5,80 @@
 #define DPDiaPopupBar      "_TtC5Popup22PopupNavigationBarView"
 #define DPDiaPopupTitle    "_TtC13NavigationBar21AssistantBarTitleView"
 
-extern DPPatch DPLittleDia;
+extern DPPatch DPLittleDia, DPLittleDiaTabLinks, DPLittleDiaFollowRules, DPLittleDiaRemember;
 
-// Extension.m
+// For a plain click Dia would open in a new tab; YES when Little Dia takes it. Peek's link hooks ask this first.
+BOOL DPLittleDiaTakesTabLink(id page, NSURL *url, BOOL leavesPinned);
+
 void DPInstallLittleDiaExtension(void);
 BOOL DPWriteLittleDiaExtension(BOOL on);
-NSString *DPLittleDiaExtensionProblem(void);  // nil once its files are written.
-BOOL DPSendToLittleDia(NSDictionary *request);  // Hands the extension {action, ...}: see its worker. NO until it's loaded.
-BOOL DPLittleDiaStarting(void);  // Dia has no window or its extensions are still loading.
-BOOL DPLittleDiaReady(void);     // DPSendToLittleDia would reach the extension.
+NSString *DPLittleDiaExtensionProblem(void);
+BOOL DPSendToLittleDia(NSDictionary *request);
+BOOL DPLittleDiaStarting(void);
+BOOL DPLittleDiaReady(void);
 
-// Options.m: the window's size, and Close with Escape.
 NSSize DPLittleDiaSize(void);
+NSRect DPLittleDiaSavedFrame(void);  // NSZeroRect until a window has been left somewhere.
+void DPSaveLittleDiaFrame(NSRect frame);
 NSArray<NSView *> *DPLittleDiaRows(void);
 
-// Route.m
 void DPInstallLittleDiaRoute(void);
-void DPOpenLinkInLittleDia(NSURL *url);  // A link from Dia's own page, in the current profile.
-void DPOpenBlankLittleDia(void);         // A blank page, with its address ready to type.
+void DPOpenLinkInLittleDia(NSURL *url);
+#define DPTabLinkWidth 0.8  // Of the page area's width.
+#define DPTabLinkEdge 12    // Points kept above and below.
+void DPOpenTabLinkInLittleDia(NSURL *url, NSWindow *source);  // Falls back to a tab, so the link is never lost.
+void DPOpenBlankLittleDia(void);
 
-// LinkMenu.m: Open Link in Little Dia, in the menu for a link in a page.
 void DPInstallLittleDiaLinkMenu(void);
 NSString *DPLittleDiaLinkMenuProblem(void);
 
-// NewWindow.m: New Little Dia Window in the File menu, there while Little Dia is on and ready.
 void DPInstallLittleDiaNewWindow(void);
 void DPRefreshLittleDiaNewWindow(void);
 NSString *DPLittleDiaNewWindowProblem(void);
 
-// Window.m: which popups are Little Dia's, their page, and their title bar.
-void DPExpectLittleDiaWindow(NSRect frame, void (^missed)(void), void (^claimed)(NSWindow *window));  // A popup in the next 3 seconds is this link's, and `claimed` gets it; else `missed` runs.
-BOOL DPIsLittleDiaWindow(NSWindow *window);  // Opened by Little Dia, whether or not it's still on.
-id DPLittleDiaPage(NSWindow *window);        // Its ArcWebContents, once Chromium has handed it over.
+#define DPLittleDiaWait 3
+void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window));
+BOOL DPIsLittleDiaWindow(NSWindow *window);
+id DPLittleDiaPage(NSWindow *window);  // nil until Chromium hands the page over.
 void DPInstallLittleDiaWindows(void);
-void DPRefreshLittleDiaWindows(void);        // After a claim or a switch in Settings.
-void DPPromoteLittleDiaWindow(NSWindow *window);  // Open in Dia: when it closes, Dia's main window comes forward.
+void DPRefreshLittleDiaWindows(void);
+void DPPromoteLittleDiaWindow(NSWindow *window);
 
-// Stack.m: the small window comes up over the app the link was clicked in; Dia's other windows stay behind that app.
+void DPInstallLittleDiaOver(void);
+void DPPutLittleDiaOver(NSWindow *little, NSWindow *window);
+BOOL DPLittleDiaIsOver(NSWindow *window);  // Hide Toolbar keeps that window's toolbar hidden meanwhile.
+
 void DPInstallLittleDiaStack(void);
-void DPNoteStackForLink(void);
-void DPRestoreStack(NSWindow *little);
-void DPFinishStack(void);
-pid_t DPLinkSource(void);            // The app the last link came from, or 0.
-void DPReturnToSource(pid_t pid);
-void DPBringBackPutAway(NSWindow *little);  // Dia's windows put away because it was hidden when the link came.
-void DPLinkArrived(void);                   // A link for Little Dia came in.
-BOOL DPHideAgain(void);                     // Hides Dia again once its last small window closes, if it was hidden.
+NSDictionary *DPNoteStackForLink(void);
+void DPRestoreStack(NSWindow *little, NSDictionary *noted);
+NSArray<NSDictionary *> *DPWindowStack(void);  // Normal windows on screen, front to back, with their numbers and owners.
+void DPReturnToSource(pid_t pid, NSWindow *little, NSArray<NSDictionary *> *stack);
+void DPBringBackPutAway(NSWindow *little);
+void DPLinkArrived(void);
+BOOL DPHideAgain(void);
 
-// Bar.m: close, back, forward and reload before the address, Open in Dia and a profile menu after it, and no Downloads
-// button.
 void DPInstallLittleDiaBar(void);
+// Peek's toolbar uses these too.
+NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void (^action)(void));
+NSView *DPMakeDivider(void);
+void DPMatchPage(NSView *row, id page);
 void DPRelayoutLittleDiaBars(void);
 
-// Address.m: the address as Dia's main window shows it. Click it, or press ⌘L, to type another.
 NSView *DPMakeAddressView(NSView *title);
 void DPRefreshAddressView(NSView *view);
-void DPEditLittleDiaAddress(NSWindow *window);  // As ⌘L does, once the window has its address.
+void DPEditLittleDiaAddress(NSWindow *window);
+void DPShowLittleDiaNotice(NSWindow *window, NSString *message);
 
-// Navigate.m: the page's own navigation.
-NSString *DPLittleDiaURL(NSWindow *window);                   // The page's address, or @"" before it has one.
-NSDictionary *DPLittleDiaTab(NSWindow *window, NSString *action);  // A request naming the window's tab.
-void DPLittleDiaGo(NSWindow *window, SEL action);             // goBack, goForward or reload
-void DPLittleDiaNavigate(NSWindow *window, NSString *typed);  // An address, or words to search for.
+void DPInstallLittleDiaShortcuts(void);
+NSString *DPLittleDiaShortcutsProblem(void);
 
-// Profile.m: Dia's profiles, in its order, and opening a page as a tab in one, focused.
-NSArray<NSString *> *DPLittleDiaProfiles(void);
+NSString *DPLittleDiaURL(NSWindow *window);
+NSDictionary *DPLittleDiaTab(NSWindow *window, NSString *action);
+void DPLittleDiaGo(NSWindow *window, SEL action);
+void DPLittleDiaNavigate(NSWindow *window, NSString *typed);
+
+NSArray<NSString *> *DPLittleDiaProfiles(void);  // In Dia's order, which DPOpenInProfile's index counts in.
 NSImage *DPLittleDiaProfileImage(NSString *name);
+NSString *DPOpenInLabel(NSString *profile, NSUInteger profiles);
+NSString *DPLittleDiaProfileName(NSWindow *window);  // nil until Chromium hands the page over.
 void DPOpenInProfile(NSString *url, NSUInteger index, void (^done)(BOOL opened));

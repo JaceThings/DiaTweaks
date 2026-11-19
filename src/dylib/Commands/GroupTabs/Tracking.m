@@ -15,7 +15,7 @@ static void DPRemember(id contents, id session, id browser, id delegate) {
     [DPBrowserByContents setObject:browser forKey:contents];
     [DPContents addObject:contents];
     long long sid = DPLongID(session);
-    if (sid <= 0) sid = DPContentsSession(contents);
+    if (sid <= 0 && !DPGet(contents, &DPSessionKey)) sid = DPContentsSession(contents);
     if (sid > 0) DPSet(contents, &DPSessionKey, @(sid));
 }
 
@@ -46,11 +46,26 @@ static void DPBrowser_didCreate(id self, SEL _cmd, id browser, id contents, BOOL
     if (browser && contents) DPRemember(contents, nil, browser, DPDelegateFor(self, browser));
 }
 
-// Tabs opened from Dia's UI arrive only here; the delegate callbacks see restored and page-opened tabs.
+// Tabs opened from Dia's UI arrive only here; the delegate callbacks miss them.
 static id DPBrowser_createWebContents(id self, SEL _cmd, id params) {
     id contents = DPCallOriginal(DPBrowser_createWebContents, self, params);
     DPRemember(contents, nil, self, [DPDelegateByBrowser objectForKey:self]);
     return contents;
+}
+
+// A tab Chromium opens for a link or a script is handed to the page that asked, and Dia's browser is never told: it belongs to the opener's.
+static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newContents, NSURL *url, NSInteger disposition) {
+    DPCallOriginal(DPWebContent_didCreate, self, webContents, newContents, url, disposition);
+    id browser = DPBrowserOfContents(webContents);
+    DPRemember(newContents, nil, browser, [DPDelegateByBrowser objectForKey:browser]);
+}
+
+// So is a duplicate, which belongs to its original's.
+static id DPContents_clone(id self, SEL _cmd) {
+    id clone = DPCallOriginal(DPContents_clone, self);
+    id browser = DPBrowserOfContents(self);
+    DPRemember(clone, nil, browser, [DPDelegateByBrowser objectForKey:browser]);
+    return clone;
 }
 
 static void DPBrowser_takeOwnership(id self, SEL _cmd, id contents) {
@@ -60,13 +75,41 @@ static void DPBrowser_takeOwnership(id self, SEL _cmd, id contents) {
 
 NSWindow *DPBrowserWindow(id browser) { return [DPWindowByBrowser objectForKey:browser]; }
 
+static NSString *DPBrowserProfile(id browser) {
+    id context = [browser respondsToSelector:@selector(context)] ? DPMsg(browser, @selector(context)) : nil;
+    id contextID = [context respondsToSelector:@selector(id)] ? DPMsg(context, @selector(id)) : nil;
+    return [contextID respondsToSelector:@selector(directoryBasename)] ? DPText(DPMsg(contextID, @selector(directoryBasename))) : nil;
+}
+
+static NSString *DPFocusedProfile(NSWindow *window) {
+    id controller = DPSwiftValue(DPSwiftValue(window.windowController, @"viewModel"), @"delegate");
+    id focused = DPSwiftValue(controller, @"committedFocusedBrowserContextID");
+    return DPText(DPSwiftValue(DPSwiftValue(focused, @"profileID"), @"directoryBasename"));
+}
+
+static id DPFrontBrowser(NSWindow *window, NSArray *browsers) {
+    NSMutableArray *shown = [NSMutableArray new];
+    for (id browser in browsers)
+        if (window && [DPWindowByBrowser objectForKey:browser] == window) [shown addObject:browser];
+    if (shown.count < 2) return shown.firstObject;
+    NSString *focused = DPFocusedProfile(window);
+    for (id browser in shown)
+        if ([DPBrowserProfile(browser) isEqual:focused]) return browser;
+    return shown.firstObject;
+}
+
+id DPBrowserOfWindow(NSWindow *window) { return DPFrontBrowser(window, DPBrowsers.allObjects); }
+
+id DPBrowserOfContents(id contents) { return [DPBrowserByContents objectForKey:contents]; }
+
 id DPCommandBrowser(void) {
     NSMutableArray *ready = [NSMutableArray new];
     for (id browser in DPBrowsers.allObjects)
         if ([[DPDelegateByBrowser objectForKey:browser] respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)]) [ready addObject:browser];
-    for (NSWindow *window in NSApp.orderedWindows)
-        for (id browser in ready)
-            if ([DPWindowByBrowser objectForKey:browser] == window) return browser;
+    for (NSWindow *window in NSApp.orderedWindows) {
+        id browser = DPFrontBrowser(window, ready);
+        if (browser) return browser;
+    }
     return ready.count == 1 ? ready[0] : nil;
 }
 
@@ -78,9 +121,10 @@ NSArray *DPTrackedContents(id browser) {
     return contents;
 }
 
+// Discarding a page gives it a new session, but Dia's tabs keep the one it had when it opened.
 long long DPSessionOf(id contents) {
-    long long sid = DPContentsSession(contents);
-    return sid > 0 ? sid : DPLongID(DPGet(contents, &DPSessionKey));
+    long long sid = DPLongID(DPGet(contents, &DPSessionKey));
+    return sid > 0 ? sid : DPContentsSession(contents);
 }
 
 void DPInstallGroupTabs(void) {
@@ -96,6 +140,10 @@ void DPInstallGroupTabs(void) {
     DPHook(DPDiaBrowser, @selector(takeOwnershipOfWebContents:), (IMP)DPBrowser_takeOwnership);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didRestoreWebContents:withSessionId:), (IMP)DPBrowser_didRestore);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
+    DPHook(DPDiaWebContents, @selector(clone), (IMP)DPContents_clone);
+    DPOnLaunch(^{
+        DPHook(DPDiaWebContent, @selector(webContents:didCreateNewWebContent:targetURL:disposition:), (IMP)DPWebContent_didCreate);
+    });
     DPInstallGroupMenus();
     DPInstallGroupTabsShortcut();
 }

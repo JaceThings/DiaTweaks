@@ -25,8 +25,6 @@ body:
         - Show Toolbar on New Tabs
         - Show Toolbar with Sidebar
         - Show Loading Progress
-        - Show Toast When Copying URL
-        - Show Toolbar When Copying URL
         - Hide Site Color in Tab Bar
         - Always Show Address Field
         - Hide Sidebar Button
@@ -57,9 +55,11 @@ body:
         - Shadow Behind Bar
         - Scroll Page Behind
         - Remember What You Typed
+        - Hide New Tab Until Opened
         - Hide History Suggestions
         - Hide New Tab Logo
         - Turn Off AI
+        - Morning Brief Language
         - Hide Chat Button
         - Hide Chats Button
         - Hide Upgrade Banner
@@ -71,7 +71,10 @@ body:
         - Window Corners
         - App Icon
         - Hide Window Controls
+        - Private Window Theme
+        - Skip Account
         - Allow 1Password
+        - Allow Bitwarden
         - Allow iCloud Passkeys
         - Allow iCloud Passwords
         - Group Tabs by Domain
@@ -82,6 +85,10 @@ body:
         - Hide Link Address
         - Little Dia
         - Close with Escape
+        - Follow Link Rules
+        - Remember Size and Position
+        - Open Links from Tabs
+        - Split TLS ClientHello
         - Patches pane in Settings
         - Installing, updating or restoring
         - Not sure

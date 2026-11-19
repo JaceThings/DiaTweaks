@@ -1,7 +1,7 @@
 #import "AppIcon.h"
+#import "BriefLanguage.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <Foundation/Foundation.h>
-#import <sys/xattr.h>
 #import "LaunchServices.h"
 #import "Passkeys.h"
 #import "Passwords.h"
@@ -17,13 +17,13 @@ static NSString *const kSparkle = @"http://www.andymatuschak.org/xml-namespaces/
 static NSString *const kLocalIdentity = @"DiaPatches Local Signing";
 static NSString *const kReleases = @"https://api.github.com/repos/JaceThings/DiaTweaks/releases/latest";
 static NSString *const kReleaseAsset = @"DiaTweaks.zip";
+static NSString *const kCompare = @"https://api.github.com/repos/JaceThings/DiaTweaks/compare";
 static NSString *const kDiaReleaseNotes = @"https://www.diabrowser.com/release-notes/latest";
 
 static NSString *gHome, *gApp, *gCache, *gPristine, *gStaged, *gReady;
 static const char *gCommand;
 static FILE *gLog;
-
-#pragma mark - Output
+static NSString *gFailure;
 
 static BOOL emit(FILE *out, NSString *format, ...) NS_FORMAT_FUNCTION(2, 3);
 static BOOL emit(FILE *out, NSString *format, ...) {
@@ -31,26 +31,28 @@ static BOOL emit(FILE *out, NSString *format, ...) {
     va_start(args, format);
     NSString *line = [[NSString alloc] initWithFormat:format arguments:args];
     va_end(args);
+    BOOL failure = out == stderr;
+    if (failure) gFailure = line;
     if (gLog) {
         char stamp[20];
         time_t now = time(NULL);
         strftime(stamp, sizeof stamp, "%F %T", localtime(&now));
-        fprintf(gLog, "%s %s[%d] %s%s\n", stamp, gCommand, getpid(), out == stderr ? "error: " : "", line.UTF8String);
+        fprintf(gLog, "%s %s[%d] %s%s\n", stamp, gCommand, getpid(), failure ? "error: " : "", line.UTF8String);
     }
-    if (out) fprintf(out, "%s%s\n", out == stderr ? "diapatch: " : "", line.UTF8String);
-    return out != stderr;
+    if (out) fprintf(out, "%s%s\n", failure ? "diapatch: " : "", line.UTF8String);
+    return !failure;
 }
 
 #define note(...) emit(NULL, __VA_ARGS__)
 #define say(...) emit(stdout, __VA_ARGS__)
 #define fail(...) emit(stderr, __VA_ARGS__)
 
-#pragma mark - Files and tools
-
 static NSString *env(const char *name) {
     const char *value = getenv(name);
     return value && *value ? @(value) : nil;
 }
+
+static NSString *trimmed(NSString *text) { return [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; }
 
 static NSString *inHome(NSString *name) { return [gHome stringByAppendingPathComponent:name]; }
 
@@ -68,13 +70,34 @@ static BOOL removeTree(NSString *path) {
         || fail(@"cannot remove %@: %@", path, error.localizedDescription);
 }
 
-// A delete cut short leaves part of a bundle; in .trash it can't pass for a whole one.
+static BOOL removeQuietly(NSString *path) {
+    NSError *error;
+    if ([NSFileManager.defaultManager removeItemAtPath:path error:&error] || error.code == NSFileNoSuchFileError) return YES;
+    for (NSString *item in [NSFileManager.defaultManager enumeratorAtPath:path])
+        [NSFileManager.defaultManager setAttributes:@{ NSFileImmutable : @NO } ofItemAtPath:[path stringByAppendingPathComponent:item] error:nil];
+    return [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+}
+
+// Unremovable leftovers (root-owned files) are set aside, or every later install would fail.
+static BOOL emptyTrash(void) {
+    NSString *trash = inHome(@".trash"), *aside = [trash stringByAppendingFormat:@"-%@", NSUUID.UUID.UUIDString];
+    if (removeQuietly(trash)) return YES;
+    if (rename(trash.fileSystemRepresentation, aside.fileSystemRepresentation) != 0) return fail(@"cannot remove %@: %s", trash, strerror(errno));
+    note(@"cannot remove everything in %@, so it's set aside as %@", trash, aside.lastPathComponent);
+    return YES;
+}
+
+static void removeSetAside(void) {
+    for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:nil])
+        if ([name hasPrefix:@".trash-"]) removeQuietly(inHome(name));
+}
+
+// Rename to .trash first: a cut-short delete must not leave half a bundle where a whole one belongs.
 static BOOL discard(NSString *path) {
     NSString *trash = inHome(@".trash");
-    if (!removeTree(trash)) return NO;
-    if (rename(path.fileSystemRepresentation, trash.fileSystemRepresentation) == 0) return removeTree(trash);
+    if (!emptyTrash()) return NO;
+    if (rename(path.fileSystemRepresentation, trash.fileSystemRepresentation) == 0) return emptyTrash();
     if (errno == ENOENT) return YES;
-    // Only update's download can be on another volume, and only update reads it.
     return errno == EXDEV ? removeTree(path) : fail(@"cannot remove %@: %s", path, strerror(errno));
 }
 
@@ -95,8 +118,7 @@ static BOOL check(NSArray<NSString *> *argv) {
     NSString *output;
     int status = run(argv, &output);
     return status == 0
-        || fail(@"%@ failed (%d): %@", argv[0].lastPathComponent, status,
-                [output stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]);
+        || fail(@"%@ failed (%d): %@", argv[0].lastPathComponent, status, trimmed(output));
 }
 
 // Dia's feed server turns away some HTTP clients but accepts curl.
@@ -106,7 +128,7 @@ static int fetch(NSString *url, int seconds, NSString *file, NSString **output) 
     return run(file ? [argv arrayByAddingObjectsFromArray:@[ @"-o", file ]] : argv, output);
 }
 
-// `codesign --strict` rejects extended attributes, which copies made by Finder or some installers carry.
+// codesign --strict rejects the extended attributes Finder copies carry.
 static BOOL clone(NSString *from, NSString *to) {
     BOOL copied = clonefile(from.fileSystemRepresentation, to.fileSystemRepresentation, 0) == 0
         || ((errno == EXDEV || errno == ENOTSUP) ? check(@[ @"/usr/bin/ditto", from, to ]) : fail(@"cannot clone %@: %s", from, strerror(errno)));
@@ -132,8 +154,6 @@ static BOOL moveBundle(NSString *from, NSString *to) {
     return removeTree(incoming) && discard(from);
 }
 
-#pragma mark - Apps
-
 static NSDictionary *infoOf(NSString *app) {
     return [NSDictionary dictionaryWithContentsOfURL:[NSURL fileURLWithPath:[app stringByAppendingPathComponent:@"Contents/Info.plist"]]
                                                error:NULL];
@@ -148,7 +168,6 @@ static NSString *versionOf(NSString *app) {
 
 static BOOL isPatched(NSString *app) { return [infoOf(app)[@"DiaPatches"] boolValue]; }
 
-// Unverified; verifyOfficial checks the signature.
 static BOOL claimsOfficial(NSString *app) {
     NSString *details;
     return run(@[ @"/usr/bin/codesign", @"-dv", app ], &details) == 0 && [details containsString:@"\nTeamIdentifier=S6N382Y83G\n"];
@@ -179,9 +198,6 @@ static void waitForQuit(pid_t pid) {
     for (int i = 0; i < 240 && ((pid > 0 && kill(pid, 0) == 0) || appRunning()); i++) usleep(250000);
 }
 
-#pragma mark - Building
-
-// The dylib lives outside the bundle so updating it doesn't change the signature, and with it Dia's keychain access.
 static BOOL addLoadCommand(NSString *path, NSString *dylib) {
     NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedAlways error:NULL];
     const uint8_t *bytes = data.bytes;
@@ -240,7 +256,6 @@ static NSString *localIdentity(NSString *keychain) {
     return match ? [list substringWithRange:[match rangeAtIndex:1]] : nil;
 }
 
-// A stable self-signed identity keeps Dia's keychain items readable across builds.
 static NSString *createLocalIdentity(NSString *keychain) {
     note(@"creating the signing identity \"%@\" in %@", kLocalIdentity, keychain);
     NSString *dir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"diapatch-identity"];
@@ -249,7 +264,6 @@ static NSString *createLocalIdentity(NSString *keychain) {
     NSString *request = @"[req]\ndistinguished_name = dn\nprompt = no\nx509_extensions = ext\n[dn]\nCN = DiaPatches Local Signing\n"
                         @"[ext]\nbasicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\n"
                         @"extendedKeyUsage = critical,codeSigning\nsubjectKeyIdentifier = hash\n";
-    // The p12 only carries the key, which sits unencrypted beside it, into the keychain.
     BOOL ok = removeTree(dir) && makeDir(dir) && [request writeToFile:config atomically:NO encoding:NSUTF8StringEncoding error:NULL]
         && check(@[ @"/usr/bin/openssl", @"req", @"-x509", @"-new", @"-newkey", @"rsa:2048", @"-nodes", @"-sha256", @"-days", @"7300",
                     @"-config", config, @"-keyout", key, @"-out", cert ])
@@ -262,9 +276,7 @@ static NSString *createLocalIdentity(NSString *keychain) {
 }
 
 static BOOL sign(NSString *app) {
-    NSString *identity = env("DIAPATCH_IDENTITY")
-        ?: [[NSString stringWithContentsOfFile:inHome(@"identity") encoding:NSUTF8StringEncoding error:NULL]
-               stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *identity = env("DIAPATCH_IDENTITY") ?: trimmed([NSString stringWithContentsOfFile:inHome(@"identity") encoding:NSUTF8StringEncoding error:NULL]);
     NSArray *codesign = @[ @"/usr/bin/codesign", @"--force", @"--timestamp=none", @"--sign" ];
     if (identity.length) {
         codesign = [codesign arrayByAddingObject:identity];
@@ -275,7 +287,7 @@ static BOOL sign(NSString *app) {
             codesign = [codesign arrayByAddingObjectsFromArray:@[ identity, @"--keychain", keychain ]];
         } else {
             codesign = [codesign arrayByAddingObject:@"-"];
-            say(@"warning: signing ad hoc, so Dia will ask for keychain access again after every update");
+            say(@"warning: signing ad hoc, so Dia will ask for keychain access and screen sharing again after every update");
         }
     }
     // Entitlements tied to The Browser Company's profile make AMFI refuse to launch a re-signed Dia.
@@ -292,8 +304,7 @@ static BOOL sign(NSString *app) {
     return ok;
 }
 
-// A finished build records staged/Dia.app's inode, which renames keep, so whatever a stopped apply swapped out there
-// is never installed.
+// ready records the inode, which renames keep: a bundle a stopped apply swapped into staged/ never installs.
 static NSString *stagedID(void) {
     struct stat info;
     return lstat(gStaged.fileSystemRepresentation, &info) == 0 ? @(info.st_ino).stringValue : nil;
@@ -310,8 +321,10 @@ static BOOL switchIcon(void) {
     return !problem || fail(@"%@", problem);
 }
 
+// A Dia that can't switch icons still works: report the failure, don't fail the build.
 static BOOL noteIcon(NSString *outcome) {
-    if (outcome) note(@"%@", outcome);
+    if ([outcome hasPrefix:@"kept "]) say(@"warning: %@", outcome);
+    else if (outcome) note(@"%@", outcome);
     return YES;
 }
 
@@ -324,13 +337,11 @@ static BOOL build(NSString *source) {
     BOOL ok = removeTree(work) && makeDir(gStaged.stringByDeletingLastPathComponent) && clone(source, work)
         && addLoadCommand([contents stringByAppendingPathComponent:[@"MacOS" stringByAppendingPathComponent:executable]], dylib)
         && configureInfo(work) && removeTree([contents stringByAppendingPathComponent:@"embedded.provisionprofile"])
-        && noteIcon(DPPrepareIcons(work, gApp, gHome)) && sign(work) && moveBundle(work, gStaged) && (DPForgetApp(gStaged), YES)
+        && noteIcon(DPPrepareIcons(work, gApp, gHome)) && noteIcon(DPPrepareBriefLanguage(work)) && sign(work) && moveBundle(work, gStaged) && (DPForgetApp(gStaged), YES)
         && ([stagedID() writeToFile:gReady atomically:YES encoding:NSUTF8StringEncoding error:NULL] || fail(@"cannot write %@", gReady));
     if (!ok) removeTree(work);
     return ok;
 }
-
-#pragma mark - Updates
 
 @interface Release : NSObject
 @property(nonatomic, copy) NSString *build, *version, *url, *channel, *minimumOS;
@@ -345,7 +356,7 @@ static BOOL newer(NSString *a, NSString *b) { return [a compare:b ?: @"" options
 static NSString *sparkle(NSXMLElement *item, NSXMLElement *enclosure, NSString *name) {
     NSString *value = [enclosure attributeForLocalName:name URI:kSparkle].stringValue
         ?: [item elementsForLocalName:name URI:kSparkle].firstObject.stringValue;
-    value = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    value = trimmed(value);
     return value.length ? value : nil;
 }
 
@@ -360,14 +371,13 @@ static NSArray<Release *> *releasesIn(NSXMLDocument *feed) {
         release.minimumOS = sparkle(item, nil, @"minimumSystemVersion");
         release.size = [enclosure attributeForName:@"length"].stringValue.longLongValue;
         NSString *shortVersion = sparkle(item, enclosure, @"shortVersionString") ?: @"?";
-        NSString *suffix = [NSString stringWithFormat:@" (%@)", release.build];  // Dia's feed already has it
+        NSString *suffix = [NSString stringWithFormat:@" (%@)", release.build];
         release.version = [shortVersion hasSuffix:suffix] ? shortVersion : [shortVersion stringByAppendingString:suffix];
         if (release.url && release.build) [releases addObject:release];
     }
     return releases;
 }
 
-// Like Sparkle, skips items tagged with a channel.
 static Release *offer(NSArray<Release *> *releases) {
     NSOperatingSystemVersion os = NSProcessInfo.processInfo.operatingSystemVersion;
     NSString *system = [NSString stringWithFormat:@"%ld.%ld.%ld", os.majorVersion, os.minorVersion, os.patchVersion];
@@ -377,7 +387,7 @@ static Release *offer(NSArray<Release *> *releases) {
     return best;
 }
 
-// Early Birds is a separate feed Dia only switches to per account; the dylib saves whichever feed Dia's updater asked for.
+// The dylib saves the feed Dia's updater used; Early Birds has its own.
 static NSString *diaFeed(void) {
     NSString *saved = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("diaFeed"), CFSTR("com.diapatches")));
     return env("DIAPATCH_FEED") ?: ([saved isKindOfClass:NSString.class] ? saved : nil) ?: infoOf(gPristine)[@"SUFeedURL"] ?: kFeed;
@@ -395,7 +405,6 @@ static Release *latest(int seconds, NSString **channel, NSString **problem) {
     return release;
 }
 
-// A DiaTweaks release is identified by its asset's digest, so replacing the asset on a published release counts as an update.
 static NSString *gStagedTweaks;
 
 static NSDictionary *installedRelease(void) { return [NSDictionary dictionaryWithContentsOfFile:inHome(@"release.plist")]; }
@@ -421,8 +430,7 @@ static NSString *sha256(NSString *file) {
 static NSDictionary *latestTweaks(int seconds, NSString **problem) {
     NSString *url = env("DIAPATCH_RELEASES") ?: kReleases, *output;
     if (fetch(url, seconds, nil, &output) != 0) {
-        *problem = [NSString stringWithFormat:@"cannot reach %@: %@", url,
-                                              [output stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]];
+        *problem = [NSString stringWithFormat:@"cannot reach %@: %@", url, trimmed(output)];
         return nil;
     }
     NSDictionary *release = [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
@@ -438,11 +446,45 @@ static NSDictionary *latestTweaks(int seconds, NSString **problem) {
               @"releaseNotes" : release[@"html_url"] ?: @"", @"url" : asset[@"browser_download_url"] };
 }
 
-static BOOL tweaksAvailable(NSDictionary *latest) {
-    return latest && ![installedRelease()[@"digest"] isEqual:latest[@"digest"]] && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
+static NSString *sourceCommit(void) {
+#ifdef DIATWEAKS_COMMIT
+    NSString *commit = env("DIAPATCH_COMMIT") ?: @DIATWEAKS_COMMIT;
+#else
+    NSString *commit = env("DIAPATCH_COMMIT");
+#endif
+    NSPredicate *hex = [NSPredicate predicateWithFormat:@"SELF MATCHES %@", @"[0-9a-f]{7,40}"];
+    return !installedRelease()[@"tag"] && [hex evaluateWithObject:commit] ? commit : nil;
 }
 
-// Dia quarantines what it and its children write, so Gatekeeper refuses the unnotarized diapatch a Dia-started run installs.
+// Any failure (unknown commit, no network) must leave the release on offer.
+static NSString *sourceNotOlder(NSDictionary *latest) {
+    NSString *commit = sourceCommit();
+    if (!commit || ![latest[@"tag"] isKindOfClass:NSString.class]) return nil;
+    NSString *base = env("DIAPATCH_COMPARE") ?: kCompare, *output;
+    NSString *tag = [latest[@"tag"] stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
+    // Without per_page the answer lists every commit and file between the two.
+    NSString *url = [NSString stringWithFormat:@"%@/%@...%@%@", base, tag, commit, [base hasPrefix:@"https:"] ? @"?per_page=1" : @""];
+    if (fetch(url, 10, nil, &output) != 0) return nil;
+    NSDictionary *compared = [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
+    NSString *status = [compared isKindOfClass:NSDictionary.class] ? compared[@"status"] : nil;
+    return [@[ @"ahead", @"identical" ] containsObject:status] ? [commit substringToIndex:7] : nil;
+}
+
+// An older updater skips files it doesn't know (v1.1.0 dropped app-icons), so a missing file re-offers the release.
+static BOOL tweaksInstalled(NSDictionary *latest) {
+    if (![installedRelease()[@"digest"] isEqual:latest[@"digest"]]) return NO;
+    for (NSString *path in tweaksTargets().allValues)
+        if (!exists(path)) return NO;
+    return YES;
+}
+
+static BOOL tweaksDiffer(NSDictionary *latest) {
+    return latest && !tweaksInstalled(latest) && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
+}
+
+static BOOL tweaksAvailable(NSDictionary *latest) { return tweaksDiffer(latest) && !sourceNotOlder(latest); }
+
+// Dia quarantines what it writes, so Gatekeeper would refuse the unnotarized diapatch it installs.
 static BOOL unquarantine(NSString *path) { return check(@[ @"/usr/bin/xattr", @"-dr", @"com.apple.quarantine", path ]); }
 
 static BOOL stageTweaks(void) {
@@ -450,7 +492,9 @@ static BOOL stageTweaks(void) {
     NSDictionary *latest = latestTweaks(30, &problem);
     if (!latest) return fail(@"%@", problem);
     if ([stagedRelease()[@"digest"] isEqual:latest[@"digest"]]) return say(@"DiaTweaks %@ is ready to install", latest[@"tag"]);
-    if (!tweaksAvailable(latest)) return say(@"DiaTweaks %@ is up to date", latest[@"tag"]);
+    if (!tweaksDiffer(latest)) return say(@"DiaTweaks %@ is up to date", latest[@"tag"]);
+    NSString *source = sourceNotOlder(latest);
+    if (source) return say(@"DiaTweaks %@ is older than the source build %@ installed, so it isn't offered", latest[@"tag"], source);
 
     NSString *work = [gCache stringByAppendingPathComponent:@"release"], *zip = [work stringByAppendingPathComponent:kReleaseAsset];
     NSString *building = [gStagedTweaks stringByAppendingString:@".building"];
@@ -463,7 +507,7 @@ static BOOL stageTweaks(void) {
     BOOL ok = ([sha256(zip) isEqual:latest[@"digest"]] || fail(@"the DiaTweaks %@ download doesn't match its digest", latest[@"tag"]))
         && removeTree(building) && makeDir(building) && check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, building ]) && unquarantine(building);
     for (NSString *name in tweaksTargets())
-        ok = ok && (exists([building stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@", latest[@"tag"], name));
+        ok = ok && (exists([building stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@, so it can't replace this install", latest[@"tag"], name));
     ok = ok && [@{ @"digest" : latest[@"digest"], @"tag" : latest[@"tag"] } writeToFile:[building stringByAppendingPathComponent:@"release.plist"] atomically:YES]
         && removeTree(gStagedTweaks) && moveBundle(building, gStagedTweaks);
     removeTree(work);
@@ -471,35 +515,77 @@ static BOOL stageTweaks(void) {
     return ok && say(@"DiaTweaks %@ is ready to install", latest[@"tag"]);
 }
 
+static NSString *agentPlist(void) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents/com.diapatches.passwords.plist"];
+}
+
+static NSString *agentService(void) { return [NSString stringWithFormat:@"gui/%d/com.diapatches.passwords", getuid()]; }
+
+// bootout returns before a busy job has exited, hence the wait.
+static void removeRelay(void) {
+    run(@[ @"/bin/launchctl", @"bootout", agentService() ], NULL);
+    for (int i = 0; i < 100 && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0; i++) usleep(100000);
+    removeTree(agentPlist());
+    for (NSString *name in @[ @"passwords-helper", @"passwords.sock", @"onepassword.sock" ]) removeTree(inHome(name));
+    removeTree(DPCopyFolder);
+}
+
 static BOOL applyTweaks(void) {
-    // A release staged a while ago may since have been replaced, or overtaken by what's installed.
+    // The staged release may since have been replaced or overtaken.
     NSString *problem;
     NSDictionary *latest = stagedRelease() ? latestTweaks(15, &problem) : nil;
-    if ([installedRelease()[@"digest"] isEqual:latest[@"digest"]]) removeTree(gStagedTweaks);
-    else if (tweaksAvailable(latest)) stageTweaks();  // if this fails, the staged release still installs
+    if (latest && tweaksInstalled(latest)) removeTree(gStagedTweaks);
+    else if (tweaksAvailable(latest)) stageTweaks();  // a failure still leaves the staged release to install
     NSString *tag = stagedRelease()[@"tag"];
     if (!tag) return removeTree(gStagedTweaks);
     NSDictionary<NSString *, NSString *> *targets = tweaksTargets();
+    removeRelay();
     BOOL ok = makeDir(inHome(@"bin")) && unquarantine(gStagedTweaks);
-    for (NSString *name in targets) ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:name], targets[name]);
+    // The marker tells a resumed apply (files already moved out) from a release that never had them.
+    NSString *started = [gStagedTweaks stringByAppendingPathComponent:@".applying"];
+    BOOL resumed = exists(started);
+    for (NSString *name in targets)
+        ok = ok && (resumed || exists([gStagedTweaks stringByAppendingPathComponent:name]) || fail(@"DiaTweaks %@ has no %@, so it can't replace this install", tag, name));
+    ok = ok && (resumed || [NSData.data writeToFile:started atomically:YES] || fail(@"cannot write %@", started));
+    for (NSString *name in targets) {
+        NSString *from = [gStagedTweaks stringByAppendingPathComponent:name];
+        ok = ok && (!exists(from) || moveBundle(from, targets[name]));
+    }
     ok = ok && moveBundle([gStagedTweaks stringByAppendingPathComponent:@"release.plist"], inHome(@"release.plist"));
     return ok && removeTree(gStagedTweaks) && say(@"installed DiaTweaks %@", tag);
 }
 
-#pragma mark - Commands
+static NSString *signatureOf(NSString *app) {
+    NSString *output;
+    if (run(@[ @"/usr/bin/codesign", @"-dr", @"-", app ], &output) != 0) return nil;
+    NSRange range = [output rangeOfString:@"designated => "];
+    return range.location == NSNotFound ? nil : trimmed([output substringFromIndex:NSMaxRange(range)]);
+}
+
+// Only a changed signature needs the reset: a stale grant stays on and macOS never prompts again.
+static void forgetScreenRecordingIfResigned(NSString *before) {
+    NSString *bundleID = infoOf(gApp)[@"CFBundleIdentifier"];
+    if (env("DIAPATCH_APP") || !bundleID || [before isEqual:signatureOf(gApp)]) return;
+    if (run(@[ @"/usr/bin/tccutil", @"reset", @"ScreenCapture", bundleID ], NULL) == 0)
+        say(@"Dia's signature changed, so macOS asks again before Dia can share your screen: allow Dia under System Settings > "
+            @"Privacy & Security > Screen & System Audio Recording, then reopen Dia");
+}
 
 static BOOL apply(void) {
     if (!exists(gStaged)) return YES;
     if (!stagedReady()) return unstage() && fail(@"deleted %@: a stopped run left it there; run `diapatch build` to stage Dia again", gStaged);
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch apply`");
-    // An official Dia that isn't the pristine copy was put there by hand, so the staged build is older.
+    // An official Dia that isn't the pristine copy was put there by hand: the staged build is older.
     if (claimsOfficial(gApp) && ![buildOf(gApp) isEqual:buildOf(gPristine)])
         return unstage() && say(@"kept the official Dia %@ at %@; run `diapatch install` to patch it", versionOf(gApp), gApp);
-    return moveBundle(gStaged, gApp) && removeTree(gReady) && say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
+    NSString *signature = signatureOf(gApp);
+    if (!(moveBundle(gStaged, gApp) && removeTree(gReady))) return NO;
+    forgetScreenRecordingIfResigned(signature);
+    return say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
 }
 
 static BOOL applyChosen(BOOL dia, BOOL tweaks) {
-    if (!dia && !tweaks) dia = tweaks = YES;
+    if (!dia && !tweaks) dia = YES, tweaks = installedRelease()[@"tag"] != nil;
     return (!tweaks || applyTweaks()) && (!dia || apply());
 }
 
@@ -514,7 +600,8 @@ static BOOL install(BOOL relaunch) {
             && verifyOfficial(copy) && moveBundle(copy, gPristine);
         if (!adopted) return removeTree(copy), NO;
     }
-    DPForgetApp(gPristine);  // also clears a copy registered before diapatch did this
+    removeRelay();
+    DPForgetApp(gPristine);  // clears a copy registered before diapatch did this
     if (!build(gPristine)) return NO;
     if (appRunning() && relaunch) {
         run(@[ @"/usr/bin/osascript", @"-e", @"tell application id \"company.thebrowser.dia\" to quit" ], NULL);
@@ -524,6 +611,23 @@ static BOOL install(BOOL relaunch) {
     if (isPatched(gApp)) return say(@"patched Dia %@ is staged and replaces Dia when it quits", versionOf(gStaged));
     return say(@"patched Dia %@ is staged: quit Dia, then run \"%@\" apply (or install --relaunch to do both)", versionOf(gStaged),
                inHome(@"bin/diapatch"));
+}
+
+static NSString *unpatchableFile(void) { return inHome(@"unpatchable.plist"); }
+
+static NSString *ownDigest(void) { return sha256(NSBundle.mainBundle.executablePath); }
+
+static void rememberUnpatchable(Release *release, NSString *action) {
+    NSString *line = [gFailure componentsSeparatedByString:@"\n"].firstObject;
+    note(@"Dia %@ can't be installed by this DiaTweaks (couldn't %@ it), so it isn't downloaded automatically again", release.version, action);
+    [@{ @"build" : release.build, @"diapatch" : ownDigest() ?: @"", @"reason" : [NSString stringWithFormat:@"Couldn’t %@ this version: %@", action, line ?: @"unknown error"] }
+        writeToFile:unpatchableFile() atomically:YES];
+}
+
+static NSString *unpatchableReason(Release *release) {
+    NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:unpatchableFile()];
+    NSString *reason = saved[@"reason"];
+    return release && [saved[@"build"] isEqual:release.build] && [saved[@"diapatch"] isEqual:ownDigest()] && [reason isKindOfClass:NSString.class] ? reason : nil;
 }
 
 static BOOL update(void) {
@@ -542,67 +646,32 @@ static BOOL update(void) {
         removeTree(work);
         return fail(@"cannot download Dia %@: %@", release.version, output);
     }
-    BOOL ok = check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, work ]) && check(@[ @"/usr/bin/xattr", @"-cr", work ])
-        && ([buildOf(app) isEqual:release.build] || fail(@"the download holds build %@, not %@", buildOf(app), release.build))
-        && verifyOfficial(app) && build(app) && makeDir(gPristine.stringByDeletingLastPathComponent) && moveBundle(app, gPristine)
-        && (DPForgetApp(gPristine), YES);
+    BOOL unpacked = check(@[ @"/usr/bin/ditto", @"-x", @"-k", zip, work ]) && check(@[ @"/usr/bin/xattr", @"-cr", work ]);
+    BOOL official = unpacked && ([buildOf(app) isEqual:release.build] || fail(@"the download holds build %@, not %@", buildOf(app), release.build))
+        && verifyOfficial(app);
+    BOOL built = official && build(app);
+    // Remember what unpacked but fails again on every launch; a bad download or a full disk can pass.
+    if (unpacked && !built) rememberUnpatchable(release, official ? @"patch" : @"verify");
+    BOOL ok = built && makeDir(gPristine.stringByDeletingLastPathComponent) && moveBundle(app, gPristine) && (DPForgetApp(gPristine), YES);
     removeTree(work);
+    if (ok) removeTree(unpatchableFile());
     return ok && say(@"Dia %@ is staged; relaunch Dia or run `diapatch apply` to install it", release.version);
 }
 
-#pragma mark - iCloud Passwords
-
-static NSString *agentPlist(void) {
-    return [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/LaunchAgents/%@.plist", DPPasswordsAgent]];
-}
-
-static NSString *agentService(void) { return [NSString stringWithFormat:@"gui/%d/%@", getuid(), DPPasswordsAgent]; }
-
-// bootout returns before a busy job has exited, and bootstrapping it again before then fails with an I/O error.
-static void removeAgent(void) {
-    run(@[ @"/bin/launchctl", @"bootout", agentService() ], NULL);
-    for (int i = 0; i < 100 && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0; i++) usleep(100000);
-    removeTree(agentPlist());
-}
-
-static NSDictionary *agent(void) {
-    NSMutableDictionary *environment = [NSMutableDictionary dictionary];
-    for (NSString *name in @[ @"DIAPATCH_HOME", @"DIAPATCH_APP" ]) environment[name] = env(name.UTF8String);
-    return DPPasswordsAgentPlist(gHome, inHome(@"bin/diapatch"), environment);
-}
-
-static BOOL installAgent(void) {
-    if (env("DIAPATCH_NO_AGENT")) return YES;
-    NSError *error;
-    removeAgent();
-    return makeDir(agentPlist().stringByDeletingLastPathComponent)
-        && ([agent() writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
-        && (removexattr(agentPlist().fileSystemRepresentation, "com.apple.quarantine", 0), YES)  // launchd refuses a quarantined agent
-        && check(@[ @"/bin/launchctl", @"bootstrap", [NSString stringWithFormat:@"gui/%d", getuid()], agentPlist() ]);
-}
-
-static BOOL agentCurrent(void) {
-    return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()] && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0;
-}
-
-// The diapatch that applies a self-update is the old one, so the new one's first host updates the agent.
-static void refreshAgent(void) {
-    if (agentCurrent()) return;
-    FILE *lock = fopen(inHome(@"diapatch.log").fileSystemRepresentation, "a");
-    if (lock && flock(fileno(lock), LOCK_EX | LOCK_NB) == 0 && !agentCurrent()) installAgent();
-    if (lock) fclose(lock);
-}
-
-// Another app's override of Apple's host isn't ours to remove.
+// Only a host pointing at this diapatch is ours to remove; the one kept aside goes back.
 static void removePasswordsHost(void) {
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"];
-    NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] ?: NSData.data options:0 error:NULL];
-    if ([host isKindOfClass:NSDictionary.class] && [host[@"path"] isEqual:inHome(@"bin/diapatch")]) removeTree(path);
+    for (NSString *file in @[ @"com.apple.passwordmanager.json", @"io.github.fanckush.betterpasswords.bridge.json", @"com.openpasswords.icloud.json", @"com.diapatches.passkeys.json" ]) {
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:[@"Library/Application Support/Google/Chrome/NativeMessagingHosts" stringByAppendingPathComponent:file]];
+        NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] ?: NSData.data options:0 error:NULL];
+        if (![host isKindOfClass:NSDictionary.class] || ![host[@"path"] isEqual:inHome(@"bin/diapatch")]) continue;
+        removeTree(path);
+        [NSFileManager.defaultManager moveItemAtPath:inHome(file) toPath:path error:NULL];
+    }
 }
 
 // Deletes only what DiaPatches creates, in case DIAPATCH_HOME points somewhere shared.
 static BOOL purge(void) {
-    // install.sh links the diatweaks command into the first of these it can write to.
+    // Mirrors install.sh's link locations.
     NSArray<NSString *> *linkDirs = env("DIATWEAKS_LINK_DIR") ? @[ env("DIATWEAKS_LINK_DIR") ]
         : @[ @"/opt/homebrew/bin", @"/usr/local/bin", [NSHomeDirectory() stringByAppendingPathComponent:@".local/bin"] ];
     for (NSString *dir in linkDirs) {
@@ -613,11 +682,15 @@ static BOOL purge(void) {
         say(@"deleted %@", link);
     }
     for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"release.plist", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist",
-                              @".diatweaks.lock", @".incoming", @"icons", @"app-icons", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch" ])
+                              @".diatweaks.lock", @".incoming", @"icons", @"app-icons", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch",
+                              @"passkey-helper", @"passkey-helper.lock", @"passkeys-extension", @"unpatchable.plist",
+                              @"methods.txt", @"views.txt", @"layout-loops.txt" ])
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
-        if ([name hasPrefix:@".update-"] && !removeTree(inHome(name))) return NO;  // checkouts left by an interrupted diatweaks update
-    if (!removeTree([gCache stringByAppendingPathComponent:@"download"]) || !removeTree([gCache stringByAppendingPathComponent:@"release"])) return NO;
+        if (([name hasPrefix:@".update-"] || [name hasPrefix:@"little-dia-"]) && !removeTree(inHome(name))) return NO;
+    removeSetAside();
+    for (NSString *name in @[ @"download", @"release", @"previews" ])
+        if (!removeTree([gCache stringByAppendingPathComponent:name])) return NO;
     rmdir(gCache.fileSystemRepresentation);
     if (rmdir(gHome.fileSystemRepresentation) == 0) return say(@"deleted %@", gHome);
     return say(@"kept %@: it holds files DiaPatches did not create", gHome);
@@ -625,14 +698,16 @@ static BOOL purge(void) {
 
 static BOOL uninstall(BOOL purgeFiles) {
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch uninstall`");
-    removeAgent();
-    removePasswordsHost();  // the official Dia reaches iCloud Passwords itself
+    removeRelay();
+    removePasswordsHost();
     if (!removeTree(DPCopyFolder)) return NO;
+    NSString *signature = signatureOf(gApp);
     if (!claimsOfficial(gApp)) {
         NSString *copy = [gPristine stringByAppendingString:@".restore"];
         if (!exists(gPristine)) return fail(@"no official Dia at %@; reinstall Dia from https://www.diabrowser.com", gPristine);
         if (!removeTree(copy) || !clone(gPristine, copy) || !moveBundle(copy, gApp)) return removeTree(copy), NO;
     }
+    forgetScreenRecordingIfResigned(signature);
     say(@"%@ is the official Dia %@", gApp, versionOf(gApp));
     return unstage() && (!purgeFiles || purge());
 }
@@ -678,6 +753,7 @@ static BOOL checkUpdates(void) {
             @"releaseNotes" : kDiaReleaseNotes,
             @"staged" : (stagedReady() ? versionOf(gStaged) : nil) ?: NSNull.null,
             @"available" : @((BOOL)(dia && newer(dia.build, buildOf(gPristine)) && !diaStaged)),
+            @"unpatchable" : unpatchableReason(dia) ?: NSNull.null,
             @"error" : dia ? NSNull.null : problem,
         },
         @"tweaks" : @{
@@ -702,16 +778,16 @@ static const char kUsage[] =
     "  update           download, verify and stage a newer Dia from your channel (stable or Early Birds)\n"
     "  self-update      download, verify and stage the latest DiaTweaks release if it isn't the one installed\n"
     "  apply [--wait PID] [--relaunch] [--dia] [--tweaks]\n"
-    "                   install what's staged once PID and Dia have quit, then reopen Dia; --dia or --tweaks limits it\n"
+    "                   install what's staged once PID and Dia have quit, then reopen Dia; --dia or --tweaks limits it,\n"
+    "                   and only --tweaks installs a staged DiaTweaks release over a source build\n"
     "  check --json     what's installed, available and staged for Dia and DiaTweaks\n"
     "  set-icon         use the icon chosen in the App Icon tweak\n"
     "  uninstall [--wait PID] [--relaunch] [--purge]\n"
     "                   put the official Dia back; --purge also deletes DiaPatches' files and the diatweaks command\n"
     "  status [--json]  official, installed, staged and offered versions, and the update channel\n"
-    "  passwords-relay  what launchd runs when the patched Dia's iCloud Passwords extension connects\n"
     "environment: DIAPATCH_IDENTITY (codesigning identity, remembered by install), DIAPATCH_HOME,\n"
-    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch),\n"
-    "  DIAPATCH_NO_AGENT (install leaves the iCloud Passwords relay's launchd job alone)\n";
+    "  DIAPATCH_APP, DIAPATCH_CACHE, DIAPATCH_FEED, DIAPATCH_RELEASES, DIAPATCH_COMMIT (the source commit installed), DIAPATCH_COMPARE, DIATWEAKS_LINK_DIR, DIAPATCH_NO_RELAUNCH (ignore --relaunch)\n"
+    "  DIAPATCH_APP (also keeps apply and uninstall from clearing Dia's Screen Recording permission)\n";
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
@@ -724,13 +800,10 @@ int main(int argc, const char *argv[]) {
         gStaged = inHome(@"staged/Dia.app");
         gReady = inHome(@"staged/ready");
         gStagedTweaks = inHome(@"staged/DiaTweaks");
-        // Started by Dia as a native messaging host.
         if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) {
             if (!DPIsPasswordsOrigin(argv[1])) return DPRunPasskeyHost(gHome);
-            refreshAgent();
             return DPRunPasswordsHost(gHome, gApp, argc, argv);
         }
-        if (argc > 1 && !strcmp(argv[1], "passwords-relay")) return DPRunPasswordsRelay(gHome, gApp);
 
         NSString *command = argc > 1 ? @(argv[1]) : @"";
         NSArray<NSString *> *allowed = @{
@@ -749,24 +822,24 @@ int main(int argc, const char *argv[]) {
             fputs(kUsage, help ? stdout : stderr);
             return help ? 0 : 2;
         }
-        // Tests patch a copy of Dia: opening it would share the real one's profile, and quitting by bundle ID can hit the real one.
+        // Tests patch a copy of Dia: relaunching or quitting by bundle ID could hit the real one.
         if (env("DIAPATCH_NO_RELAUNCH")) [flags removeObject:@"--relaunch"];
         if ([command isEqualToString:@"status"]) return status([flags containsObject:@"--json"]) ? 0 : 1;
         if ([command isEqualToString:@"check"]) return checkUpdates() ? 0 : 1;
 
-        if (pid) setsid();  // the caller (Dia) is about to quit: leave its process group
+        if (pid) setsid();  // Dia is about to quit: leave its process group
         gCommand = argv[1];
         if (!makeDir(gHome)) return 1;
         gLog = fopen(inHome(@"diapatch.log").fileSystemRepresentation, "a");
         if (!gLog) return fail(@"cannot open %@: %s", inHome(@"diapatch.log"), strerror(errno)), 1;
         setvbuf(gLog, NULL, _IOLBF, 0);
         if (pid) waitForQuit(pid);
-        if (flock(fileno(gLog), LOCK_EX | LOCK_NB) != 0) {  // the log doubles as the lock: one run at a time
+        if (flock(fileno(gLog), LOCK_EX | LOCK_NB) != 0) {
             say(@"waiting for another diapatch run to finish");
             flock(fileno(gLog), LOCK_EX);
         }
-        removeTree(inHome(@".trash"));  // what a run stopped mid-delete left
-        BOOL ok = [command isEqualToString:@"install"] ? install([flags containsObject:@"--relaunch"]) && installAgent()
+        removeSetAside(), emptyTrash();
+        BOOL ok = [command isEqualToString:@"install"] ? install([flags containsObject:@"--relaunch"])
             : [command isEqualToString:@"set-icon"]    ? switchIcon()
             : [command isEqualToString:@"build"]       ? build(gPristine) && say(@"staged patched Dia %@", versionOf(gStaged))
             : [command isEqualToString:@"update"]      ? update()
