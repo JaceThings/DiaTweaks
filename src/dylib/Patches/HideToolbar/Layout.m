@@ -121,6 +121,7 @@ void DPApplyToolbar(NSView *pane) {
             child.frame = view.bounds;
         }
     }
+    DPPlaceNavigationButtons(pane.window);
 }
 
 void DPRelayoutPanes(void) { DPRelayoutViews(DPPanes); }
