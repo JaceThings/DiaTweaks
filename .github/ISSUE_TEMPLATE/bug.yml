@@ -71,6 +71,7 @@ body:
         - Window Corners
         - App Icon
         - Hide Window Controls
+        - Private Window Theme
         - Skip Account
         - Allow 1Password
         - Allow Bitwarden
@@ -85,6 +86,7 @@ body:
         - Little Dia
         - Close with Escape
         - Follow Link Rules
+        - Remember Size and Position
         - Open Links from Tabs
         - Split TLS ClientHello
         - Patches pane in Settings

@@ -2,7 +2,7 @@
 #import "Commands/GroupTabs/GroupTabs.h"
 #import <objc/message.h>
 
-static char DPLittleKey, DPPageKey, DPChromeKey, DPSourceKey, DPPromotedKey, DPProfileKey;
+static char DPLittleKey, DPPageKey, DPChromeKey, DPSourceKey, DPPromotedKey, DPOpenedKey, DPProfileKey;
 
 static NSMutableArray<NSDictionary *> *DPExpected;
 static NSMutableArray *DPPendingPages;
@@ -70,6 +70,7 @@ static void DPClaim(NSWindow *window) {
     if (!DPExpected.count) [DPPendingPages removeAllObjects];
     // Chromium adds its title bar to the size it's given, and the title bar is gone here.
     NSRect frame = [link[@"frame"] rectValue];
+    DPSet(window, &DPOpenedKey, link[@"frame"]);
     [window setFrame:frame display:YES];
     [window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
@@ -148,8 +149,16 @@ void DPRefreshLittleDiaWindows(void) {
     DPRelayoutLittleDiaBars();
 }
 
+// Only a window that was moved or resized counts, so one opened over a tab doesn't become where the next link opens.
+static void DPRememberFrame(NSWindow *window) {
+    NSValue *opened = DPGet(window, &DPOpenedKey);
+    if (!opened || NSEqualRects(window.frame, opened.rectValue) || (window.styleMask & NSWindowStyleMaskFullScreen)) return;
+    DPSaveLittleDiaFrame(window.frame);
+}
+
 static void DPWindowWillClose(NSWindow *window) {
     if (!DPLittleDia.on || !DPIsLittleDiaWindow(window)) return;
+    if (DPLittleDiaRemember.on) DPRememberFrame(window);
     pid_t source = [DPGet(window, &DPSourceKey) intValue];
     BOOL key = window.isKeyWindow, promoted = [DPGet(window, &DPPromotedKey) boolValue];
     NSArray<NSDictionary *> *stack = DPWindowStack();  // Closing brings another of Dia's windows forward; this is how the rest were.
