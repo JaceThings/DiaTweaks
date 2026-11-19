@@ -48,6 +48,10 @@ static CAShapeLayer *DPStroke(CGPathRef path, NSColor *color, NSArray *dashes) {
 @implementation DPTabMark
 - (BOOL)isFlipped { return YES; }
 - (NSView *)hitTest:(NSPoint)point { return nil; }
+
+- (void)viewDidMoveToWindow {
+    if (self.window) dispatch_async(dispatch_get_main_queue(), ^{ DPUpdateTabMarks(); });
+}
 @end
 
 static BOOL DPInTabStrip(NSView *view) {
