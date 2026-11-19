@@ -88,7 +88,7 @@ static NSString *DPVerifySpares(DPPatch *patch) {
 
 DP_PATCH(DPCommandBarSpare) {
     .key = @"commandBarSpare",
-    .order = 94,
+    .order = 95,
     .title = @"Open the Bar Instantly",
     .detail = @"Keep a new tab ready, hidden, so the command bar opens at once instead of waiting for Dia to make one. Needs Hide New Tab Until Opened and tabs in the sidebar, and isn't used with Open New Tabs Next to Current. Experimental.",
     .symbol = @"bolt.fill",
