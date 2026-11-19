@@ -1,5 +1,8 @@
 (() => {
   const credentials = navigator.credentials;
+  // A password manager that keeps its own passkeys, such as Proton Pass, got here first: its prompt is the one wanted.
+  // One that comes after wraps this instead, and hands Apple Passwords what it doesn't take.
+  if (credentials.get !== CredentialsContainer.prototype.get || credentials.create !== CredentialsContainer.prototype.create) return;
   const create = credentials.create.bind(credentials);
   const get = credentials.get.bind(credentials);
   let nextId = 0;
