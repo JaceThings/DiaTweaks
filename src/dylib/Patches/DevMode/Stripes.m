@@ -160,8 +160,8 @@ static NSView *DPWindowTint(NSWindow *window) {
     CGFloat height = NSHeight(self.bounds), step = (DPStripeWidth + DPStripeSpacing) * M_SQRT2;
     CGMutablePathRef path = CGPathCreateMutable();
     for (CGFloat x = -height - step - fmod(origin.x + origin.y, step); x < NSWidth(self.bounds) + height; x += step) {
-        CGPathMoveToPoint(path, NULL, x, height);
-        CGPathAddLineToPoint(path, NULL, x + height, 0);
+        CGPathMoveToPoint(path, NULL, x - DPStripeWidth, height + DPStripeWidth);
+        CGPathAddLineToPoint(path, NULL, x + height + DPStripeWidth, -DPStripeWidth);
     }
     self.stripes.path = path;
     CGPathRelease(path);
