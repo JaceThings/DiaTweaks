@@ -162,6 +162,9 @@ NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void
     return button;
 }
 
+// A label that truncates reports the width it has, not the width its text needs.
+static CGFloat DPTextWidth(NSTextField *label) { return ceil([label.cell cellSizeForBounds:NSMakeRect(0, 0, 10000, 16)].width); }
+
 static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     DPBarButton *button = [[DPBarButton alloc] initWithSymbol:@"arrow.up.forward" size:12 label:@"Open in Dia"];
     button.pill = YES;
@@ -171,7 +174,7 @@ static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     button.pillLabel = [NSTextField labelWithString:@"Open in Dia"];
     button.pillLabel.font = [NSFont systemFontOfSize:13];
     button.pillLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    button.pillLabel.frame = NSMakeRect(30, 6, ceil(button.pillLabel.intrinsicContentSize.width), 16);
+    button.pillLabel.frame = NSMakeRect(30, 6, DPTextWidth(button.pillLabel), 16);
     [button addSubview:button.pillIcon];
     [button addSubview:button.pillLabel];
     button.toolTip = @"Open this page in a tab (⌘O)";
@@ -237,7 +240,7 @@ static BOOL DPNameOpenButton(DPLittleBar *bar) {
     NSString *label = DPOpenInLabel(profile, DPLittleDiaProfiles().count);
     if ([label isEqual:open.pillLabel.stringValue]) return NO;
     open.pillLabel.stringValue = label;
-    open.pillLabel.frame = NSMakeRect(30, 6, MIN(ceil(open.pillLabel.intrinsicContentSize.width), DPOpenLabelMax), 16);
+    open.pillLabel.frame = NSMakeRect(30, 6, MIN(DPTextWidth(open.pillLabel), DPOpenLabelMax), 16);
     open.toolTip = [NSString stringWithFormat:@"Open this page in a tab in %@ (⌘O)", profile];
     [open invalidateIntrinsicContentSize];
     return YES;

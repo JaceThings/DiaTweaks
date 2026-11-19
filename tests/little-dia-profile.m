@@ -15,6 +15,9 @@ int main(void) {
         label(@"many profiles", @"Work", 5, @"Open in Work");
         label(@"name not known yet", nil, 2, @"Open in Dia");
         label(@"empty name", @"", 2, @"Open in Dia");
+        label(@"name of spaces", @"  ", 2, @"Open in Dia");
+        label(@"name of Braille's blank cell", @"\u2800", 3, @"Open in Dia");
+        label(@"padded name", @" Work\u2800", 2, @"Open in Work");
     }
     if (failures) return 1;
     puts("PASS: the Open button names the profile only when there are several");
