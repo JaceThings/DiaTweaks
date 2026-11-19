@@ -12,6 +12,11 @@ NSArray<NSString *> *DPLittleDiaProfiles(void) {
     return [[DPScriptWindow() valueForKey:@"appleScriptProfiles"] valueForKey:@"name"] ?: @[];
 }
 
+// With one profile there is nothing to tell apart, so the button keeps its name.
+NSString *DPOpenInLabel(NSString *profile, NSUInteger profiles) {
+    return profile.length && profiles > 1 ? [@"Open in " stringByAppendingString:profile] : @"Open in Dia";
+}
+
 static NSMenu *DPFilled(NSMenu *menu) {
     if ([menu.delegate respondsToSelector:@selector(menuNeedsUpdate:)]) [menu.delegate menuNeedsUpdate:menu];
     return menu;

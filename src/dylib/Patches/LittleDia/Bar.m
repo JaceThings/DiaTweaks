@@ -8,10 +8,11 @@
 @property (nonatomic) NSButton *profiles;
 @property (nonatomic) NSView *address;
 @property (nonatomic) NSView *divider;
+@property (nonatomic, copy) NSString *profile;  // The one the Open button was last named for.
 @property (nonatomic) NSTimer *timer;
 @end
 
-static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20;
+static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20, DPOpenLabelMax = 150;
 
 @interface DPBarDivider : NSView
 @end
@@ -81,7 +82,7 @@ void DPMatchPage(NSView *row, id page) {
 - (void)run:(id)sender { if (self.handler) self.handler(); }
 
 - (NSSize)intrinsicContentSize {
-    return self.pill ? NSMakeSize(30 + ceil(self.pillLabel.intrinsicContentSize.width) + 9, 28) : NSMakeSize(28, 28);
+    return self.pill ? NSMakeSize(30 + NSWidth(self.pillLabel.frame) + 9, 28) : NSMakeSize(28, 28);
 }
 
 - (NSView *)hitTest:(NSPoint)point { return [super hitTest:point] ? self : nil; }
@@ -169,6 +170,7 @@ static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     button.pillIcon.frame = NSMakeRect(10, 6, 16, 16);
     button.pillLabel = [NSTextField labelWithString:@"Open in Dia"];
     button.pillLabel.font = [NSFont systemFontOfSize:13];
+    button.pillLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     button.pillLabel.frame = NSMakeRect(30, 6, ceil(button.pillLabel.intrinsicContentSize.width), 16);
     [button addSubview:button.pillIcon];
     [button addSubview:button.pillLabel];
@@ -226,6 +228,21 @@ static void DPUpdateButtons(DPLittleBar *bar) {
     bar.leading[3].enabled = page != nil;
 }
 
+// The tab goes to the profile the window is in, so with several profiles the button says which. YES if its width changed.
+static BOOL DPNameOpenButton(DPLittleBar *bar) {
+    NSString *profile = DPLittleDiaProfileName(bar.title.window);
+    if (!profile.length || [profile isEqual:bar.profile]) return NO;
+    bar.profile = profile;
+    DPBarButton *open = (DPBarButton *)bar.open;
+    NSString *label = DPOpenInLabel(profile, DPLittleDiaProfiles().count);
+    if ([label isEqual:open.pillLabel.stringValue]) return NO;
+    open.pillLabel.stringValue = label;
+    open.pillLabel.frame = NSMakeRect(30, 6, MIN(ceil(open.pillLabel.intrinsicContentSize.width), DPOpenLabelMax), 16);
+    open.toolTip = [NSString stringWithFormat:@"Open this page in a tab in %@ (⌘O)", profile];
+    [open invalidateIntrinsicContentSize];
+    return YES;
+}
+
 static DPLittleBar *DPMakeBar(NSView *title) {
     DPLittleBar *bar = [DPLittleBar new];
     bar.title = title;
@@ -241,12 +258,14 @@ static DPLittleBar *DPMakeBar(NSView *title) {
         else NSBeep();
     });
     bar.profiles = DPMakeProfilesButton();
+    DPNameOpenButton(bar);
     bar.address = DPMakeAddressView(title);
     bar.divider = DPMakeDivider();
     __weak DPLittleBar *weakBar = bar;
     bar.timer = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
         if (!weakBar.title.window) return;
         DPUpdateButtons(weakBar);
+        if (DPNameOpenButton(weakBar)) DPRelayoutLittleDiaBars();
         DPRefreshAddressView(weakBar.address);
         DPMatchPage(weakBar.title.superview, DPLittleDiaPage(weakBar.title.window));
     }];
