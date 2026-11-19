@@ -16,7 +16,6 @@ static void DPAddSiteItem(NSMenu *menu) {
     if (!DPDevMode.on || !host || settings < 0) return;
     BOOL on = DPDevModeOn(host);
     NSMenuItem *item = DPMenuItem(@"Developer Mode", ^{ DPSetDevModeOn(host, !on); });
-    item.image = [NSImage imageWithSystemSymbolName:@"hammer" accessibilityDescription:nil];
     item.state = on ? NSControlStateValueOn : NSControlStateValueOff;
     DPSet(item, &DPSiteItemKey, @YES);
     NSInteger toggle = [menu indexOfItemWithTitle:@"Automatic Picture-In-Picture"];
