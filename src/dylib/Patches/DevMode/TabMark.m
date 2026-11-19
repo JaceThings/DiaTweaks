@@ -6,13 +6,15 @@ static char DPMarkKey;
 static NSView *DPShapeIn(NSView *tab) { return DPFindView(tab, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabShape); }); }
 
 // The selected tab's fill is clipped to Dia's own tab shape.
-static CGPathRef DPShapePath(NSView *shape) {
+static NSView *DPFillIn(NSView *shape) {
     for (NSView *view in shape.subviews) {
         CAShapeLayer *mask = (CAShapeLayer *)view.layer.mask;
-        if ([mask isKindOfClass:CAShapeLayer.class] && mask.path) return mask.path;
+        if ([mask isKindOfClass:CAShapeLayer.class] && mask.path && !DPIsKind(view, "DPTabMark")) return view;
     }
-    return NULL;
+    return nil;
 }
+
+static CGPathRef DPShapePath(NSView *shape) { return ((CAShapeLayer *)DPFillIn(shape).layer.mask).path; }
 
 static NSString *DPHostOfTab(NSView *tab) {
     NSDictionary *views = DPSwiftValue(tab, @"contentViews");
@@ -89,8 +91,13 @@ static void DPUpdateTab(NSView *tab) {
     if (striped || mark.striped) {
         NSView *content = DPFindView(tab, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabContentView); });
         if (content.appearance != appearance) content.appearance = appearance;
+        NSView *fill = DPFillIn(shape);
+        if (fill.alphaValue != !striped) fill.alphaValue = !striped;
     }
-    if (!path) return [mark removeFromSuperview];
+    if (!path) {
+        [mark removeFromSuperview];
+        return DPSet(tab, &DPMarkKey, nil);
+    }
     if (!mark || mark.striped != striped || !CGPathEqualToPath(path, (__bridge CGPathRef)mark.path)) {
         [mark removeFromSuperview];
         DPSet(tab, &DPMarkKey, mark = DPMakeMark(path, striped));
