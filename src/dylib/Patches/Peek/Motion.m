@@ -147,7 +147,7 @@ static char DPGrowthKey;
     growth.done = done;
     growth.start = CACurrentMediaTime();
     DPSet(peek, &DPGrowthKey, growth);  // The display link doesn't retain it.
-    growth.link = [peek displayLinkWithTarget:growth selector:@selector(step)];
+    growth.link = [peek.window displayLinkWithTarget:growth selector:@selector(step)];
     growth.link.preferredFrameRateRange = DPPeekFrameRate;
     [growth.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
 }
@@ -163,7 +163,7 @@ static char DPGrowthKey;
     }
     if (!settled) return;
     // Give the opening mesh and Chromium's full viewport time to present before handoff.
-    if (peek.window && ([peek.card.layer animationForKey:@"peek"] || ++self.settledFrames < 3)) return;
+    if (peek.window && !peek.isHiddenOrHasHiddenAncestor && ([peek.card.layer animationForKey:@"peek"] || ++self.settledFrames < 3)) return;
     [self.link invalidate];
     if (self.done) self.done();
     self.done = nil;
@@ -172,6 +172,13 @@ static char DPGrowthKey;
 @end
 
 @implementation DPPeekCard (Motion)
+
+- (void)cancelExpansion {
+    DPPeekGrowth *growth = DPGet(self, &DPGrowthKey);
+    [growth.link invalidate];
+    growth.done = nil;
+    DPSet(self, &DPGrowthKey, nil);
+}
 
 - (void)animateIn {
     self.controls.alphaValue = self.card.alphaValue = self.dim.alphaValue = 0;

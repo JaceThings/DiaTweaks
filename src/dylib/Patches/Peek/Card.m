@@ -7,6 +7,10 @@ static const CGFloat DPPeekEdgeAlpha = 0.12;
 
 static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(area) * 0.09, MAX(10, NSHeight(area) * 0.012)); }
 
+@interface DPPeekCard ()
+@property (nonatomic, weak) NSResponder *peekResponder;
+@end
+
 @implementation DPPeekCard
 
 - (BOOL)isFlipped { return YES; }
@@ -45,7 +49,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 
 - (void)followPane {
     NSView *pane = self.pane, *root = self.superview;
-    if (!pane.window || !root) return;
+    if (self.hidden || !pane.window || !root) return;
     NSRect frame = [root convertRect:pane.bounds fromView:pane];
     if (NSEqualRects(frame, self.frame)) return;
     NSAnimationContext *dia = NSAnimationContext.currentContext;
@@ -81,7 +85,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 
 - (void)close:(DPPeekExit)exit {
     if (![self stopWatching]) return;
-    if (exit == DPPeekClose) [self animateOut:^{ [self finish:exit]; }];
+    if (exit == DPPeekClose && !self.isHiddenOrHasHiddenAncestor) [self animateOut:^{ [self finish:exit]; }];
     else if (exit == DPPeekTab) [self animateExpand:^{ [self finish:exit]; }];
     else [self finish:exit];
 }
@@ -89,6 +93,7 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 - (void)handOverTo:(NSView *)destination attach:(void (^)(void))attach {
     NSWindow *window = self.window;
     [self stopWatching];
+    DPPeekForgetCard(self);
     BOOL promoting = destination && self.grown >= 1;
     if (promoting) {
         // Keep the expanded card in place until its web view is attached to the tab.
@@ -115,9 +120,9 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 @end
 
 DPPeekCard *DPPeekCardIn(NSWindow *window) {
-    return (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
-        return [view isKindOfClass:DPPeekCard.class] && !((DPPeekCard *)view).closing;
-    });
+    for (DPPeekCard *peek in DPPeekCardsIn(window))
+        if (peek.window == window && !peek.closing && !peek.isHiddenOrHasHiddenAncestor) return peek;
+    return nil;
 }
 
 static NSView *DPPeekPane(NSWindow *window, NSRect area) {
@@ -140,6 +145,69 @@ static NSView *DPPeekHolder(NSWindow *window, NSView *pane) {
         if (view.layer.cornerRadius > 0 && view.layer.masksToBounds) return view;
     return window.contentView;
 }
+
+static void DPPeekWatchPane(DPPeekCard *peek, NSView *pane) {
+    if (peek.paneObserver) [NSNotificationCenter.defaultCenter removeObserver:peek.paneObserver];
+    peek.paneObserver = nil;
+    peek.pane = pane;
+    if (!pane) return;
+    pane.postsFrameChangedNotifications = YES;
+    __weak DPPeekCard *weak = peek;
+    peek.paneObserver = [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification object:pane queue:nil
+                                                                    usingBlock:^(NSNotification *note) { [weak followPane]; }];
+}
+
+@implementation DPPeekCard (Origin)
+
+- (void)setOriginVisible:(BOOL)visible {
+    NSWindow *window = self.originWindow;
+    NSView *root = window.contentView;
+    if (!root || (visible && self.closing) || (visible && !self.isHiddenOrHasHiddenAncestor && self.window == window)) return;
+    if (!visible && self.hidden && self.superview == root) return;
+
+    NSView *previous = self.superview;
+    NSRect frame = previous.window == window ? [root convertRect:self.frame fromView:previous] : root.bounds;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (!visible) {
+        NSResponder *responder = window.firstResponder;
+        if ([responder isKindOfClass:NSView.class] && [(NSView *)responder isDescendantOf:self]) {
+            self.peekResponder = responder;
+            [window makeFirstResponder:nil];
+        }
+        self.hidden = YES;
+        // Keep the hosted Chromium page mounted even when Dia removes the old tab's pane.
+        if (previous != root) [root addSubview:self positioned:NSWindowAbove relativeTo:nil];
+        self.frame = frame;
+    } else {
+        NSView *pane = self.pane;
+        if (pane.window != window || pane.isHiddenOrHasHiddenAncestor)
+            pane = DPPeekPane(window, [window convertRectToScreen:[root convertRect:frame toView:nil]]);
+        NSView *holder = DPPeekHolder(window, pane);
+        if (holder != previous) [holder addSubview:self positioned:NSWindowAbove relativeTo:nil];
+        self.frame = pane ? [holder convertRect:pane.bounds fromView:pane] : holder.bounds;
+        DPPeekWatchPane(self, pane);
+        self.needsLayout = YES;
+        [self layoutSubtreeIfNeeded];
+        self.hidden = NO;
+    }
+    [CATransaction commit];
+    [window resetCursorRects];
+    if (!visible) return;
+
+    __weak DPPeekCard *weak = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DPPeekCard *peek = weak;
+        NSWindow *window = peek.window;
+        if (!window.isKeyWindow || peek.closing || peek.isHiddenOrHasHiddenAncestor) return;
+        NSResponder *current = window.firstResponder;
+        // Let Dia finish selecting the tab. Leave the address field or sidebar focused if either won.
+        if (current != window && !([current isKindOfClass:NSView.class] && [(NSView *)current isDescendantOf:peek.pane])) return;
+        [window makeFirstResponder:peek.peekResponder ?: peek.host];
+    });
+}
+
+@end
 
 @interface DPPeekBacking : NSView
 @end
@@ -205,7 +273,7 @@ static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         DPPeekCard *peek = weak;
-        if (!peek || event.window != peek.window) return event;
+        if (!peek || peek.isHiddenOrHasHiddenAncestor || event.window != peek.window) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad);
         // A page's field is not an NSText; Escape there must cancel an input method's composition, not close the card.
         id responder = peek.window.firstResponder;
@@ -238,13 +306,14 @@ NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page) {
     return host;
 }
 
-DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink) {
+DPPeekCard *DPPeekShowCard(NSWindow *window, NSString *originTabID, id<DPPeekPage> page, NSView *warmHost, NSRect screenLink) {
     NSView *host = warmHost ?: [page createPaneHostView], *pane = DPPeekPane(window, screenLink);
     if (!window || !host || DPPeekCardIn(window)) return nil;
     NSView *holder = DPPeekHolder(window, pane);
     DPPeekCard *peek = [[DPPeekCard alloc] initWithFrame:pane ? [holder convertRect:pane.bounds fromView:pane] : holder.bounds];
     peek.autoresizingMask = pane ? NSViewNotSizable : NSViewWidthSizable | NSViewHeightSizable;
-    peek.pane = pane;
+    peek.originWindow = window;
+    peek.originTabID = originTabID;
     peek.page = page;
     peek.host = host;
     peek.dim = DPLayerView(NSView.class);
@@ -270,16 +339,12 @@ DPPeekCard *DPPeekShowCard(NSWindow *window, id<DPPeekPage> page, NSView *warmHo
     [peek.card addSubview:peek.clip];
     for (NSView *view in @[peek.dim, peek.card, peek.controls]) [peek addSubview:view];
     [holder addSubview:peek positioned:NSWindowAbove relativeTo:nil];
+    DPPeekTrackCard(peek);
+    DPPeekWatchPane(peek, pane);
     [peek layoutSubtreeIfNeeded];
     if (!warmHost) [page attachToPaneHostView:host];
     [window resetCursorRects];
     [window makeFirstResponder:host];
-    if (pane) {
-        pane.postsFrameChangedNotifications = YES;
-        __weak DPPeekCard *weak = peek;
-        peek.paneObserver = [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification object:pane queue:nil
-                                                                        usingBlock:^(NSNotification *note) { [weak followPane]; }];
-    }
     peek.monitor = DPWatchKeys(peek);
     peek.link = [peek convertRect:[window convertRectFromScreen:screenLink] fromView:nil];
     [peek animateIn];

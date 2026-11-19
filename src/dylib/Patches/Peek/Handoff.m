@@ -1,4 +1,5 @@
 #import "Patches/Peek/Peek.h"
+#import "Patches/CommandBar/Tabs.h"
 #import <dlfcn.h>
 
 static char DPPeekCoverKey;
@@ -16,6 +17,7 @@ static DPPeekWindowCapture DPPeekCaptureOwnWindow(void) {
 
 @interface DPPeekCover : NSWindow
 @property (nonatomic, weak) NSView *destination;
+@property (nonatomic, copy) NSString *originTabID, *destinationTabID;
 @property (nonatomic, strong) CADisplayLink *displayLink;
 @property (nonatomic, copy) void (^promote)(void);
 @property (nonatomic) NSUInteger visibleFrames;
@@ -62,13 +64,33 @@ static DPPeekWindowCapture DPPeekCaptureOwnWindow(void) {
 void DPPeekCompleteHandoff(DPPeekCard *peek, NSView *destination) {
     DPPeekCover *cover = DPGet(peek, &DPPeekCoverKey);
     DPSet(peek, &DPPeekCoverKey, nil);
-    if (cover.parentWindow && destination) cover.destination = destination;
-    else [cover dismiss];
+    if (cover.parentWindow && destination) {
+        cover.destination = destination;
+        NSString *active = DPActiveTabID(cover.parentWindow);
+        if (active && ![active isEqual:cover.originTabID]) cover.destinationTabID = active;
+    } else [cover dismiss];
+}
+
+void DPPeekHandoffSelectionChanged(NSWindow *window, NSString *active) {
+    for (NSWindow *child in [window.childWindows copy]) {
+        if (![child isKindOfClass:DPPeekCover.class]) continue;
+        DPPeekCover *cover = (DPPeekCover *)child;
+        if (active && [active isEqual:cover.destinationTabID ?: cover.originTabID]) continue;
+        if (active && !cover.promote && !cover.destination && DPPeekGiving) {
+            // Selecting the tab Dia is adopting this Peek into is part of the promotion.
+            cover.destinationTabID = active;
+            continue;
+        }
+        void (^promote)(void) = active ? cover.promote : nil;
+        cover.promote = nil;
+        [cover dismiss];
+        if (promote) dispatch_async(dispatch_get_main_queue(), promote);
+    }
 }
 
 static void DPPeekShowCover(DPPeekCard *peek, CGImageRef contents, void (^promote)(void)) {
     NSWindow *parent = peek.window;
-    if (!parent.isVisible || !contents) return promote();
+    if (!parent.isVisible || peek.isHiddenOrHasHiddenAncestor || !contents) return promote();
     NSRect frame = [parent convertRectToScreen:[peek convertRect:peek.bounds toView:nil]];
     DPPeekCover *cover = [[DPPeekCover alloc] initWithContentRect:frame styleMask:NSWindowStyleMaskBorderless
                                                           backing:NSBackingStoreBuffered defer:NO];
@@ -90,6 +112,7 @@ static void DPPeekShowCover(DPPeekCard *peek, CGImageRef contents, void (^promot
     content.wantsLayer = YES;
     cover.contentView = content;
     cover.promote = promote;
+    cover.originTabID = peek.originTabID;
     DPSet(peek, &DPPeekCoverKey, cover);
     [parent addChildWindow:cover ordered:NSWindowAbove];
     cover.displayLink = [parent displayLinkWithTarget:cover selector:@selector(step:)];
@@ -106,7 +129,7 @@ void DPPeekPrepareHandoff(DPPeekCard *peek, void (^complete)(void)) {
     NSWindow *window = peek.window;
     NSScreen *primary = NSScreen.screens.firstObject;
     DPPeekWindowCapture capture = DPPeekCaptureOwnWindow();
-    if (!capture || !primary || !window.isVisible || window.windowNumber <= 0 || window.sharingType == NSWindowSharingNone) return complete();
+    if (!capture || !primary || !window.isVisible || peek.isHiddenOrHasHiddenAncestor || window.windowNumber <= 0 || window.sharingType == NSWindowSharingNone) return complete();
     NSRect frame = [window convertRectToScreen:[peek convertRect:peek.bounds toView:nil]];
     if (NSIsEmptyRect(frame)) return complete();
     CGRect screenBounds = CGRectMake(NSMinX(frame), NSMaxY(primary.frame) - NSMaxY(frame), NSWidth(frame), NSHeight(frame));

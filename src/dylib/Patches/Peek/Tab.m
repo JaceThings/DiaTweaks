@@ -1,5 +1,4 @@
 #import "Patches/Peek/Peek.h"
-#import "Patches/CommandBar/Tabs.h"
 
 static id DPTabState(NSView *tab) {
     return DPSwiftValue(DPSwiftValue(DPSwiftValue(tab, @"viewModel"), @"stateSubject"), @"currentValue");
@@ -65,7 +64,7 @@ static BOOL DPTabIsTop(NSView *tab) {
 
 @interface DPPeekTabBadge : NSView
 @property (nonatomic, weak) DPPeekCard *peek;
-@property (nonatomic, copy) NSString *contentKey, *frontIDAtOpen;
+@property (nonatomic, copy) NSString *contentKey;
 @property (nonatomic) BOOL pinned;
 @property (nonatomic, strong) NSTrackingArea *tabTracking;
 @property (nonatomic, weak) NSView *trackedTab;
@@ -92,26 +91,12 @@ static BOOL DPTabIsTop(NSView *tab) {
 - (void)watch:(NSTimer *)timer {
     DPPeekCard *peek = self.peek;
     if (!peek || peek.closing) return [self stop];
-    NSView *tab = self.superview;
-    if (!self.contentKey) {
-        // A pinned tab's state is briefly unreadable at times; only a readable, unselected one means it was left.
-        if (self.pinned && tab && DPTabState(tab) && !DPTabSelected(tab)) [self closePeek];
-        return;
-    }
-    tab = DPPeekTabWithContent(peek.window, self.contentKey);
-    if (!tab) {
-        // A missing row says nothing (the sidebar builds rows lazily); only the tab closing or another coming to the front does.
-        NSString *front = DPActiveTabID(peek.window);
-        if (!peek.source || (self.frontIDAtOpen && front && ![front isEqual:self.frontIDAtOpen])) [self closePeek];
-        return;
-    }
-    if (self.superview != tab) [tab addSubview:self];
-    if (!DPTabSelected(tab)) [self closePeek];
-}
-
-- (void)closePeek {
-    [self stop];
-    [self.peek close:DPPeekClose];
+    if (peek.hidden || !self.contentKey) return;
+    NSWindow *window = peek.originWindow;
+    NSView *current = self.superview;
+    if (current.window == window && [[DPTabState(current) description] containsString:self.contentKey]) return;
+    NSView *tab = DPPeekTabWithContent(window, self.contentKey);
+    if (tab && current != tab) [tab addSubview:self];
 }
 
 - (void)stop {
@@ -143,7 +128,6 @@ void DPPeekShowTabBadge(DPPeekCard *peek, id source) {
     badge.peek = peek;
     badge.pinned = pinned;
     badge.contentKey = DPPeekTabContentKey(tab);
-    badge.frontIDAtOpen = DPActiveTabID(peek.window);
     eyes.frame = NSOffsetRect(badge.bounds, 0, !pinned && top ? 2 : 0);
     eyes.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [badge addSubview:eyes];
