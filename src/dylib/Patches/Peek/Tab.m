@@ -92,21 +92,19 @@ static BOOL DPTabIsTop(NSView *tab) {
 - (void)watch:(NSTimer *)timer {
     DPPeekCard *peek = self.peek;
     if (!peek || peek.closing) return [self stop];
-    NSView *tab = self.superview;
-    if (!self.contentKey) {
-        // A pinned tab's state is briefly unreadable at times; only a readable, unselected one means it was left.
-        if (self.pinned && tab && DPTabState(tab) && !DPTabSelected(tab)) [self closePeek];
-        return;
-    }
-    tab = DPPeekTabWithContent(peek.window, self.contentKey);
-    if (!tab) {
-        // A missing row says nothing (the sidebar builds rows lazily); only the tab closing or another coming to the front does.
-        NSString *front = DPActiveTabID(peek.window);
-        if (!peek.source || (self.frontIDAtOpen && front && ![front isEqual:self.frontIDAtOpen])) [self closePeek];
-        return;
-    }
-    if (self.superview != tab) [tab addSubview:self];
-    if (!DPTabSelected(tab)) [self closePeek];
+    NSWindow *window = peek.window;
+    NSString *front = DPActiveTabID(window);
+    if (!peek.source) return [self closePeek];
+    NSView *tab = self.contentKey ? DPPeekTabWithContent(window, self.contentKey) : self.superview;
+    if (tab && self.superview != tab) [tab addSubview:self];
+    // Scripted identity survives lazily removed sidebar rows and profile switches.
+    BOOL visible = self.frontIDAtOpen && front ? [front isEqual:self.frontIDAtOpen] : tab && DPTabSelected(tab);
+    if (peek.hidden == !visible) return;
+    if (!visible && [(NSView *)window.firstResponder isKindOfClass:NSView.class] &&
+        [(NSView *)window.firstResponder isDescendantOf:peek]) [window makeFirstResponder:nil];
+    peek.hidden = !visible;
+    if (visible) peek.needsLayout = YES;
+    [window resetCursorRects];
 }
 
 - (void)closePeek {
@@ -122,7 +120,6 @@ static BOOL DPTabIsTop(NSView *tab) {
 
 void DPPeekShowTabBadge(DPPeekCard *peek, id source) {
     NSView *tab = DPPeekOriginTab(peek.window, source);
-    if (!tab) return;
     BOOL pinned = DPIsKind(tab, DPDiaPinnedTab), top = DPTabIsTop(tab);
     NSTextField *eyes = [NSTextField labelWithString:@"👀"];
     eyes.font = [NSFont systemFontOfSize:pinned ? 11 : 12];
@@ -149,11 +146,17 @@ void DPPeekShowTabBadge(DPPeekCard *peek, id source) {
     [badge addSubview:eyes];
     [tab addSubview:badge];
     peek.tabBadge = badge;
-    badge.watch = [NSTimer scheduledTimerWithTimeInterval:0.6 target:badge selector:@selector(watch:) userInfo:nil repeats:YES];
+    badge.watch = [NSTimer scheduledTimerWithTimeInterval:0.1 target:badge selector:@selector(watch:) userInfo:nil repeats:YES];
 }
 
 void DPPeekHideTabBadge(DPPeekCard *peek) {
     [(DPPeekTabBadge *)peek.tabBadge stop];
     [peek.tabBadge removeFromSuperview];
     peek.tabBadge = nil;
+}
+
+void DPPeekSyncTabs(NSWindow *window) {
+    NSArray *cards = [DPFindViews("DPPeekCard") copy];
+    for (DPPeekCard *peek in cards)
+        if (peek.window == window) [(DPPeekTabBadge *)peek.tabBadge watch:nil];
 }

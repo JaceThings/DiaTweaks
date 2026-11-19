@@ -131,3 +131,14 @@ clean:
 	rm -rf build
 
 .PHONY: all check clean test patch
+
+# Keep the Peek Tabs regression separate from the upstream check rule.
+check: check-peek-tabs
+
+check-peek-tabs: build/peek-tabs
+	build/peek-tabs
+
+build/peek-tabs: tests/peek-tabs.m src/dylib/Patches/Peek/Tab.m src/dylib/Patches/Peek/Peek.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $<
+
+.PHONY: check-peek-tabs

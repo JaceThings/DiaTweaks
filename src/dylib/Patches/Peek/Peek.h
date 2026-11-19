@@ -73,6 +73,7 @@ CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFl
 BOOL DPPeekInPinnedRow(NSWindow *window, id page);
 void DPPeekShowTabBadge(DPPeekCard *peek, id source);
 void DPPeekHideTabBadge(DPPeekCard *peek);
+void DPPeekSyncTabs(NSWindow *window);
 
 double DPPeekDarkness(void);
 double DPPeekResponse(void);

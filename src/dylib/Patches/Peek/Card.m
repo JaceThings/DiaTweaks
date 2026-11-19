@@ -81,7 +81,8 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 
 - (void)close:(DPPeekExit)exit {
     if (![self stopWatching]) return;
-    if (exit == DPPeekClose) [self animateOut:^{ [self finish:exit]; }];
+    if (self.hidden) [self finish:exit];
+    else if (exit == DPPeekClose) [self animateOut:^{ [self finish:exit]; }];
     else if (exit == DPPeekTab) [self animateExpand:^{ [self finish:exit]; }];
     else [self finish:exit];
 }
@@ -99,8 +100,9 @@ static NSRect DPPeekCardRect(NSRect area) { return NSInsetRect(area, NSWidth(are
 @end
 
 DPPeekCard *DPPeekCardIn(NSWindow *window) {
+    DPPeekSyncTabs(window);
     return (DPPeekCard *)DPFindView(window.contentView, ^BOOL(NSView *view) {
-        return [view isKindOfClass:DPPeekCard.class] && !((DPPeekCard *)view).closing;
+        return [view isKindOfClass:DPPeekCard.class] && !((DPPeekCard *)view).closing && !view.isHiddenOrHasHiddenAncestor;
     });
 }
 
@@ -189,7 +191,7 @@ static id DPWatchKeys(DPPeekCard *card) {
     __weak DPPeekCard *weak = card;
     return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         DPPeekCard *peek = weak;
-        if (!peek || event.window != peek.window) return event;
+        if (!peek || event.window != peek.window || DPPeekCardIn(event.window) != peek) return event;
         NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad);
         // A page's field is not an NSText; Escape there must cancel an input method's composition, not close the card.
         id responder = peek.window.firstResponder;
