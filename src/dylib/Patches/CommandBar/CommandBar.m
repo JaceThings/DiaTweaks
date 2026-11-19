@@ -369,7 +369,7 @@ static void DPCloseOnNewLayout(NSWindow *window) {
         if (!strip) DPSet(overlay, &DPLayoutKey, @(DPHasStrip(window)));
         else if (strip.boolValue != DPHasStrip(window)) DPCancelCommandBar(overlay);
     }
-    if (DPHasStrip(window)) DPDropSpare(window);
+    if (DPSpareIn(window) && DPHasStrip(window)) DPDropSpare(window);
 }
 
 static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
