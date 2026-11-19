@@ -9,9 +9,12 @@ static NSString *const DPSparesKey = @"commandBarSpares";
 // Dia brings tabs back after quitting or crashing, so spares and the tabs bars were open over are noted, and closed at the
 // next launch while still empty. Never a space's only tab, which would close the window with it.
 void DPNoteSpare(NSString *tabID, BOOL parked) {
-    NSMutableArray *spares = [[DPSettings() arrayForKey:DPSparesKey] ?: @[] mutableCopy];
-    if (tabID) [spares removeObject:tabID];
-    if (tabID && parked) [spares addObject:tabID];
+    NSArray *noted = [DPSettings() arrayForKey:DPSparesKey] ?: @[];
+    BOOL keep = parked && DPSparesOn();  // With the option off, nothing is noted, so nothing is closed at the next launch.
+    if (!tabID || keep == [noted containsObject:tabID]) return;
+    NSMutableArray *spares = noted.mutableCopy;
+    if (keep) [spares addObject:tabID];
+    else [spares removeObject:tabID];
     [DPSettings() setObject:spares forKey:DPSparesKey];
 }
 
