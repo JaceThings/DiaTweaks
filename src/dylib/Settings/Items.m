@@ -61,8 +61,9 @@ NSURL *DPWikiURL(DPPatch *patch) {
 }
 
 - (void)sync {
-    self.state = self.patch->on;
-    self.enabled = !DPWhyDisabled(self.patch);
+    // Paused: show what comes back, but nothing can be turned on until it does.
+    self.state = DPPaused ? DPSavedOn(self.patch) : self.patch->on;
+    self.enabled = !DPWhyDisabled(self.patch) && !DPPaused;
     DPSetHint(self.hiddenIcon, DPWhyHidden(self.patch));
     self.hiddenIcon.hidden = !DPHintOf(self.hiddenIcon);
 }

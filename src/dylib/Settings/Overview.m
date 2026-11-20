@@ -6,6 +6,7 @@
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *sectionHiders;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSImageView *> *sectionEyes;
 @property (nonatomic, strong) NSTextField *noResults;
+@property (nonatomic, strong) NSView *pausedRow;
 @end
 
 @implementation DPOverviewView
@@ -29,6 +30,8 @@
         [rows[title] addObject:row];
     };
     if (DPSafeMode) add(@"Safe Mode", [self makeSafeModeRow]);
+    // Always built, so pausing from Terminal shows up here without reopening Settings.
+    add(@"Paused", self.pausedRow = [self makePausedRow]);
     for (NSUInteger i = 0; i < DPPatchCount; i++) {
         DPPatch *patch = DPPatches[i];
         if (DPRequired(patch)) continue;
@@ -68,6 +71,18 @@
 
 - (void)leaveSafeMode:(id)sender {
     DPLeaveSafeMode();
+    DPHandOffAndQuit(@[@"apply"]);
+}
+
+- (NSView *)makePausedRow {
+    NSView *row = DPRow(DPLabel(@"Patches are paused, so none of them are running. Your settings are kept.", 13, NSFontWeightRegular, NSColor.labelColor),
+                        [NSButton buttonWithTitle:@"Turn Patches Back On" target:self action:@selector(resume:)]);
+    [self.searchText setObject:@"paused pause turn patches back on resume" forKey:row];
+    return row;
+}
+
+- (void)resume:(id)sender {
+    DPSetPaused(NO);
     DPHandOffAndQuit(@[@"apply"]);
 }
 
@@ -115,6 +130,7 @@
         for (NSView *row in section[2]) {
             BOOL visible = YES;
             for (NSString *word in words) visible &= !word.length || [[self.searchText objectForKey:row] localizedStandardContainsString:word];
+            if (row == self.pausedRow) visible &= DPPaused;
             NSArray<NSView *> *arranged = ((NSStackView *)row.superview).arrangedSubviews;
             NSUInteger index = [arranged indexOfObject:row];
             row.hidden = !visible;
