@@ -5,6 +5,7 @@
 BOOL DPBesideSidebar(NSView *container) { return NO; }
 BOOL DPLittleDiaIsOver(NSWindow *window) { return NO; }
 void DPRepaintTabs(NSWindow *window) {}
+void DPPlaceNavigationButtons(NSWindow *window) {}
 void DPOnLaunch(void (^block)(void)) {}
 void DPApplyHides(DPPatch *patch) {}
 NSString *DPVerifyHides(DPPatch *patch) { return nil; }

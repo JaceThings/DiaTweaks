@@ -2,7 +2,7 @@
 #include <simd/simd.h>
 
 extern DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPShowToolbarWithTopTabs, DPPlainSelectedTab;
-extern DPPatch DPShowLoadingProgress;
+extern DPPatch DPShowLoadingProgress, DPNavigationInSidebar;
 extern NSHashTable<NSView *> *DPPanes;
 
 @interface DPToolbarHover : NSObject
@@ -31,6 +31,15 @@ void DPInstallToolbarPermissionReveal(void);
 void DPRelayoutPanes(void);
 void DPApplyRelayoutPanes(DPPatch *patch);
 void DPRepaintTabs(NSWindow *window);
+void DPPlaceNavigationButtons(NSWindow *window);
+
+// Back, forward and reload on the sidebar's profile row, pressing Dia's own in the hidden toolbar, or one button with them in a menu when they don't fit.
+@interface DPNavigationHolder : NSView
+@property (nonatomic, copy) NSArray<NSView *> *(^dia)(void);
+@property (nonatomic, readonly) BOOL wanted;
++ (DPNavigationHolder *)inHeader:(NSView *)header create:(BOOL)create;
+- (void)show:(BOOL)shown;
+@end
 
 void DPShowCopyToast(NSView *pane, NSString *message);
 
