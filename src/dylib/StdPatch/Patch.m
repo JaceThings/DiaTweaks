@@ -23,15 +23,16 @@ DPPatch *DPRequired(DPPatch *patch) {
     return DPPatchNamed(patch->requires);
 }
 
+static NSTimer *DPEaseTimer;
+
 static void DPAnimate(void) {
-    static NSTimer *timer;
     static CFTimeInterval start;
     static CGFloat *from;
     from = from ?: calloc(DPPatchCount, sizeof *from);
     start = CACurrentMediaTime();
     for (NSUInteger i = 0; i < DPPatchCount; i++) from[i] = DPPatches[i]->progress;
-    if (timer) return;
-    timer = [NSTimer timerWithTimeInterval:1.0 / 120 repeats:YES block:^(NSTimer *t) {
+    if (DPEaseTimer) return;
+    DPEaseTimer = [NSTimer timerWithTimeInterval:1.0 / 120 repeats:YES block:^(NSTimer *t) {
         CGFloat elapsed = CACurrentMediaTime() - start, omega = 22;
         BOOL done = elapsed >= DPAnimationDuration * 2;
         CGFloat eased = done ? 1 : 1 - (1 + omega * elapsed) * exp(-omega * elapsed);
@@ -39,10 +40,16 @@ static void DPAnimate(void) {
         for (NSUInteger i = 0; i < DPPatchCount; i++) if (DPPatches[i]->relayout) DPPatches[i]->relayout();
         if (done) {
             [t invalidate];
-            timer = nil;
+            DPEaseTimer = nil;
         }
     }];
-    [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+    [NSRunLoop.mainRunLoop addTimer:DPEaseTimer forMode:NSRunLoopCommonModes];
+}
+
+BOOL DPAnimating(void) {
+    BOOL animating = DPEaseTimer != nil;
+    for (NSUInteger i = 0; i < DPPatchCount; i++) animating |= DPPatches[i]->animating && DPPatches[i]->animating();
+    return animating;
 }
 
 BOOL DPTesting;
@@ -88,13 +95,23 @@ NSString *DPRelayProblem(void) {
     return nil;
 }
 
+// The folder to take back is the one just below the nearest folder above that the user can open and write, which can be several levels up.
+static NSString *DPFolderToRepair(NSString *folder) {
+    NSString *support = DPAppSupport(@""), *repair = nil;
+    for (NSString *dir = folder; [dir hasPrefix:support]; dir = dir.stringByDeletingLastPathComponent) {
+        if (access(dir.fileSystemRepresentation, W_OK | X_OK) == 0) return repair && [NSFileManager.defaultManager fileExistsAtPath:repair] ? repair : nil;
+        repair = dir;
+    }
+    return nil;
+}
+
 NSString *DPWriteProblem(NSString *path, NSError *error) {
     path = error.userInfo[NSFilePathErrorKey] ?: path;
     NSString *problem = [NSString stringWithFormat:@"Couldn’t write %@: %@", path, error.localizedDescription];
-    if (error.code != NSFileWriteNoPermissionError) return problem;
-    NSString *folder = path.stringByDeletingLastPathComponent;
+    NSString *folder = error.code == NSFileWriteNoPermissionError ? DPFolderToRepair(path.stringByDeletingLastPathComponent) : nil;
+    if (!folder) return problem;
     if ([folder hasPrefix:NSHomeDirectory()]) folder = [@"$HOME" stringByAppendingString:[folder substringFromIndex:NSHomeDirectory().length]];
-    return [problem stringByAppendingFormat:@" To fix it, run sudo chown -R \"$(whoami)\" \"%@\" && chmod -R u+w \"%@\" in Terminal, then turn this on again.", folder, folder];
+    return [problem stringByAppendingFormat:@" To fix it, run sudo chown -R \"$(whoami)\" \"%@\" && chmod -R u+rwX \"%@\" in Terminal, then turn this on again.", folder, folder];
 }
 
 NSString *DPHostProblem(NSString *manifest, NSString *name) {

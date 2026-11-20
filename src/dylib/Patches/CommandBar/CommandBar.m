@@ -1,34 +1,23 @@
 #import "StdPatch/StdPatch.h"
 #import "Patches/CommandBar/Tabs.h"
+#import "Patches/CommandBar/AutoPip.h"
+#import "Patches/CommandBar/HideTab.h"
+#import "Patches/CommandBar/CommandBarOverlay.h"
 #import "Patches/CompactCommandBar/CompactCommandBar.h"
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarInteractive, DPCommandBarKeepText;
-static char DPOverlayKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey;
+char DPOverlayKey;
+static char DPLayoutKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey, DPSeenKey;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow",
                 *const DPShadowIntensityKey = @"commandBarShadowIntensity";
 
-@interface DPCommandBarOverlay : NSView
-@property(weak) NSView *page, *panel;
-@property(weak) NSWindow *host;
-@property(strong) NSView *shade, *windowBlur;
-@property(strong) id openedTab, returnTab, keyMonitor;
-@property(strong) NSArray<NSView *> *shownShadows;
-@property(strong) NSTimer *watch;
-@property(copy) NSString *startURL;
-@property CGFloat collapsedHeight, collapsedWidth;
-@property CFTimeInterval sizedAt;
-@property BOOL picked, overBlank, passingThrough;
-@end
-
 @interface NSObject (DPCAFilter)
 + (id)filterWithType:(NSString *)type;
 @end
 
-static void DPCancelCommandBar(DPCommandBarOverlay *overlay);
-
-static NSUserDefaults *DPSettings(void) {
+NSUserDefaults *DPSettings(void) {
     static NSUserDefaults *settings;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ settings = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; });
@@ -41,7 +30,7 @@ static double DPTuned(NSString *key) {
     return [([DPSettings() objectForKey:key] ?: defaults[key]) doubleValue];
 }
 
-static NSMenuItem *DPMenuItemTitled(NSMenu *menu, NSString *title) {
+NSMenuItem *DPMenuItemTitled(NSMenu *menu, NSString *title) {
     for (NSMenuItem *item in menu.itemArray) {
         NSMenuItem *found = [item.title isEqual:title] ? item : DPMenuItemTitled(item.submenu, title);
         if (found) return found;
@@ -58,10 +47,21 @@ static BOOL DPIsShortcut(NSEvent *event, NSString *menuTitle) {
         && [event.charactersIgnoringModifiers caseInsensitiveCompare:item.keyEquivalent] == NSOrderedSame;
 }
 
-static void DPNoteActiveTab(NSWindow *window) {
-    NSString *active = DPActiveTabID(window);
+// Tabs a window had when it was first noted or that have been in front, and tabs left on Dia's own page: the replacement for a closed last tab is made as it closes, so it is none of them.
+static NSMutableSet<NSString *> *DPSeenTabs, *DPKeptTabs;
+
+static NSString *DPNoteActiveTab(NSWindow *window, id scriptWindow, BOOL *seen) {
+    NSString *active = DPActiveTabIDIn(scriptWindow);
+    DPSeenTabs = DPSeenTabs ?: [NSMutableSet set];
+    if (scriptWindow && !DPGet(window, &DPSeenKey)) {
+        DPSet(window, &DPSeenKey, @YES);
+        for (id tab in [scriptWindow valueForKey:@"appleScriptTabs"]) [DPSeenTabs addObject:DPTabID(tab) ?: @""];
+    }
+    if (seen) *seen = active && [DPSeenTabs containsObject:active];
+    if (active) [DPSeenTabs addObject:active];
     NSArray *recent = DPGet(window, &DPRecentKey);
     if (active && ![recent.lastObject isEqual:active]) DPSet(window, &DPRecentKey, recent.count ? @[ recent.lastObject, active ] : @[ active ]);
+    return active;
 }
 
 static NSString *DPPreviousTabID(NSWindow *window) {
@@ -75,8 +75,8 @@ static NSMutableSet<NSString *> *DPWindowSet(NSWindow *window, const void *key) 
     return set;
 }
 
-static NSMutableSet<NSString *> *DPBlanks(NSWindow *window) { return DPWindowSet(window, &DPBlankKey); }
-static NSMutableSet<NSString *> *DPSplits(NSWindow *window) { return DPWindowSet(window, &DPSplitKey); }
+NSMutableSet<NSString *> *DPBlanks(NSWindow *window) { return DPWindowSet(window, &DPBlankKey); }
+NSMutableSet<NSString *> *DPSplits(NSWindow *window) { return DPWindowSet(window, &DPSplitKey); }
 
 static BOOL DPInSplit(NSView *view) {
     NSView *pane = view;
@@ -87,13 +87,20 @@ static BOOL DPInSplit(NSView *view) {
 
 #pragma mark Overlay
 
-static NSTextView *DPBarText(DPCommandBarOverlay *overlay) {
+NSTextView *DPBarText(DPCommandBarOverlay *overlay) {
     return (NSTextView *)DPFindView(overlay.panel, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
 }
 
-static void DPFocusBar(DPCommandBarOverlay *overlay) {
+void DPFocusBar(DPCommandBarOverlay *overlay) {
     NSTextView *text = DPBarText(overlay);
     if (text && overlay.host.firstResponder != text) [overlay.host makeFirstResponder:text];
+}
+
+// Dia closes ⌘L's bar when a new tab opens, which DPGoBack's return to the old tab stops.
+static void DPCloseCommandBarPopover(NSWindow *window) {
+    NSView *popover = DPFindView(window.contentView.superview, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaPopover) && !DPIsFloatingChat(view); });
+    NSView *text = DPFindView(popover, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
+    [(NSTextView *)text doCommandBySelector:@selector(cancelOperation:)];
 }
 
 static CGFloat DPSuggestionsHeight(NSView *panel) {
@@ -198,7 +205,7 @@ static void DPUpdatePanelShadow(NSView *panel) {
     }
 }
 
-static void DPShowShade(DPCommandBarOverlay *overlay) {
+void DPShowShade(DPCommandBarOverlay *overlay) {
     [overlay.shade removeFromSuperview];
     [overlay.windowBlur removeFromSuperview];
     overlay.shade = overlay.windowBlur = nil;
@@ -236,7 +243,16 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 - (NSView *)hitTest:(NSPoint)point {
     if (self.passingThrough) return nil;
     NSView *hit = [super hitTest:point];
-    return !hit || (self.panel && [hit isDescendantOf:self.panel]) ? hit : self;
+    if (!hit || (self.panel && [hit isDescendantOf:self.panel])) return hit;
+    return DPHiding() && DPInTabLayout([self viewUnder:point]) ? nil : self;
+}
+
+- (NSView *)viewUnder:(NSPoint)point {
+    NSView *content = self.superview;
+    self.passingThrough = YES;
+    NSView *under = [content hitTest:[content convertPoint:point toView:content.superview]];
+    self.passingThrough = NO;
+    return under;
 }
 
 - (void)mouseDown:(NSEvent *)event { DPCancelCommandBar(self); }
@@ -254,31 +270,60 @@ static void DPShowShade(DPCommandBarOverlay *overlay) {
 
 #pragma mark Presenting
 
+// An empty window shows no toolbar or bookmarks bar either, as in Arc; only what was hidden here is shown again.
+static void DPHideBars(NSView *page, BOOL hidden) {
+    NSView *pane = page.superview;
+    while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
+    for (NSView *bar in pane.subviews) {
+        if (!DPIsKind(bar, DPDiaToolbar) && !DPIsKind(bar, DPDiaBookmarksBar)) continue;
+        if (hidden && !bar.hidden) DPSet(bar, &DPBlankKey, @YES);
+        else if (hidden || !DPGet(bar, &DPBlankKey)) continue;
+        else DPSet(bar, &DPBlankKey, nil);
+        bar.hidden = hidden;
+    }
+}
+
+void DPShowHiddenBars(void) {
+    for (NSView *page in DPFindViews(DPDiaNewTabPage)) DPHideBars(page, NO);
+}
+
 // Relaid out so the toolbar options for new tab pages see it come and go.
 static void DPHidePage(NSView *page, BOOL hidden) {
     page.hidden = hidden;
+    if (!hidden) DPHideBars(page, NO);
     for (NSView *view = page.superview; view; view = view.superview)
         if (DPIsKind(view, DPDiaContentPane)) view.needsLayout = YES;
 }
 
-static void DPMakeBlank(NSView *page) {
-    NSString *active = DPActiveTabID(page.window);
-    if (!active) return;
-    [DPBlanks(page.window) addObject:active];
-    DPSet(page, &DPBlankKey, @YES);
-    DPHidePage(page, YES);
+// The strip can't close up around a tab left out of it.
+BOOL DPHasStrip(NSWindow *window) {
+    return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaTabStripTabs) && !view.isHiddenOrHasHiddenAncestor; }) != nil;
 }
 
-static NSView *DPBlankPage(NSWindow *window) {
+static BOOL DPHasURL(id tab);
+
+static void DPMakeBlank(NSView *page, NSString *tab, NSString *closing) {
+    if (!tab || DPInSplit(page)) return;
+    [DPBlanks(page.window) addObject:tab];
+    DPSet(page, &DPBlankKey, @YES);
+    DPHidePage(page, YES);
+    if (DPHasStrip(page.window) || !DPOnlyListedTab(tab, closing, page.window) || DPHasURL(DPScriptTab(page.window, tab))) return;
+    DPHideBlank(tab, YES, page.window);
+    if (DPHidesTab(tab)) DPHideBars(page, YES);
+}
+
+NSView *DPBlankPage(NSWindow *window) {
     return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaNewTabPage) && DPGet(view, &DPBlankKey); });
 }
 
-static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
+id DPDismiss(DPCommandBarOverlay *overlay, BOOL closing) {
     [overlay.watch invalidate];
+    DPShowTabRow(DPTabID(overlay.openedTab), closing);
     if (overlay.keyMonitor) [NSEvent removeMonitor:overlay.keyMonitor];
     overlay.keyMonitor = nil;
     [overlay.shade removeFromSuperview];
     if (!overlay.host) return nil;
+    if (overlay.openedTab) DPStandInFor(overlay.host, nil);
     if (DPGet(overlay.host, &DPOverlayKey) == overlay) DPSet(overlay.host, &DPOverlayKey, nil);
     overlay.host = nil;
     NSView *page = overlay.page, *panel = overlay.panel, *home = DPGet(panel, &DPHomeKey);
@@ -293,21 +338,37 @@ static id DPDismissCommandBar(DPCommandBarOverlay *overlay) {
     return overlay.openedTab;
 }
 
-static void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
+static BOOL DPNowhereToGo(DPCommandBarOverlay *overlay) {
+    NSWindow *host = overlay.host;
+    id scriptWindow = overlay.returnTab ? DPScriptWindow(host) : nil;
+    return !overlay.returnTab || (!DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab)) && [[scriptWindow valueForKey:@"appleScriptTabs"] count] < 2);
+}
+
+static id DPDismissCommandBar(DPCommandBarOverlay *overlay) { return DPDismiss(overlay, NO); }
+
+void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     NSView *page = overlay.page;
     BOOL overBlank = overlay.overBlank;
     if (DPIsKind(page, DPDiaPopover)) [DPBarText(overlay) doCommandBySelector:@selector(cancelOperation:)];
     else if (DPCommandBarKeepText.on) DPSet(overlay.host, &DPLeftTextKey, DPBarText(overlay).string.copy);
-    NSWindow *host = overlay.host;
-    BOOL nowhereToGo = !overlay.returnTab || (!DPScriptTab(host, DPTabID(overlay.returnTab)) && [[DPScriptWindow(host) valueForKey:@"appleScriptTabs"] count] < 2);
-    id tab = DPDismissCommandBar(overlay);
+    BOOL nowhereToGo = DPNowhereToGo(overlay);
+    id tab = DPDismiss(overlay, !overBlank && !nowhereToGo);
     if (!tab) return;
     // Closing a window's only tab would close the window, and Dia with it.
-    if (overBlank || nowhereToGo) DPMakeBlank(page);
+    if (overBlank || nowhereToGo) DPMakeBlank(page, DPTabID(tab), nil);
     else DPCloseTab(tab);
 }
 
-static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
+// Switching the tab layout lists the tabs afresh, the bar's new tab with them, so the bar closes.
+static void DPCloseOnNewLayout(NSWindow *window) {
+    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    NSNumber *strip = DPGet(overlay, &DPLayoutKey);
+    if (!overlay.openedTab || !DPHidesTab(DPTabID(overlay.openedTab))) return;
+    if (!strip) DPSet(overlay, &DPLayoutKey, @(DPHasStrip(window)));
+    else if (strip.boolValue != DPHasStrip(window)) DPCancelCommandBar(overlay);
+}
+
+static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
     NSWindow *window = overlay.host;
     NSView *content = window.contentView;
     if (!window) return (void)DPDismissCommandBar(overlay);
@@ -316,14 +377,17 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay) {
         [content addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
     }
     DPPlaceShade(overlay.shade, window);
-    id tab = DPScriptTab(window, DPTabID(overlay.openedTab));
+    scriptWindow = scriptWindow ?: DPScriptWindow(window);
+    id tab = DPScriptTabIn(scriptWindow, DPTabID(overlay.openedTab));
     if (!tab) return (void)DPDismissCommandBar(overlay);
-    NSString *active = DPActiveTabID(window);
+    NSString *active = DPActiveTabIDIn(scriptWindow);
     if (active && ![active isEqual:DPTabID(tab)] && ![active isEqual:DPTabID(overlay.returnTab)]) {
-        DPDismissCommandBar(overlay);
+        NSString *left = DPTabID(overlay.returnTab);
+        DPDismiss(overlay, YES);
+        DPStandInWhileSwitching(window, DPTabID(tab), left);
         return DPCloseTab(tab);
     }
-    if (overlay.returnTab && !DPScriptTab(window, DPTabID(overlay.returnTab))) {
+    if (overlay.returnTab && !DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab))) {
         DPDismissCommandBar(overlay);
         return DPFocusTab(tab);
     }
@@ -340,7 +404,7 @@ static void DPWatchSoon(DPCommandBarOverlay *overlay, int checks) {
     __weak DPCommandBarOverlay *weak = overlay;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         if (!weak.host) return;
-        DPWatchNewTab(weak);
+        DPWatchNewTab(weak, nil);
         DPWatchSoon(weak, checks - 1);
     });
 }
@@ -351,12 +415,15 @@ static BOOL DPClickSubmits(DPCommandBarOverlay *overlay, NSEvent *event) {
     return (suggestions && [hit isDescendantOf:suggestions]) || (go && [hit isDescendantOf:go]);
 }
 
-static id DPWatchKeys(DPCommandBarOverlay *overlay) {
+id DPWatchKeys(DPCommandBarOverlay *overlay) {
     __weak DPCommandBarOverlay *weak = overlay;
-    return [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
+    NSEventMask mask = NSEventMaskKeyDown | NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown;
+    return [NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *event) {
         DPCommandBarOverlay *overlay = weak;
         if (!overlay || event.window != overlay.host) return event;
+        if (event.type == NSEventTypeLeftMouseDown || event.type == NSEventTypeRightMouseDown) return DPHiding() ? DPTabLayoutMouseDown(overlay, event) : event;
         BOOL click = event.type == NSEventTypeLeftMouseUp;
+        if (click) DPTabLayoutMouseUp(overlay);
         if (click || event.keyCode == 36 || event.keyCode == 76) {
             BOOL submits = click ? DPClickSubmits(overlay, event) : !DPBarText(overlay).hasMarkedText;
             overlay.picked = overlay.picked || (submits && DPBarText(overlay).string.length > 0);
@@ -381,6 +448,8 @@ static id DPWatchKeys(DPCommandBarOverlay *overlay) {
 static void DPGoBack(DPCommandBarOverlay *overlay) {
     NSView *web = DPFindView(overlay.host.contentView, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor; });
     NSView *paneHost = web.superview;
+    NSString *returnID = DPTabID(overlay.returnTab);
+    __weak DPCommandBarOverlay *weak = overlay;
     DPFocusTab(overlay.returnTab);
     if (web) {
         CFRunLoopObserverRef beforeDraw = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, NO, 0, ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
@@ -390,14 +459,20 @@ static void DPGoBack(DPCommandBarOverlay *overlay) {
                 [web.topAnchor constraintEqualToAnchor:paneHost.topAnchor], [web.bottomAnchor constraintEqualToAnchor:paneHost.bottomAnchor],
                 [web.leadingAnchor constraintEqualToAnchor:paneHost.leadingAnchor], [web.trailingAnchor constraintEqualToAnchor:paneHost.trailingAnchor],
             ]];
+            // A bar cancelled before this ran leaves focus on the pane host, which Dia took while the web view was out.
+            NSWindow *window = paneHost.window;
+            NSResponder *focus = window.firstResponder;
+            if (weak.superview || (focus != paneHost && focus != window) || ![DPActiveTabID(window) isEqual:returnID]) return;
+            NSView *page = DPFindView(web, ^BOOL(NSView *view) { return DPIsKind(view, "RenderWidgetHostViewCocoa"); });
+            if (page) [window makeFirstResponder:page];
         });
         CFRunLoopAddObserver(CFRunLoopGetMain(), beforeDraw, kCFRunLoopCommonModes);
         CFRelease(beforeDraw);
     }
-    __weak DPCommandBarOverlay *weak = overlay;
     dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (!weak.superview) return;
+        // Focusing the tab that is already in front makes Dia refocus its page and lose what the bar was doing, such as a Return typed just before.
+        if (!weak.superview || [DPActiveTabID(weak.host) isEqual:DPTabID(weak.returnTab)]) return;
         DPFocusTab(weak.returnTab);
         dispatch_async(dispatch_get_main_queue(), ^{ if (weak.superview) DPFocusBar(weak); });
     });
@@ -450,16 +525,28 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
     return overlay;
 }
 
+static BOOL DPHasURL(id tab) { return [[[tab valueForKey:@"URL"] description] length] > 0; }
+
 static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     NSWindow *window = page.window;
-    id openedTab = [DPScriptWindow(window) valueForKey:@"activeTab"];
+    DPCloseCommandBarPopover(window);
+    id scriptWindow = DPScriptWindow(window), openedTab = [scriptWindow valueForKey:@"activeTab"];
     NSString *openedID = DPTabID(openedTab), *returnID = DPPreviousTabID(window);
     NSArray *recent = DPGet(window, &DPRecentKey);
     if (![recent.lastObject isEqual:openedID]) returnID = recent.lastObject;
+    id returnTab = overBlank || !returnID ? nil : DPScriptTabIn(scriptWindow, returnID);
+    DPKeptTabs = DPKeptTabs ?: [NSMutableSet set];
+    BOOL hasPage = openedID && !overBlank && (DPHasURL(openedTab) || [DPKeptTabs containsObject:openedID]);
+    BOOL returnsToPage = returnTab && [DPKeptTabs containsObject:returnID] && !DPHasURL(returnTab);
+    // Back, switching tabs and moving a tab bring its new tab page back: a tab that had a page keeps Dia's own, and a new tab from one showing it does, as going back would put that page under the bar.
     // Going back to a split while Dia is still switching tabs crashes it, so new tabs in or from one keep Dia's own page.
-    if (DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) return (void)DPSet(page, &DPOwnBarKey, @YES);
-    DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, overBlank || !returnID ? nil : DPScriptTab(window, returnID)) : nil;
-    if (!overlay) return;
+    if (hasPage || returnsToPage || DPInSplit(page) || (!overBlank && [DPSplits(window) containsObject:returnID])) {
+        if (openedID) [DPKeptTabs addObject:openedID];
+        DPStopExpecting();
+        return (void)DPSet(page, &DPOwnBarKey, @YES);
+    }
+    DPCommandBarOverlay *overlay = openedTab ? DPLiftBar(page, returnTab) : nil;
+    if (!overlay) return DPStopExpecting();
     if (overBlank) {
         [DPBlanks(window) removeObject:openedID];
         DPSet(page, &DPBlankKey, nil);
@@ -472,16 +559,38 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     overlay.overBlank = overBlank;
     overlay.openedTab = openedTab;
     overlay.startURL = [openedTab valueForKey:@"URL"];
+    DPSet(overlay, &DPLayoutKey, @(DPHasStrip(window)));
+    if (overlay.returnTab) {
+        DPHideTabRow(openedID, window);
+        DPStandInFor(window, openedID);
+    } else if (overBlank && DPParksTab(openedID)) {
+        DPFreezeLists(window);
+        DPParkTab(openedID, NO);
+        DPStandInFor(window, openedID);
+    } else DPStopExpecting();
 
+    DPWatch(overlay);
+    if (!overlay.returnTab) return;
     __weak DPCommandBarOverlay *weak = overlay;
+    // Dia can still be showing the new tab when it adds the page, and focusing another tab then crashes it (index out of range).
+    // A run loop block runs once Dia is done; a transaction held open until it has gone back keeps the new tab from being drawn.
+    [CATransaction begin];
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+        @try { if (weak.superview) DPGoBack(weak); } @finally { [CATransaction commit]; }
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+void DPWatch(DPCommandBarOverlay *overlay) {
+    __weak DPCommandBarOverlay *weak = overlay;
+    [overlay.watch invalidate];
     overlay.watch = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
-        if (weak) DPWatchNewTab(weak); else [timer invalidate];
+        if (weak) DPWatchNewTab(weak, nil); else [timer invalidate];
     }];
-    if (overlay.returnTab) DPGoBack(overlay);
 }
 
 static BOOL DPOpenOverBlank(NSWindow *window) {
-    if (!DPCommandBar.on || ![DPBlanks(window) containsObject:DPActiveTabID(window)]) return NO;
+    if (!DPCommandBar.on || !DPBlanks(window).count || ![DPBlanks(window) containsObject:DPActiveTabID(window)]) return NO;
     NSView *page = DPBlankPage(window);
     if (page) DPPresentCommandBar(page, YES);
     return page != nil;
@@ -491,10 +600,12 @@ static void DPCloseLeftBlank(NSWindow *window) {
     if (!window || DPGet(window, &DPOverlayKey)) return;
     NSMutableSet<NSString *> *blanks = DPBlanks(window);
     NSString *previous = DPPreviousTabID(window), *latest = [DPGet(window, &DPRecentKey) lastObject];
-    id blank = [blanks containsObject:previous] && ![blanks containsObject:latest] ? DPScriptTab(window, previous) : nil;
-    if (!blank || !DPScriptTab(window, latest)) return;
+    id scriptWindow = [blanks containsObject:previous] && ![blanks containsObject:latest] ? DPScriptWindow(window) : nil;
+    id blank = DPScriptTabIn(scriptWindow, previous);
+    if (!blank || !DPScriptTabIn(scriptWindow, latest)) return;
     [blanks removeObject:previous];
-    DPCloseTab(blank);
+    DPShowTabRow(previous, YES);
+    if (!DPHasURL(blank)) DPCloseTab(blank);
 }
 
 #pragma mark Hooks
@@ -539,20 +650,66 @@ static void DPCapability_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
     [DPBarText(overlay) insertText:@"@" replacementRange:DPBarText(overlay).selectedRange];
 }
 
+// Once it's let go, as a button acts, so the button stays selected while it's pressed and goes straight to hovered.
+static BOOL DPCloseStoodIn(NSWindow *window) {
+    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    if (!DPHidesTab(DPTabID(overlay.openedTab))) return NO;
+    if (!(NSEvent.pressedMouseButtons & 1)) return DPCancelCommandBar(overlay), YES;
+    __weak DPCommandBarOverlay *weak = overlay;
+    __block id monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseUp handler:^NSEvent *(NSEvent *event) {
+        [NSEvent removeMonitor:monitor];
+        monitor = nil;
+        if (weak.host) DPCancelCommandBar(weak);
+        return event;
+    }];
+    return YES;
+}
+
+static BOOL DPClickedNewTab(NSWindow *window) {
+    if (DPCloseStoodIn(window)) return YES;
+    DPSet(window, &DPClosedAtKey, nil);
+    if (DPOpenOverBlank(window)) return YES;
+    DPExpectNewTab(window);
+    return NO;
+}
+
 static void DPNewTabButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
-    DPSet(self.window, &DPClosedAtKey, nil);
-    if (!DPOpenOverBlank(self.window)) DPCallOriginal(DPNewTabButton_mouseDown, self, event);
+    if (DPClickedNewTab(self.window)) return;
+    DPHoldAutoPip();
+    DPCallOriginal(DPNewTabButton_mouseDown, self, event);
+}
+
+// The + button and the double click hold picture in picture in AutoPip.m's hooks, which these two call through to.
+static void DPPlusButton_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
+    if (!DPHiding() || !DPIsKind(self.superview, DPDiaTabStripTabs) || !DPClickedNewTab(self.window)) DPCallOriginal(DPPlusButton_mouseDown, self, event);
+}
+
+static void DPTabList_backgroundDoubleClick(NSView *self, SEL _cmd, id gesture) {
+    if (!DPHiding() || !DPClickedNewTab(self.window)) DPCallOriginal(DPTabList_backgroundDoubleClick, self, gesture);
 }
 
 static NSEvent *DPCommandBarKey(NSEvent *event) {
     NSWindow *window = event.window;
     if (!DPCommandBar.on || !window) return event;
     if (DPIsShortcut(event, @"Close Tab")) DPSet(window, &DPClosedAtKey, @(event.timestamp));
-    if (!(DPIsShortcut(event, @"New Tab") || DPIsShortcut(event, @"Open Command Bar"))) return event;
+    // Typing into an empty window goes to its hidden bar, which keeps the keyboard, so the bar opens to show it.
+    BOOL typed = !(event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) && event.characters.length && [event.characters characterAtIndex:0] >= 0x20 && [event.characters characterAtIndex:0] != 0x7f;
+    if (typed && DPHiding() && !DPGet(window, &DPOverlayKey) && DPBlanks(window).count && [DPBlanks(window) containsObject:DPActiveTabID(window)]) {
+        DPOpenOverBlank(window);
+        return event;
+    }
+    BOOL newTab = DPIsShortcut(event, @"New Tab");
+    if (!(newTab || DPIsShortcut(event, @"Open Command Bar"))) return event;
     DPSet(window, &DPClosedAtKey, nil);  // Closing a tab that wasn't the last leaves the stamp unread, which would hide this new tab as a blank.
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    if (newTab && DPIsKind(overlay.page, DPDiaPopover)) {  // The new tab page swaps ⌘L's bar for its own, so nothing shows between them.
+        DPExpectNewTab(window);
+        return event;
+    }
     if (overlay) DPFocusBar(overlay);
-    return overlay || DPOpenOverBlank(window) ? nil : event;
+    if (overlay || DPOpenOverBlank(window)) return nil;
+    if (newTab) DPExpectNewTab(window);
+    return event;
 }
 
 static BOOL DPToolbarShowing(NSWindow *window) {
@@ -582,11 +739,18 @@ static void DPShowWhenBuilt(DPCommandBarOverlay *overlay) {
     [NSRunLoop.mainRunLoop addTimer:check forMode:NSRunLoopCommonModes];
 }
 
+// Dia closes ⌘L's bar on a click its popover doesn't hit, and the lifted bar is neither in the hidden popover nor where it is.
+static NSView *DPPopover_hitTest(NSView *self, SEL _cmd, NSPoint point) {
+    DPCommandBarOverlay *overlay = DPGet(self, &DPOverlayKey);
+    NSRect bar = overlay.panel && !overlay.passingThrough ? [self.superview convertRect:overlay.panel.bounds fromView:overlay.panel] : NSZeroRect;
+    return NSPointInRect(point, bar) ? self : DPCallOriginal(DPPopover_hitTest, self, point);
+}
+
 static void DPPopover_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPPopover_viewDidMoveToWindow, self);
     DPCommandBarOverlay *overlay = DPGet(self, &DPOverlayKey);
     if (overlay) return (void)DPDismissCommandBar(overlay);
-    if (!self.window || DPToolbarShowing(self.window)) return;
+    if (!self.window || DPToolbarShowing(self.window) || DPIsFloatingChat(self)) return;
     overlay = DPLiftBar(self, [DPScriptWindow(self.window) valueForKey:@"activeTab"]);
     if (overlay) DPShowWhenBuilt(overlay);
 }
@@ -595,22 +759,36 @@ static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPContentPane_viewDidMoveToWindow, self);
     __weak NSWindow *window = self.window;
     if (!window) return;
-    DPNoteActiveTab(window);
-    NSString *active = DPActiveTabID(window);
+    id scriptWindow = DPScriptWindow(window);
+    NSString *active = DPNoteActiveTab(window, scriptWindow, NULL);
     if (active && DPInSplit(self)) [DPSplits(window) addObject:active];
     else if (active) [DPSplits(window) removeObject:active];
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
-    if (overlay.openedTab) DPWatchNewTab(overlay);
+    if (overlay.openedTab) DPWatchNewTab(overlay, scriptWindow);
     dispatch_async(dispatch_get_main_queue(), ^{ DPCloseLeftBlank(window); });
+}
+
+static void DPTabList_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPTabList_viewDidMoveToWindow, self);
+    __weak NSWindow *window = self.window;
+    dispatch_async(dispatch_get_main_queue(), ^{ DPCloseOnNewLayout(window); });
+}
+
+static void DPStrip_viewDidMoveToWindow(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPStrip_viewDidMoveToWindow, self);
+    __weak NSWindow *window = self.window;
+    dispatch_async(dispatch_get_main_queue(), ^{ DPCloseOnNewLayout(window); });
 }
 
 static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPNewTabPage_viewDidMoveToWindow, self);
     NSWindow *window = self.window;
     if (!window) return;
-    DPNoteActiveTab(window);
+    id scriptWindow = DPScriptWindow(window);
+    BOOL seen;
+    NSString *active = DPNoteActiveTab(window, scriptWindow, &seen);
     if (!DPCommandBar.on) return;
-    NSString *active = DPActiveTabID(window), *previous = DPPreviousTabID(window);
+    NSString *previous = DPPreviousTabID(window);
     NSMutableSet<NSString *> *blanks = DPBlanks(window);
     DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
     if (overlay && [active isEqual:DPTabID(overlay.openedTab)]) {
@@ -621,17 +799,24 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     NSNumber *closedAt = DPGet(window, &DPClosedAtKey);
     DPSet(window, &DPClosedAtKey, nil);
     BOOL justClosed = closedAt && NSProcessInfo.processInfo.systemUptime - closedAt.doubleValue < 1;
-    BOOL closing = DPIsShortcut(NSApp.currentEvent, @"Close Tab") || justClosed || (previous && !DPScriptTab(window, previous));
-    if (active && ([blanks containsObject:active] || closing)) {
-        DPMakeBlank(self);
-        if (overlay.returnTab && !DPScriptTab(window, DPTabID(overlay.returnTab))) DPCancelCommandBar(overlay);
+    BOOL closing = DPIsShortcut(NSApp.currentEvent, @"Close Tab") || justClosed || (previous && !DPScriptTabIn(scriptWindow, previous));
+    BOOL wasBlank = [blanks containsObject:active];
+    if (active && (wasBlank || closing)) {
+        // A tab Dia lands on after a close, or brings back to its own page, isn't the closed tab's replacement: it keeps its page, and no bar goes back to the closing tab.
+        if (!wasBlank && (seen || DPInSplit(self))) {
+            [DPKeptTabs addObject:active];
+            DPSet(self, &DPOwnBarKey, @YES);
+        } else DPMakeBlank(self, active, previous);
+        if (overlay.returnTab && !DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab))) DPCancelCommandBar(overlay);
         return;
     }
     if (overlay) DPCancelCommandBar(overlay);
     id blank = [blanks containsObject:previous] ? DPScriptTab(window, previous) : nil;
     if (blank) {
         [blanks removeObject:previous];
-        DPCloseTab(blank);
+        DPShowTabRow(previous, YES);
+        if (DPHasURL(blank)) blank = nil;
+        else DPCloseTab(blank);
     }
     // The bar takes its size from the page, which has none until its pane lays it out.
     NSView *pane = self.superview;
@@ -643,15 +828,19 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
 static void DPApplyCommandBar(DPPatch *patch) {
     BOOL on = DPCommandBar.on;
     for (NSWindow *window in NSApp.windows) {
-        if (!on) DPSet(window, &DPBlankKey, nil);
+        if (!on) {
+            for (NSString *blank in DPBlanks(window)) DPHideBlank(blank, NO, window);
+            DPSet(window, &DPBlankKey, nil);
+        }
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
         if (!overlay) continue;
         if (on) {
             DPShowShade(overlay);
             continue;
         }
+        BOOL nowhereToGo = DPNowhereToGo(overlay);
         id tab = DPDismissCommandBar(overlay);
-        if (tab && overlay.returnTab) DPFocusTab(tab);
+        if (tab && !nowhereToGo) DPCloseTab(tab);
     }
     for (NSView *page in DPFindViews(DPDiaNewTabPage)) {
         BOOL blank = DPGet(page, &DPBlankKey) != nil;
@@ -673,6 +862,8 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
     }
     for (NSWindow *window in NSApp.windows) {
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+        NSString *standIn = DPVerifyStandIn(window, DPTabID(overlay.openedTab));
+        if (standIn) return standIn;
         if (!overlay) continue;
         if (!DPCommandBar.on) return @"the bar is still open";
         BOOL hasShadow = overlay.panel.shadow != nil;
@@ -688,9 +879,15 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
 
 static void DPInstallCommandBar(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPCommandBarKey(event); }];
+    DPInstallAutoPipHold();
     DPHook(DPDiaPopover, @selector(viewDidMoveToWindow), (IMP)DPPopover_viewDidMoveToWindow);
+    DPHook(DPDiaPopover, @selector(hitTest:), (IMP)DPPopover_hitTest);
     DPHook(DPDiaNewTabButton, @selector(mouseDown:), (IMP)DPNewTabButton_mouseDown);
+    DPHook(DPDiaTabSurfaceButton, @selector(mouseDown:), (IMP)DPPlusButton_mouseDown);
+    DPHook(DPDiaTabList, @selector(handleBackgroundDoubleClick:), (IMP)DPTabList_backgroundDoubleClick);
     DPHook(DPDiaContentPane, @selector(viewDidMoveToWindow), (IMP)DPContentPane_viewDidMoveToWindow);
+    DPHook(DPDiaTabList, @selector(viewDidMoveToWindow), (IMP)DPTabList_viewDidMoveToWindow);
+    DPHook(DPDiaTabStripTabs, @selector(viewDidMoveToWindow), (IMP)DPStrip_viewDidMoveToWindow);
     DPHook(DPDiaNewTabPage, @selector(viewDidMoveToWindow), (IMP)DPNewTabPage_viewDidMoveToWindow);
     DPHook(DPDiaAssistantPanel, @selector(setFrame:), (IMP)DPPanel_setFrame);
     DPHook(DPDiaCommandBarSuggestions, @selector(invalidateIntrinsicContentSize), (IMP)DPSuggestions_invalidateIntrinsicContentSize);

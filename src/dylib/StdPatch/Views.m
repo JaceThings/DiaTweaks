@@ -35,6 +35,10 @@ BOOL DPIsKind(id object, const char *className) {
     return cls && [object isKindOfClass:cls];
 }
 
+BOOL DPIsFloatingChat(NSView *popover) {
+    return DPFindView(popover, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaChatHeader); }) != nil;
+}
+
 BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel) {
     return [view.accessibilityLabel isEqualToString:accessibilityLabel];
 }
@@ -82,6 +86,13 @@ void *DPIvar(id object, const char *name) {
 
 id DPSwiftValue(id object, NSString *key) {
     return [object respondsToSelector:@selector(safeSwiftValueForKey:)] ? [object safeSwiftValueForKey:key] : nil;
+}
+
+NSMenu *DPTabContextMenu(NSView *tab) {
+    NSPoint point = [tab convertPoint:NSMakePoint(NSMidX(tab.bounds), NSMidY(tab.bounds)) toView:nil];
+    NSEvent *click = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                                    windowNumber:tab.window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+    return [tab menuForEvent:click];
 }
 
 NSArray<NSString *> *DPUUIDsIn(NSString *text) {

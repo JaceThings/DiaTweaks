@@ -2,7 +2,7 @@
 #import "Patches/CompactTabRows/CompactTabRows.h"
 #import <objc/message.h>
 
-static const CGFloat DPExtra = 14, DPTabHeight = 37;
+static const CGFloat DPExtra = 14;
 static NSMutableSet<NSString *> *DPTallTabs;
 static char DPStatusKey, DPLineKey, DPAdjustedKey, DPEditsKey;
 
@@ -104,8 +104,16 @@ static id<NSDraggingInfo> DPDiaDrag(NSView *tabList, id<NSDraggingInfo> info) {
     return DPDraggingInfoAt(info, [list convertPoint:point toView:nil]);
 }
 
-static NSDragOperation DPTabList_entered(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_entered, self, DPDiaDrag(self, info)); }
-static NSDragOperation DPTabList_updated(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_updated, self, DPDiaDrag(self, info)); }
+static NSDragOperation DPTabList_entered(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    NSDragOperation operation = DPCallOriginal(DPTabList_entered, self, DPDiaDrag(self, info));
+    DPPlaceDraggedTab();
+    return operation;
+}
+static NSDragOperation DPTabList_updated(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    NSDragOperation operation = DPCallOriginal(DPTabList_updated, self, DPDiaDrag(self, info));
+    DPPlaceDraggedTab();
+    return operation;
+}
 static BOOL DPTabList_prepare(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_prepare, self, DPDiaDrag(self, info)); }
 static BOOL DPTabList_perform(NSView *self, SEL _cmd, id<NSDraggingInfo> info) { return DPCallOriginal(DPTabList_perform, self, DPDiaDrag(self, info)); }
 
@@ -119,7 +127,7 @@ static void DPContent_layout(NSView *self, SEL _cmd) {
     NSString *status = DPPullRequestRepo.on ? DPGet(self, &DPStatusKey) : nil;
     NSView *title = DPPart(self, "$__lazy_storage_$_titleView"), *subtitle = DPPart(self, "subtitleView"), *icon = DPPart(self, "subtitleIconView");
     NSTextField *line = DPGet(self, &DPLineKey), *source = (NSTextField *)DPSubview(subtitle, DPDiaFeatheredLabel);
-    BOOL tall = status && title && source && NSHeight(self.bounds) >= DPTabHeight + DPExtra - 1;
+    BOOL tall = status && title && source && NSHeight(self.bounds) >= DPCompactRowHeight() + DPExtra - 1;
     line.hidden = !tall;
     if (!tall) return;
     if (!line) DPSet(self, &DPLineKey, line = [DPPRStatusLine labelWithString:@""]);

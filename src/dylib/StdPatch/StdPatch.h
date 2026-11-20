@@ -27,6 +27,7 @@ struct DPPatch {
     void (*relayout)(void);
     // nil if Dia's views match `on`, else what's wrong. Use DPFindViews, not your hooks, so a hook that never ran fails.
     NSString *(*verify)(DPPatch *patch);
+    BOOL (*animating)(void);  // Optional: whether it's still easing something its verify reads. The test waits for it.
     NSString *(*ready)(DPPatch *patch);
     BOOL on, unavailable;
     CGFloat progress;
@@ -44,6 +45,7 @@ extern NSUInteger DPPatchCount;
 DPPatch *DPPatchNamed(NSString *key);
 DPPatch *DPRequired(DPPatch *patch);
 void DPSetPatch(DPPatch *patch, BOOL on, BOOL save);
+BOOL DPAnimating(void);  // Whether any easing is still running.
 BOOL DPSavedOn(DPPatch *patch);
 NSString *DPChoice(DPPatch *patch);
 void DPSetChoice(DPPatch *patch, NSString *value);
@@ -71,12 +73,14 @@ NSArray<NSView *> *DPFindViews(const char *className);
 NSString *DPTabLayout(void);
 NSView *DPSubview(NSView *parent, const char *className);
 BOOL DPIsKind(id object, const char *className);
+BOOL DPIsFloatingChat(NSView *popover);
 BOOL DPHasLabel(NSView *view, NSString *accessibilityLabel);
 void DPRelayoutViews(NSHashTable<NSView *> *views);
 // Call before changing a frame during layout: if Dia keeps restoring it, the two loop until AppKit aborts Dia.
 BOOL DPMayAdjust(NSView *view);
 void *DPIvar(id object, const char *name);
 id DPSwiftValue(id object, NSString *key);
+NSMenu *DPTabContextMenu(NSView *tab);
 NSArray<NSString *> *DPUUIDsIn(NSString *text);
 NSWindowController *DPOpenTabSwitcher(void);
 
@@ -100,8 +104,11 @@ NSURL *DPAddressURL(NSString *typed);
 float DPZoomStep(float now, int direction);
 
 // Chromium reads extensions and launch flags once as Dia starts: call DPLoadExtension and DPAddLaunchFlag from an `install`.
+// A tweak that is off calls DPDropExtension and DPDropLaunchFlag there instead, with what it adds when on.
 void DPLoadExtension(NSString *folder);
 void DPAddLaunchFlag(NSString *flag);
+void DPDropExtension(NSString *folder);
+void DPDropLaunchFlag(NSString *flag);
 
 void DPOnLaunch(void (^block)(void));
 void DPOnQuit(void (^block)(void));
