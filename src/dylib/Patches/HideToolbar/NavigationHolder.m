@@ -93,8 +93,9 @@ static BOOL DPLoading(NSView *reload) {
     NSView *profile = DPFindView(stack, ^BOOL(NSView *v) { return DPIsKind(v, DPDiaProfileButton); });
     if (!stack || !profile || profile.hiddenOrHasHiddenAncestor) return NSZeroRect;
     CGFloat left = NSMaxX([profile convertRect:profile.bounds toView:header]) + DPNavGap, right = NSMaxX(stack.frame) - DPEdgeInset;
-    for (NSView *dia in [stack.subviews arrayByAddingObjectsFromArray:profile.superview.subviews]) {
-        if (dia == profile || dia == profile.superview || dia.hidden || NSIsEmptyRect(dia.frame)) continue;
+    NSArray<NSView *> *others = [[header.subviews arrayByAddingObjectsFromArray:stack.subviews] arrayByAddingObjectsFromArray:profile.superview.subviews];
+    for (NSView *dia in others) {
+        if (dia == self || dia == stack || dia == profile || dia == profile.superview || dia.hidden || NSIsEmptyRect(dia.frame)) continue;
         CGFloat x = NSMinX([dia.superview convertRect:dia.frame toView:header]);
         if (x >= left - DPNavGap) right = MIN(right, x - DPNavGap);
     }
@@ -118,17 +119,20 @@ static BOOL DPLoading(NSView *reload) {
         _menu.frame = self.bounds;
         [self refresh];
     }
-    if (shown == !self.hidden) return;
+    if (shown != !self.hidden) {
+        // Out at once so the toolbar has them back; in with a quick fade.
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = shown ? DPFadeIn : 0;
+            self.animator.alphaValue = shown;
+        }];
+        self.hidden = !shown;
+    }
+    if (wanted == (_poll != nil)) return;
     [_poll invalidate];
     _poll = nil;
-    // Out at once so the toolbar has them back; in with a quick fade.
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = shown ? DPFadeIn : 0;
-        self.animator.alphaValue = shown;
-    }];
-    self.hidden = !shown;
-    if (!shown) return;
+    if (!wanted) return;
     __weak DPNavigationHolder *me = self;
-    _poll = [NSTimer scheduledTimerWithTimeInterval:DPPollInterval repeats:YES block:^(NSTimer *timer) { [me refresh]; }];
+    // Dia can show or hide Downloads without laying out the header, so this keeps making room for it.
+    _poll = [NSTimer scheduledTimerWithTimeInterval:DPPollInterval repeats:YES block:^(NSTimer *timer) { [me show:me.wanted]; }];
 }
 @end
