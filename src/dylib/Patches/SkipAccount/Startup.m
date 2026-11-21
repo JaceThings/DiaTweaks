@@ -1,8 +1,8 @@
 #import "Startup.h"
 
-// Dia 1.57.1 (90935) / 1.58.0 (91047), arm64. Unknown or ambiguous code stays untouched.
+// Dia 1.55.1 (89833) – 1.59.0 (91402), arm64. Unknown or ambiguous code stays untouched.
 // initializeAuth() has finished initializing auth here. With no user it waits for sign-in; otherwise it returns .restored.
-// Async frame offsets (x22 loads) and branch displacements are masked so unrelated changes nearby don't break the match.
+// Async frame offsets (x22 loads), branch displacements and the milestone enum argument (mov w0, #imm) are masked.
 static const DPSkipInstruction DPLaunch[] = {
     {0xb24403bd, 0xffffffff},
     {0xd10083ff, 0xffffffff},
@@ -15,7 +15,7 @@ static const DPSkipInstruction DPLaunch[] = {
     {0xf94002c0, 0xffc003ff},
     {0xf94002d4, 0xffc003ff},
     {0x94000000, 0xfc000000},
-    {0x528000e0, 0xffffffff},
+    {0x52800000, 0xffe0001f},
     {0x94000000, 0xfc000000},
     {0xf94006c1, 0xffffffff},
     {0x52800040, 0xffffffff},
