@@ -11,26 +11,32 @@ extern char **environ;
 int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS asks about the copy, not Dia
 
 static const int kSheetWidth = 480, kSheetHeight = 300;
+static const uint32_t kMaxMessageLength = 1024 * 1024;
+static const NSUInteger kMaxHelperMessageLength = 16 * 1024 * 1024;
 
 static FILE *gFromHelper, *gToHelper;
 static _Atomic pid_t gHelper;
 static _Atomic int gCancelled;
 
 static NSDictionary *readFromHelper(void) {
+    if (!gFromHelper) return nil;
     NSMutableData *data = [NSMutableData data];
     for (int c; (c = fgetc(gFromHelper)) != 0;) {
-        if (c == EOF) return nil;
+        if (c == EOF || data.length >= kMaxHelperMessageLength) return nil;
         [data appendBytes:&(char){ c } length:1];
     }
-    return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [object isKindOfClass:NSDictionary.class] ? object : nil;
 }
 
 static NSDictionary *send(NSString *method, NSDictionary *params, NSString *session) {
+    if (!gToHelper || !gFromHelper || !method) return nil;
     static int lastId;
     int id = ++lastId;
     NSMutableDictionary *message = [@{ @"id" : @(id), @"method" : method, @"params" : params ?: @{} } mutableCopy];
     message[@"sessionId"] = session;
     NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+    if (!data) return nil;
     fwrite(data.bytes, 1, data.length, gToHelper);
     fputc(0, gToHelper);
     fflush(gToHelper);
@@ -40,20 +46,38 @@ static NSDictionary *send(NSString *method, NSDictionary *params, NSString *sess
 }
 
 static id evaluate(NSString *session, NSString *expression) {
+    if (!expression) return nil;
     NSDictionary *params = @{ @"expression" : expression, @"awaitPromise" : @YES, @"returnByValue" : @YES, @"userGesture" : @YES };
-    return send(@"Runtime.evaluate", params, session)[@"result"][@"result"][@"value"];
+    NSDictionary *reply = send(@"Runtime.evaluate", params, session);
+    NSDictionary *outer = [reply[@"result"] isKindOfClass:NSDictionary.class] ? reply[@"result"] : nil;
+    NSDictionary *inner = [outer[@"result"] isKindOfClass:NSDictionary.class] ? outer[@"result"] : nil;
+    return inner[@"value"];
 }
 
-static NSDictionary *readMessage(void) {
-    uint32_t length;
-    if (fread(&length, 4, 1, stdin) != 1) return nil;
+static NSDictionary *readMessageFrom(FILE *stream) {
+    uint32_t length = 0;
+    if (!stream || fread(&length, sizeof length, 1, stream) != 1 || !length || length > kMaxMessageLength) return nil;
     NSMutableData *data = [NSMutableData dataWithLength:length];
-    if (fread(data.mutableBytes, 1, length, stdin) != length) return nil;
-    return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (!data || fread(data.mutableBytes, 1, length, stream) != length) return nil;
+    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [object isKindOfClass:NSDictionary.class] ? object : nil;
+}
+
+static NSDictionary *readMessage(void) { return readMessageFrom(stdin); }
+
+static BOOL validRequest(NSDictionary *request) {
+    if (![request isKindOfClass:NSDictionary.class]) return NO;
+    id kind = request[@"kind"], origin = request[@"origin"], options = request[@"options"];
+    return ([kind isEqual:@"create"] || [kind isEqual:@"get"])
+        && [origin isKindOfClass:NSString.class] && [origin length] > 0
+        && [options isKindOfClass:NSDictionary.class]
+        && [NSJSONSerialization isValidJSONObject:options];
 }
 
 static void writeMessage(NSDictionary *message) {
+    if (!message) return;
     NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+    if (!data) return;
     uint32_t length = (uint32_t)data.length;
     fwrite(&length, 4, 1, stdout);
     fwrite(data.bytes, 1, length, stdout);
@@ -137,6 +161,7 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     size_t envCount = 0;
     while (environ[envCount]) envCount++;
     const char **envp = calloc(envCount + 2, sizeof *envp);
+    if (!envp) return 0;
     memcpy(envp, environ, envCount * sizeof *envp);
     envp[envCount] = fixedHome.UTF8String;
 
@@ -149,6 +174,7 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     posix_spawn_file_actions_addopen(&files, 2, "/dev/null", O_WRONLY, 0);
     posix_spawnattr_t attrs;
     posix_spawnattr_init(&attrs);
+    posix_spawnattr_setflags(&attrs, POSIX_SPAWN_CLOEXEC_DEFAULT);
     responsibility_spawnattrs_setdisclaim(&attrs, 1);
     pid_t pid = 0;
     int status = posix_spawn(&pid, argv[0], &files, &attrs, (char *const *)argv, (char *const *)envp);
@@ -171,11 +197,17 @@ static DPStartup waitForStartupTab(pid_t pid, int seconds, NSString **targetId, 
     for (int tries = 0, tablessWindow = 0; tries < seconds * 4; tries++, usleep(250000)) {
         NSDictionary *targets = send(@"Target.getTargets", nil, nil);
         if (!targets) return DPStartupFailed;
-        for (NSDictionary *target in targets[@"result"][@"targetInfos"]) {
-            if (![target[@"type"] isEqualToString:@"page"]) continue;
-            NSDictionary *window = send(@"Browser.getWindowForTarget", @{ @"targetId" : target[@"targetId"] }, nil)[@"result"];
-            if (![window[@"bounds"][@"width"] intValue]) continue;
-            *targetId = target[@"targetId"];
+        NSDictionary *result = [targets[@"result"] isKindOfClass:NSDictionary.class] ? targets[@"result"] : nil;
+        NSArray *infos = [result[@"targetInfos"] isKindOfClass:NSArray.class] ? result[@"targetInfos"] : nil;
+        for (NSDictionary *target in infos) {
+            if (![target isKindOfClass:NSDictionary.class] || ![target[@"type"] isEqual:@"page"]) continue;
+            NSString *tid = [target[@"targetId"] isKindOfClass:NSString.class] ? target[@"targetId"] : nil;
+            if (!tid) continue;
+            NSDictionary *reply = send(@"Browser.getWindowForTarget", @{ @"targetId" : tid }, nil);
+            NSDictionary *window = [reply[@"result"] isKindOfClass:NSDictionary.class] ? reply[@"result"] : nil;
+            NSDictionary *bounds = [window[@"bounds"] isKindOfClass:NSDictionary.class] ? window[@"bounds"] : nil;
+            if (![bounds[@"width"] intValue] || !window[@"windowId"]) continue;
+            *targetId = tid;
             *windowId = window[@"windowId"];
             return DPStartupReady;
         }
@@ -199,7 +231,8 @@ static NSString *page(NSString *title, NSString *detail) {
 static BOOL atOrigin(NSString *session, NSString *origin) {
     for (int tries = 0; tries < 50; tries++, usleep(100000)) {
         NSArray *state = evaluate(session, @"[location.origin, document.readyState]");
-        if ([state.lastObject isEqual:@"complete"]) return [state.firstObject isEqual:origin];
+        if ([state isKindOfClass:NSArray.class] && state.count == 2 && [state.lastObject isEqual:@"complete"])
+            return [state.firstObject isEqual:origin];
     }
     return NO;
 }
@@ -213,6 +246,8 @@ static void tellDia(NSString *what, pid_t helper) {
 }
 
 static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id options) {
+    if (![kind isKindOfClass:NSString.class] || ![origin isKindOfClass:NSString.class] || ![options isKindOfClass:NSDictionary.class])
+        return failure(@"Invalid passkey request.");
     NSString *targetId;
     NSNumber *windowId;
     DPStartup startup = waitForStartupTab(pid, 60, &targetId, &windowId);
@@ -220,10 +255,13 @@ static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id
         tellDia(@"signIn", pid);
         startup = waitForStartupTab(pid, 600, &targetId, &windowId);
     }
-    if (startup != DPStartupReady) return failure(@"The passkey copy of Dia didn't open.");
+    if (startup != DPStartupReady || !targetId || !windowId) return failure(@"The passkey copy of Dia didn't open.");
 
     send(@"Browser.setWindowBounds", @{ @"windowId" : windowId, @"bounds" : sheetBounds() }, nil);
-    NSString *session = send(@"Target.attachToTarget", @{ @"targetId" : targetId, @"flatten" : @YES }, nil)[@"result"][@"sessionId"];
+    NSDictionary *attached = send(@"Target.attachToTarget", @{ @"targetId" : targetId, @"flatten" : @YES }, nil);
+    NSDictionary *attachedResult = [attached[@"result"] isKindOfClass:NSDictionary.class] ? attached[@"result"] : nil;
+    NSString *session = [attachedResult[@"sessionId"] isKindOfClass:NSString.class] ? attachedResult[@"sessionId"] : nil;
+    if (!session) return failure(@"Couldn't connect to the passkey copy of Dia.");
     // robots.txt runs none of the site's scripts.
     for (NSString *path in @[ @"/robots.txt", @"/" ]) {
         send(@"Page.navigate", @{ @"url" : [origin stringByAppendingString:path] }, session);
@@ -236,6 +274,7 @@ static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id
         if ([evaluate(session, @"document.hasFocus()") boolValue]) break;
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
+    if (!json) return failure(@"Invalid passkey request.");
     NSString *script = [NSString stringWithFormat:@"(async ({ kind, options }) => {"
                                                     "  const signal = AbortSignal.timeout(Math.min(options.timeout || 300000, 600000));"
                                                     "  try {"
@@ -246,37 +285,90 @@ static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, id
                                                     "  } catch (e) { return { error: { name: e.name === 'TimeoutError' ? 'NotAllowedError' : e.name, message: e.message } }; }"
                                                     "})(%@)",
                                                    [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
-    NSDictionary *result = evaluate(session, script);
+    id result = evaluate(session, script);
+    if (![result isKindOfClass:NSDictionary.class]) return failure(@"The passkey copy of Dia quit before answering.");
     if (result[@"credential"]) evaluate(session, page(@"Done", @"This window closes in a moment. Thanks for waiting."));
-    return result ?: failure(@"The passkey copy of Dia quit before answering.");
+    return result;
+}
+
+static void closePair(int fds[2]) {
+    for (int i = 0; i < 2; i++) {
+        if (fds[i] >= 0) close(fds[i]);
+        fds[i] = -1;
+    }
+}
+
+static int openPasskeyLock(NSString *home) {
+    if (!home.length) return -1;
+    if (![NSFileManager.defaultManager createDirectoryAtPath:home withIntermediateDirectories:YES attributes:nil error:nil]) return -1;
+    return open([home stringByAppendingPathComponent:@"passkey-helper.lock"].fileSystemRepresentation, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+}
+
+static BOOL lockPasskeyHelper(int lock) {
+    while (flock(lock, LOCK_EX | LOCK_NB) != 0) {
+        if (errno == EINTR) continue;
+        if (errno != EWOULDBLOCK || gCancelled) return NO;
+        usleep(50000);
+    }
+    return !gCancelled;
 }
 
 int DPRunPasskeyHost(NSString *home) {
     NSDictionary *request = readMessage();
-    if (!request) return 1;
+    if (!validRequest(request)) return 1;
     pthread_t watcher;
     if (pthread_create(&watcher, NULL, watchForCancel, NULL) == 0) pthread_detach(watcher);
-    int lock = open([home stringByAppendingPathComponent:@"passkey-helper.lock"].fileSystemRepresentation, O_CREAT | O_RDWR, 0600);
-    while (flock(lock, LOCK_EX | LOCK_NB) != 0 && errno == EWOULDBLOCK && !gCancelled) usleep(50000);
-    if (gCancelled) return writeMessage(failure(@"The passkey request was cancelled.")), 0;
 
-    int toHelper[2], fromHelper[2];
+    int lock = openPasskeyLock(home);
+    if (lock < 0) return writeMessage(failure(@"Couldn't open the passkey lock file.")), 1;
+    if (!lockPasskeyHelper(lock)) {
+        close(lock);
+        if (gCancelled) return writeMessage(failure(@"The passkey request was cancelled.")), 0;
+        return writeMessage(failure(@"Couldn't lock the passkey helper.")), 1;
+    }
+
+    int toHelper[2] = { -1, -1 }, fromHelper[2] = { -1, -1 };
     pid_t pid = 0;
-    if (pipe(toHelper) || pipe(fromHelper) || !(pid = launchHelper(home, toHelper, fromHelper)))
+    if (pipe(toHelper) != 0 || pipe(fromHelper) != 0 || !(pid = launchHelper(home, toHelper, fromHelper))) {
+        closePair(toHelper);
+        closePair(fromHelper);
+        close(lock);
         return writeMessage(failure(@"Couldn't start the passkey copy of Dia.")), 1;
+    }
     gHelper = pid;
     if (gCancelled) kill(pid, SIGTERM);
-    close(toHelper[0]);
-    close(fromHelper[1]);
+    close(toHelper[0]), toHelper[0] = -1;
+    close(fromHelper[1]), fromHelper[1] = -1;
 
     gFromHelper = fdopen(fromHelper[0], "r");
+    if (gFromHelper) fromHelper[0] = -1;
     gToHelper = fdopen(toHelper[1], "w");
+    if (gToHelper) toHelper[1] = -1;
+    if (!gFromHelper || !gToHelper) {
+        if (gFromHelper) fclose(gFromHelper), gFromHelper = NULL;
+        if (gToHelper) fclose(gToHelper), gToHelper = NULL;
+        closePair(toHelper);
+        closePair(fromHelper);
+        gHelper = 0;
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+        close(lock);
+        return writeMessage(failure(@"Couldn't connect to the passkey copy of Dia.")), 1;
+    }
+
     NSDictionary *result = runInHelper(pid, request[@"kind"], request[@"origin"], request[@"options"]);
     // Dia kills this process once it has the answer, so the copy has to quit before then.
     send(@"Browser.close", nil, nil);
-    for (int i = 0; i < 50 && waitpid(pid, NULL, WNOHANG) == 0; i++) usleep(100000);
+    BOOL exited = NO;
+    for (int i = 0; i < 50 && !(exited = waitpid(pid, NULL, WNOHANG) != 0); i++) usleep(100000);
     gHelper = 0;
-    kill(pid, SIGKILL);
+    if (!exited) {
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+    }
+    fclose(gFromHelper), gFromHelper = NULL;
+    fclose(gToHelper), gToHelper = NULL;
+    close(lock);
     DPForgetApp([home stringByAppendingPathComponent:@"pristine/Dia.app"]);
     writeMessage(result);
     return 0;
