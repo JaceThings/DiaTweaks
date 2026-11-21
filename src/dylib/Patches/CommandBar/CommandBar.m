@@ -404,6 +404,12 @@ static void DPCloseOnNewLayout(NSWindow *window) {
     if (DPSpareIn(window) && DPHasStrip(window)) DPDropSpare(window);
 }
 
+// A result is opening in the bar's tab. A chat loads no page; Dia empties the bar once it has taken what was typed.
+static BOOL DPTaken(DPCommandBarOverlay *overlay, id tab) {
+    NSString *url = DPValueForKey(tab, @"URL");
+    return (overlay.picked && !DPBarText(overlay).string.length) || !(url == overlay.startURL || [url isEqual:overlay.startURL]);
+}
+
 static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
     NSWindow *window = overlay.host;
     NSView *content = window.contentView;
@@ -416,7 +422,17 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
     DPPlaceShade(overlay.shade, window);
     scriptWindow = scriptWindow ?: DPScriptWindow(window);
     id tab = DPScriptTabIn(scriptWindow, DPTabID(overlay.openedTab));
-    if (!tab) return (void)DPDismissCommandBar(overlay);
+    // Midway through a swipe between spaces Dia lists no tabs at all; wait for the next check.
+    if (!tab && ![DPValueForKey(scriptWindow, @"appleScriptTabs") count]) return;
+    if (!tab) {
+        // Another space came forward. Its unused new tab would stay behind in the old space; keep one a result is
+        // opening in, or one Escape would keep, since closing a space's only tab empties it.
+        id left = DPScriptTabInAnyProfile(scriptWindow, DPTabID(overlay.openedTab));
+        BOOL close = left && DPHiding() && !DPTaken(overlay, left) && !overlay.overBlank && !DPNowhereToGo(overlay);
+        DPDismiss(overlay, close);
+        if (close) DPCloseTab(left);
+        return;
+    }
     NSString *active = DPActiveTabIDIn(scriptWindow);
     if (active && ![active isEqual:DPTabID(tab)] && ![active isEqual:DPTabID(overlay.returnTab)]) {
         NSString *left = DPTabID(overlay.returnTab);
@@ -429,10 +445,7 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
         DPDismissCommandBar(overlay);
         return DPFocusTab(tab);
     }
-    // A chat loads no page; Dia empties the bar once it has taken what was typed.
-    BOOL taken = overlay.picked && !DPBarText(overlay).string.length;
-    NSString *url = DPValueForKey(tab, @"URL");
-    if (!taken && (url == overlay.startURL || [url isEqual:overlay.startURL])) return;
+    if (!DPTaken(overlay, tab)) return;
     DPDismissCommandBar(overlay);
     DPNoteSpare(DPTabID(tab), NO);
     DPFocusTab(tab);
