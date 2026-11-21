@@ -788,7 +788,10 @@ static NSEvent *DPCommandBarKey(NSEvent *event) {
     if (blanks.count && DPHiding() && !(mods & (NSEventModifierFlagCommand | NSEventModifierFlagControl))
         && !DPGet(window, &DPOverlayKey) && event.characters.length) {
         unichar ch = [event.characters characterAtIndex:0];
-        if (ch >= 0x20 && ch != 0x7f && [blanks containsObject:DPActiveTabID(window)]) {
+        // Not typing in another field, such as a tab group's name in the sidebar.
+        NSResponder *typing = window.firstResponder;
+        BOOL elsewhere = [typing isKindOfClass:NSTextView.class] && ![(NSView *)typing isDescendantOf:DPBlankPage(window)];
+        if (ch >= 0x20 && ch != 0x7f && !elsewhere && [blanks containsObject:DPActiveTabID(window)]) {
             DPOpenOverBlank(window);
             return event;
         }
