@@ -19,6 +19,7 @@ static uint8_t gShape = 0;
 
 BOOL DPHiding(void) { return gHiding; }
 BOOL DPHidesTab(NSString *tabID) { return gHiding && tabID && [gHidden containsObject:tabID]; }
+BOOL DPListsTab(NSView *view, NSString *tabID) { return YES; }
 uintptr_t *DPSelectionStyle(NSView *background) { return &gStyle; }
 uint8_t *DPTabShape(NSView *background) { return &gShape; }
 NSView *DPTabShapeView(NSView *background) { return nil; }

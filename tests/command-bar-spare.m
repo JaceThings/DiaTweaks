@@ -138,6 +138,7 @@ id DPDismiss(DPCommandBarOverlay *overlay, BOOL closing) {
 void DPInstallFrozenLists(void) {}
 void DPFreezeLists(NSWindow *window) {}
 NSArray<NSString *> *DPListedTabs(NSWindow *window) { return @[]; }
+BOOL DPListsTab(NSView *view, NSString *tabID) { return YES; }
 void DPRelayoutLists(void) {}
 NSString *DPVerifyHiddenRows(void) { return nil; }
 void DPInstallHiddenStripTab(void) {}
