@@ -5,6 +5,7 @@
   if (credentials.get !== CredentialsContainer.prototype.get || credentials.create !== CredentialsContainer.prototype.create) return;
   const create = credentials.create.bind(credentials);
   const get = credentials.get.bind(credentials);
+  const isConditional = PublicKeyCredential.isConditionalMediationAvailable?.bind(PublicKeyCredential);
   let nextId = 0;
   let pending = false;
 
@@ -83,7 +84,9 @@
 
   // Autofill would start the other Dia on every page load.
   credentials.create = (options) => (options?.publicKey ? ask('create', options.publicKey, options.signal) : create(options));
-  credentials.get = (options) => (options?.publicKey && options.mediation !== 'conditional' ? ask('get', options.publicKey, options.signal) : get(options));
-  PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false);
+  const ourGet = (options) => (options?.publicKey && options.mediation !== 'conditional' ? ask('get', options.publicKey, options.signal) : get(options));
+  credentials.get = ourGet;
+  // A manager that wraps get after this one keeps its own autofill.
+  PublicKeyCredential.isConditionalMediationAvailable = () => (credentials.get !== ourGet && isConditional ? isConditional() : Promise.resolve(false));
   PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
 })();
