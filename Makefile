@@ -62,8 +62,8 @@ build/peek-link: tests/peek-link.m src/dylib/Patches/Peek/Link.m src/dylib/Patch
 build/safe-mode: tests/safe-mode.m src/dylib/SafeMode/SafeMode.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $<
 
-build/pause: tests/pause.m src/dylib/SafeMode/SafeMode.m src/dylib/StdPatch/Patch.m $(wildcard src/dylib/StdPatch/*.h) | build
-	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $<
+build/pause: tests/pause.m src/dylib/SafeMode/SafeMode.m src/dylib/StdPatch/Patch.m src/dylib/StdPatch/Views.m src/dylib/Settings/Controls.m src/dylib/Settings/Items.m src/dylib/Settings/Overview.m src/dylib/Settings/Home.m src/dylib/Settings/Page.m src/dylib/Settings/Settings.h $(wildcard src/dylib/StdPatch/*.h) | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ tests/pause.m src/dylib/StdPatch/Views.m
 
 build/hook-table: tests/hook-table.m src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -fsanitize=address -Isrc/dylib -framework AppKit -o $@ $<

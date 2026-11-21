@@ -79,7 +79,7 @@ void DPSetPatch(DPPatch *patch, BOOL on, BOOL save) {
     if (DPPaused) on = NO;  // Paused: a tweak can be turned off, never on.
     if (patch->on == on) return;
     patch->on = on;
-    if (DPSafeMode) return;
+    if (DPSafeMode || DPPausedAtLaunch) return;
     if (patch->apply) patch->apply(patch);
     else DPAnimate();
     if (on && patch->ready) DPEnsureReady(patch);
@@ -140,7 +140,7 @@ NSString *DPChoice(DPPatch *patch) {
 
 void DPSetChoice(DPPatch *patch, NSString *value) {
     [DPDefaults setObject:value forKey:patch->choice];
-    if (!DPSafeMode && patch->on && patch->apply) patch->apply(patch);
+    if (!DPSafeMode && !DPPausedAtLaunch && patch->on && patch->apply) patch->apply(patch);
 }
 
 static int DPCompareOrder(const void *a, const void *b) {
@@ -182,7 +182,7 @@ void DPLoadPatches(void) {
     }
 }
 
-static void DPApplySavedSettings(void) {
+void DPApplySavedSettings(void) {
     CFPreferencesAppSynchronize(CFSTR("com.diapatches"));
     DPPaused = DPPauseSaved();
     for (NSUInteger i = 0; i < DPPatchCount; i++) DPSetPatch(DPPatches[i], DPEffectiveOn(DPPatches[i]), NO);

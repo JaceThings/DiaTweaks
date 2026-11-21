@@ -46,6 +46,7 @@ extern NSUInteger DPPatchCount;
 DPPatch *DPPatchNamed(NSString *key);
 DPPatch *DPRequired(DPPatch *patch);
 void DPSetPatch(DPPatch *patch, BOOL on, BOOL save);
+void DPApplySavedSettings(void);
 BOOL DPEffectiveOn(DPPatch *patch);  // Its saved setting, unless tweaks are paused.
 BOOL DPAnimating(void);  // Whether any easing is still running.
 BOOL DPSavedOn(DPPatch *patch);

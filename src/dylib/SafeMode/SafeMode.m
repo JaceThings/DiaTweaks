@@ -6,7 +6,7 @@
 static const int64_t DPSurviveSeconds = 180;
 
 NSInteger DPSafeMode;
-BOOL DPPaused;
+BOOL DPPaused, DPPausedAtLaunch;
 static NSURL *DPStateURL, *DPPauseURL;
 static NSMutableDictionary *DPState;
 
@@ -60,7 +60,7 @@ void DPBeginLaunch(void) {
     dladdr((const void *)DPBeginLaunch, &info);
     DPStateURL = [NSURL fileURLWithPath:[@(info.dli_fname).stringByDeletingLastPathComponent stringByAppendingPathComponent:@"safe-mode.plist"]];
     DPPauseURL = [DPStateURL.URLByDeletingLastPathComponent URLByAppendingPathComponent:@"paused"];
-    DPPaused = DPPauseSaved();
+    DPPaused = DPPausedAtLaunch = DPPauseSaved();
     NSString *build = DPBuildUUID(info.dli_fbase);
     NSDictionary *saved = [NSDictionary dictionaryWithContentsOfURL:DPStateURL error:nil];
     DPState = [saved[@"build"] isEqual:build] ? [saved mutableCopy] : [NSMutableDictionary dictionaryWithObject:build forKey:@"build"];

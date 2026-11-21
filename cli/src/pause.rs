@@ -57,7 +57,10 @@ pub fn set(env: &Env, ui: &Ui, paused: bool) -> Result<()> {
         )),
     }
     // Only a Dia that is running has anything left to finish: one that opens later starts with them all off.
-    let waiting: Vec<&str> = match dia::is_running(&env.app) && dia::is_patched(&env.app) {
+    let waiting: Vec<&str> = match dia::is_running(&env.app)
+        && dia::is_patched(&env.app)
+        && dia::safe_mode(&env.support) == 0
+    {
         true => on
             .iter()
             .filter(|&&index| manifest.patches[index].relaunch)
