@@ -7,6 +7,7 @@ extern DPPatch DPNewTabNextToCurrent, DPCommandBarSpare;
 static __weak NSWindow *DPSpareWindow;  // While a spare is being made there: its bar is parked as soon as it's up.
 static CFTimeInterval DPSpareUntil;
 static BOOL DPWanted = YES;  // At launch, and once a spare's been used or let go, rather than every moment Dia's left alone.
+static NSTimer *DPSpareTimer;
 
 void DPWantSpare(void) { DPWanted = YES; }
 void DPNotMakingSpare(void) { DPSpareUntil = 0; }
@@ -33,6 +34,9 @@ static void DPMakeSpare(void) {
         lookedAt = CACurrentMediaTime();
         if (!DPScriptTab(window, DPTabID(spare.openedTab))) DPDropSpare(window);
     }
+    BOOL anySpare = NO;
+    for (NSWindow *other in NSApp.windows) anySpare |= DPSpareIn(other) != nil;
+    if (!DPWanted && !anySpare && CACurrentMediaTime() >= DPSpareUntil) DPWanted = YES;
     if (!DPWanted) return;
     if (DPSpareIn(window) || DPGet(window, &DPOverlayKey) || DPHidingATab(window) || DPHasStrip(window) || !DPScriptWindow(window)) return;
     for (NSWindow *child in window.childWindows) if (child.visible) return;
@@ -48,7 +52,11 @@ static void DPMakeSpare(void) {
     DPExpectNewTab(window);
     __weak NSResponder *typing = window.firstResponder;
     DPHoldAutoPip();  // As choosing New Tab does, which sending its action doesn't.
-    [NSApp sendAction:item.action to:item.target from:item];
+    if (![NSApp sendAction:item.action to:item.target from:item]) {
+        DPSpareUntil = 0;
+        DPStopExpecting();
+        return DPWantSpare();
+    }
     for (int ms = 0; ms <= 300; ms += 300)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, ms * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             NSView *view = (NSView *)typing, *now = (NSView *)window.firstResponder;
@@ -66,11 +74,23 @@ void DPParkIfSpare(DPCommandBarOverlay *overlay) {
     DPWantSpare();
 }
 
-BOOL DPSparesOn(void) { return DPCommandBar.on && DPCommandBarHideTab.on && DPCommandBarSpare.on && !DPNewTabNextToCurrent.on; }
+BOOL DPSparesOn(void) { return DPHiding() && DPCommandBarSpare.on && !DPNewTabNextToCurrent.on; }
+
+static void DPUpdateSpareTimer(void) {
+    if (DPSparesOn()) {
+        if (!DPSpareTimer) DPSpareTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) { DPMakeSpare(); }];
+    } else {
+        [DPSpareTimer invalidate];
+        DPSpareTimer = nil;
+    }
+}
 
 static void DPInstallSpares(void) {
-    [NSNotificationCenter.defaultCenter addObserverForName:DPPatchesDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { DPDropUnwantedSpares(); }];
-    [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) { DPMakeSpare(); }];
+    [NSNotificationCenter.defaultCenter addObserverForName:DPPatchesDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        DPDropUnwantedSpares();
+        DPUpdateSpareTimer();
+    }];
+    DPOnLaunch(^{ DPUpdateSpareTimer(); });
     // Those Dia brought back from last time, once its windows are back, and again in case one was slow. Each stays noted
     // until it's closed or found in use, as Dia may quit again before it's looked for.
     NSArray *left = [DPSettings() arrayForKey:@"commandBarSpares"];
@@ -78,7 +98,10 @@ static void DPInstallSpares(void) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPCloseLeftSpares(left, delay > 3); });
 }
 
-static void DPApplySpares(DPPatch *patch) { DPDropUnwantedSpares(); }
+static void DPApplySpares(DPPatch *patch) {
+    DPDropUnwantedSpares();
+    DPUpdateSpareTimer();
+}
 
 static NSString *DPVerifySpares(DPPatch *patch) {
     for (NSWindow *window in NSApp.windows)

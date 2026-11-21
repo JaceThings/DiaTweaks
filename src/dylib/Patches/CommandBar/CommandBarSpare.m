@@ -20,13 +20,24 @@ void DPNoteSpare(NSString *tabID, BOOL parked) {
 
 // last: the final look, after which one still not found, such as one Dia didn't bring back, is forgotten.
 void DPCloseLeftSpares(NSArray<NSString *> *left, BOOL last) {
+    if (!DPSparesOn()) return;
     for (NSString *tabID in left) {
-        id tab = nil, space = nil;
+        id tab = nil, space = nil, foundScript = nil;
+        NSWindow *foundWindow = nil;
         for (NSWindow *window in NSApp.windows) {
             id scriptWindow = DPScriptWindow(window);
             if (tab || ![scriptWindow respondsToSelector:@selector(appleScriptProfiles)]) continue;
             for (id profile in [scriptWindow valueForKey:@"appleScriptProfiles"])
-                if (!tab && (tab = DPScriptTabIn(profile, tabID))) space = profile;
+                if (!tab && (tab = DPScriptTabIn(profile, tabID))) space = profile, foundScript = scriptWindow, foundWindow = window;
+        }
+        if (tab && [DPTabID(DPSpareIn(foundWindow).openedTab) isEqual:tabID]) continue;
+        if (tab && [DPActiveTabIDIn(foundScript) isEqual:tabID]) {
+            DPCommandBarOverlay *overlay = DPGet(foundWindow, &DPOverlayKey);
+            BOOL hasText = overlay && [DPTabID(overlay.openedTab) isEqual:tabID] && DPBarText(overlay).string.length > 0;
+            if (hasText || CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateCombinedSessionState, kCGAnyInputEventType) < 5) {
+                if (last) DPNoteSpare(tabID, NO);
+                continue;
+            }
         }
         NSString *url = [[tab valueForKey:@"URL"] description];
         if (tab && !url.length && [[space valueForKey:@"appleScriptTabs"] count] > 1) DPCloseTab(tab);
@@ -41,7 +52,6 @@ void DPDropSpare(NSWindow *window) {
     NSString *tabID = DPTabID(spare.openedTab);
     DPNoteSpare(tabID, NO);
     DPWantSpare();
-    spare.hidden = NO;
     DPDismiss(spare, YES);
     DPCloseTab(DPScriptTabInAnyProfile(DPScriptWindow(window), tabID));
 }
@@ -49,7 +59,7 @@ void DPDropSpare(NSWindow *window) {
 BOOL DPParkSpare(DPCommandBarOverlay *overlay) {
     NSWindow *window = overlay.host;
     NSString *tabID = DPTabID(overlay.openedTab);
-    if (!window || !DPSparesOn() || !overlay.returnTab || !DPHidesTab(tabID) || !DPScriptTab(window, tabID) || !DPScriptTab(window, DPTabID(overlay.returnTab)) || DPGet(window, &DPSpareKey) || DPHasStrip(window))
+    if (!window || !DPSparesOn() || !overlay.returnTab || !DPHiddenTab(tabID) || !DPScriptTab(window, tabID) || !DPScriptTab(window, DPTabID(overlay.returnTab)) || DPGet(window, &DPSpareKey) || DPHasStrip(window))
         return NO;
     [overlay.watch invalidate];
     if (overlay.keyMonitor) [NSEvent removeMonitor:overlay.keyMonitor];
@@ -65,7 +75,7 @@ BOOL DPParkSpare(DPCommandBarOverlay *overlay) {
     DPSet(window, &DPSpareKey, overlay);
     DPNoteSpare(tabID, YES);
     DPParkTab(tabID, YES);
-    DPStandInFor(window, nil);
+    DPStandInForTab(window, tabID);
     // Back to the page, unless another bar, such as ⌘L's taking over, has the keyboard.
     NSResponder *typing = window.firstResponder;
     if ([typing isKindOfClass:NSView.class] && ![(NSView *)typing isDescendantOf:overlay]) return YES;
@@ -84,7 +94,7 @@ BOOL DPShowSpare(NSWindow *window) {
         DPAdoptSpare(window, page);
         return NO;
     }
-    if (!DPSparesOn() || !DPHidesTab(tabID) || !DPScriptTab(window, tabID) || !front || overlay.panel.superview != overlay || DPHasStrip(window)) {
+    if (!DPSparesOn() || !DPHiddenTab(tabID) || !DPScriptTab(window, tabID) || !front || overlay.panel.superview != overlay || DPHasStrip(window)) {
         DPDropSpare(window);
         return NO;
     }
@@ -120,7 +130,6 @@ BOOL DPAdoptSpare(NSWindow *window, NSView *page) {
     if (!spare || !page.window || ![DPActiveTabID(window) isEqual:tabID]) return NO;
     DPSet(window, &DPSpareKey, nil);
     DPNoteSpare(tabID, NO);
-    spare.hidden = NO;
     DPDismiss(spare, YES);  // Its row stays out of sight meanwhile.
     DPMakeBlank(page, tabID, nil);  // Dia shows it with a page of its own, not the one the bar came from.
     DPWantSpare();
@@ -128,6 +137,7 @@ BOOL DPAdoptSpare(NSWindow *window, NSView *page) {
     __weak NSWindow *weakWindow = window;
     __weak NSView *weakPage = page;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (!weakWindow || DPGet(weakWindow, &DPOverlayKey)) return;
         id scriptWindow = DPScriptWindow(weakWindow), tab = DPScriptTabIn(scriptWindow, tabID);
         if (!tab || [[tab valueForKey:@"URL"] description].length) return;
         if ([[scriptWindow valueForKey:@"appleScriptTabs"] count] < 2) {
