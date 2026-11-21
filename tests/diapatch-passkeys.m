@@ -155,8 +155,9 @@ static void testPasskeyMessageValidation(void) {
     NSCAssert(!validRequest(@{ @"kind" : @"create", @"origin" : @"", @"options" : @{} }), @"empty origin rejected");
     NSCAssert(!validRequest(@{ @"kind" : @"create", @"origin" : @"https://example.com", @"options" : @[] }), @"non-dict options rejected");
     NSCAssert(validRequest(@{ @"kind" : @"create", @"origin" : @"https://example.com", @"options" : @{ @"challenge" : @"abc" } }), @"valid create accepted");
+    NSCAssert(validRequest(@{ @"kind" : @"get", @"origin" : @"https://api-4b6bfd4c.duosecurity.com", @"path" : @"/frame/v4/auth/prompt", @"options" : @{} }), @"valid get with path accepted");
 
-    NSDictionary *bad = runInHelper(0, nil, nil, nil);
+    NSDictionary *bad = runInHelper(0, nil, nil, nil, nil);
     NSCAssert([bad[@"error"][@"name"] isEqual:@"NotAllowedError"], @"runInHelper guards nil without crashing");
 }
 
