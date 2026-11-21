@@ -1,9 +1,6 @@
 #import "Title.h"
 
-NSString *DPFeishuDisplayTitle(NSString *title, NSURL *url) {
-    NSString *host = url.host.lowercaseString;
-    if (![host isEqualToString:@"feishu.cn"] && ![host hasSuffix:@".feishu.cn"]) return title;
-
+NSString *DPDisplayTitle(NSString *title) {
     NSUInteger prefixLength = 0;
     while (prefixLength < title.length) {
         unichar character = [title characterAtIndex:prefixLength];
