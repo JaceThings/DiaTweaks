@@ -10,6 +10,7 @@ void DPHideTabRow(NSString *tabID, NSWindow *window);
 void DPForgetWindow(NSWindow *window);  // Its hidden tabs and the wait for its new tab are let go.
 void DPShowTabRow(NSString *tabID, BOOL closing);  // closing: it stays out until it's gone.
 BOOL DPHidesTab(NSString *tabID);
+BOOL DPHiddenTab(NSString *tabID);  // Actually hidden, not merely expected.
 BOOL DPHidingATab(NSWindow *window);  // Holding its lists still: a bar is open over a hidden tab, or one is on its way.
 void DPParkTab(NSString *tabID, BOOL parked);
 void DPHideBlank(NSString *tabID, BOOL hidden, NSWindow *window);  // Kept out the same way, so an empty window shows nothing open.
@@ -53,6 +54,7 @@ void DPInstallStandIn(void);
 BOOL DPIsNewTabButton(NSView *view);
 void DPInstallPress(void);
 void DPStandInFor(NSWindow *window, NSString *tabID);  // The hidden tab the window's bar is over, or nil once it closes.
+void DPStandInForTab(NSWindow *window, NSString *tabID);  // Clears only if it is still that tab's.
 void DPStandInWhileSwitching(NSWindow *window, NSString *tabID, NSString *leaving);
 BOOL DPSwitchingTo(NSView *background);
 void DPEndSwitch(NSWindow *window);
