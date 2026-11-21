@@ -1,4 +1,5 @@
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
+#define DPDiaToolbarController  "_TtC13NavigationBar27NavigationBarViewController"  // Owns the Site menu.
 #define DPDiaWebsitePermissionPopover "_TtC13NavigationBar31WebsitePermissionRequestPopover"
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
