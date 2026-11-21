@@ -323,7 +323,7 @@ id DPDismiss(DPCommandBarOverlay *overlay, BOOL closing) {
     overlay.keyMonitor = nil;
     [overlay.shade removeFromSuperview];
     if (!overlay.host) return nil;
-    if (overlay.openedTab) DPStandInFor(overlay.host, nil);
+    if (overlay.openedTab) DPStandInForTab(overlay.host, DPTabID(overlay.openedTab));
     if (DPGet(overlay.host, &DPOverlayKey) == overlay) DPSet(overlay.host, &DPOverlayKey, nil);
     overlay.host = nil;
     NSView *page = overlay.page, *panel = overlay.panel, *home = DPGet(panel, &DPHomeKey);
