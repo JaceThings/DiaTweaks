@@ -86,7 +86,6 @@ int main(void) {
         [pane addSubview:bar];
         [window.contentView addSubview:pane];
 
-        // 1. Visible bar in key window: pointer over field keeps highlight when turning off.
         window.fakeMouse = NSMakePoint(500, 740);
         DPShowAddressField.on = YES;
         DPApplyShowAddressField(&DPShowAddressField);
@@ -97,13 +96,11 @@ int main(void) {
         check("turning off while pointer is over visible field keeps highlight",
               DPPointerOver(field) && delayed->isHoverActive && !DPVerifyShowAddressField(&DPShowAddressField));
 
-        // 2. Visible bar, pointer away: turning off clears highlight.
         window.fakeMouse = NSMakePoint(500, 400);
         DPApplyShowAddressField(&DPShowAddressField);
         check("turning off with pointer away clears highlight",
               !DPPointerOver(field) && !delayed->isHoverActive && !tracker->isHovered && !gCallbackHovered && !DPVerifyShowAddressField(&DPShowAddressField));
 
-        // 3. Bar lifted above pane into top tab strip area (inside window) with pointer there.
         DPShowAddressField.on = YES;
         DPApplyShowAddressField(&DPShowAddressField);
         bar.frame = NSMakeRect(0, 760, 1000, 40);
@@ -113,7 +110,6 @@ int main(void) {
         check("lifted bar above pane does not match pointer inside window above pane",
               !DPPointerOver(field) && !delayed->isHoverActive && !DPVerifyShowAddressField(&DPShowAddressField));
 
-        // 4. Auto-hidden tabs: pane fills window, Hide Toolbar lifts invisible bar into menu bar above window.
         pane.frame = NSMakeRect(0, 0, 1000, 800);
         bar.frame = NSMakeRect(0, 800, 1000, 40);
         bar.alphaValue = 0;
@@ -122,13 +118,11 @@ int main(void) {
         DPApplyShowAddressField(&DPShowAddressField);
         DPShowAddressField.on = NO;
         DPApplyShowAddressField(&DPShowAddressField);
-        // Simulate Hide Toolbar lowering bar back into the pane afterwards.
         bar.frame = NSMakeRect(0, 760, 1000, 40);
         bar.alphaValue = 1;
         check("lifted hidden bar above window clears highlight before bar lowers",
               !DPPointerOver(field) && !delayed->isHoverActive && !tracker->isHovered && !DPVerifyShowAddressField(&DPShowAddressField));
 
-        // 5. Invisible bar still in place (alphaValue == 0, e.g. Little Dia over window or mid-hide).
         bar.alphaValue = 0;
         window.fakeMouse = NSMakePoint(500, 780);
         DPShowAddressField.on = YES;
@@ -138,7 +132,6 @@ int main(void) {
         bar.alphaValue = 1;
         check("transparent bar in place does not keep highlight", !delayed->isHoverActive);
 
-        // 6. Covered by a sibling overlay above the bar (e.g. floating sidebar / command bar / popover).
         NSView *cover = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1000, 800)];
         [window.contentView addSubview:cover];
         DPShowAddressField.on = YES;
@@ -148,7 +141,6 @@ int main(void) {
         check("covered field does not match pointer", !DPPointerOver(field) && !delayed->isHoverActive);
         [cover removeFromSuperview];
 
-        // 7. Non-key window (e.g. toggling off from Settings window overlapping browser address bar).
         window.fakeKey = NO;
         DPShowAddressField.on = YES;
         DPApplyShowAddressField(&DPShowAddressField);
@@ -156,7 +148,6 @@ int main(void) {
         DPApplyShowAddressField(&DPShowAddressField);
         check("non-key window clears highlight even at field coordinates", !DPPointerOver(field) && !delayed->isHoverActive);
 
-        // 8. Flipped pane: lifted bar (negative y in flipped coords) does not match pointer above pane; visible bar does.
         DPFlippedPane *flippedPane = [[DPFlippedPane alloc] initWithFrame:NSMakeRect(0, 0, 1000, 800)];
         [pane removeFromSuperview];
         bar.frame = NSMakeRect(0, -40, 1000, 40);

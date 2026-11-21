@@ -27,8 +27,12 @@ static void DPSetHover(NSView *field, BOOL hovered) {
     if (handler[0]) ((DPHoverHandler)handler[0])(hovered, handler[1]);
 }
 
+static Class DPAddressFieldClass;
+
 static BOOL DPKeepsHover(id tracker) {
-    return DPShowAddressField.on && DPIsKind(objc_loadWeak((__autoreleasing id *)DPIvar(tracker, "view")), DPDiaAddressField);
+    if (!DPShowAddressField.on) return NO;
+    id view = objc_loadWeak((__autoreleasing id *)DPIvar(tracker, "view"));
+    return DPAddressFieldClass && [view isKindOfClass:DPAddressFieldClass];
 }
 
 static void DPTracker_mouseEntered(id self, SEL _cmd, NSEvent *event) {
@@ -71,6 +75,7 @@ static NSString *DPVerifyShowAddressField(DPPatch *patch) {
 }
 
 static void DPInstallShowAddressField(void) {
+    DPAddressFieldClass = objc_getClass(DPDiaAddressField);
     DPHook(DPDiaHoverTracker, @selector(mouseEntered:), (IMP)DPTracker_mouseEntered);
     DPHook(DPDiaHoverTracker, @selector(mouseMoved:), (IMP)DPTracker_mouseMoved);
     DPHook(DPDiaHoverTracker, @selector(mouseExited:), (IMP)DPTracker_mouseExited);
