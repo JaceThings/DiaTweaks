@@ -63,11 +63,11 @@ void DPDiaCaughtUp(NSWindow *window) {
     BOOL pressed = DPGet(window, &DPPressedKey) != nil;
     DPBar want = [DPGet(window, &DPWantKey) integerValue], have = DPBarIn(window);
     NSEvent *press = DPGet(window, want == DPNewTabBar ? &DPNewTabPressKey : &DPAddressPressKey);
-    char *keys[] = {&DPCatchingUpKey, &DPPressedKey, &DPNewTabPressKey, &DPAddressPressKey};
-    for (int i = 0; i < 4; i++) DPSet(window, keys[i], nil);
+    char *keys[] = {&DPCatchingUpKey, &DPWantKey, &DPPressedKey, &DPNewTabPressKey, &DPAddressPressKey};
+    for (size_t i = 0; i < sizeof(keys) / sizeof(*keys); i++) DPSet(window, keys[i], nil);
     if (!pressed || want == have) return;  // Pressed again only for presses made while waiting, so nothing Dia never shows loops.
     if (want == DPNoBar) return DPCancelCommandBar(DPGet(window, &DPOverlayKey));
-    if (!press) return;
+    if (!press || !window.isKeyWindow) return;
     [NSApp postEvent:[NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:press.modifierFlags timestamp:NSProcessInfo.processInfo.systemUptime
                                   windowNumber:window.windowNumber context:nil characters:press.characters charactersIgnoringModifiers:press.charactersIgnoringModifiers
                                      isARepeat:NO keyCode:press.keyCode] atStart:NO];
