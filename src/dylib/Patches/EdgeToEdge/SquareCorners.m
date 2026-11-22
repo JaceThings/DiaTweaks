@@ -130,9 +130,8 @@ BOOL DPFullScreen(NSView *container) {
 static CALayer *DPCornerShape(NSView *container, CGFloat *base, CGFloat *grow, CGFloat *left, CGFloat *right) {
     CALayer *layer = DPRoundedContent(container).layer;
     if (!layer) return nil;
-    BOOL fullscreen = DPFullScreen(container);
-    CGFloat amount = DPEdgeToEdge.progress * (DPWindowFullScreen(container.window) ? 1 : 1 - DPFullScreenOnly.progress);
-    *right = fullscreen ? amount : 0;
+    CGFloat amount = DPEdgeToEdgeAmount(container);
+    *right = DPFullScreen(container) ? amount : 0;
     BOOL beside = DPBesideSidebar(container);
     *left = beside ? DPSquareSidebarCorners.progress * amount : *right;
     CGFloat growth = DPWindowCornerGrowth(container.window);

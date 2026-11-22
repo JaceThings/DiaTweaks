@@ -9,6 +9,7 @@ static const CACornerMask DPRightCorners = kCALayerMaxXMinYCorner | kCALayerMaxX
 NSValue *DPRequestedFrame(NSView *container);
 CGFloat DPEdgeToEdgeAmount(NSView *view);
 BOOL DPWindowFullScreen(NSWindow *window);
+void DPRelayoutContainers(void);
 NSView *DPRoundedContent(NSView *container);
 NSView *DPChatCard(NSView *container);
 CGFloat DPBaseCornerRadius(NSView *container);

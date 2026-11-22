@@ -99,8 +99,9 @@ static void DPContainer_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     DPCallOriginal(DPContainer_setFrame, self, adjusted);
 }
 
-static void DPRelayoutContainers(void) {
-    for (NSView *container in DPContainers) {
+void DPRelayoutContainers(void) {
+    // Setting a frame re-enters the hook, which adds to DPContainers, so walk a snapshot.
+    for (NSView *container in DPContainers.allObjects) {
         NSValue *requested = DPRequestedFrame(container);
         if (requested) container.frame = requested.rectValue;
         container.needsLayout = container.needsDisplay = YES;
