@@ -42,6 +42,7 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     [_hideTimer invalidate];
     [_inPlaceAnimation invalidate];
     if (_tracking) [_pane removeTrackingArea:_tracking];
+    if (_edge) [_pane removeTrackingArea:_edge];
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
@@ -64,7 +65,8 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     [self stopReveal];
     [self stopInPlace];
     if (self.tracking) [self.pane removeTrackingArea:self.tracking];
-    self.tracking = nil;
+    if (self.edge) [self.pane removeTrackingArea:self.edge];
+    self.tracking = self.edge = nil;
     if (self.pane) DPSet(self.pane, &DPHoverKey, nil);
 }
 
@@ -78,11 +80,26 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     if (notification.object == self.pane.window) [self reset];
 }
 
-- (BOOL)containsPointer {
+- (BOOL)watchesPointer {
     NSWindow *window = self.pane.window;
-    if (!window.isKeyWindow || !NSApp.isActive || self.pane.hiddenOrHasHiddenAncestor) return NO;
-    NSPoint point = [self.pane convertPoint:[window convertPointFromScreen:NSEvent.mouseLocation] fromView:nil];
-    return self.tracking && NSMouseInRect(point, self.tracking.rect, self.pane.isFlipped);
+    return self.tracking && window.isKeyWindow && NSApp.isActive && !self.pane.hiddenOrHasHiddenAncestor;
+}
+
+// A quick move to the top of the page overshoots the window, into the menu bar when the window fills
+// the screen. Above the window, over the page's width and up to the top of the screen, counts too.
+- (BOOL)pointerAboveWindow {
+    if (![self watchesPointer]) return NO;
+    NSWindow *window = self.pane.window;
+    NSPoint point = NSEvent.mouseLocation;
+    NSRect page = [window convertRectToScreen:[self.pane convertRect:self.pane.bounds toView:nil]];
+    NSRect screen = (window.screen ?: NSScreen.mainScreen).frame;
+    return point.y >= NSMaxY(window.frame) && point.y <= NSMaxY(screen) && point.x >= NSMinX(page) && point.x < NSMaxX(page);
+}
+
+- (BOOL)containsPointer {
+    if (![self watchesPointer]) return NO;
+    NSPoint point = [self.pane convertPoint:[self.pane.window convertPointFromScreen:NSEvent.mouseLocation] fromView:nil];
+    return NSMouseInRect(point, self.tracking.rect, self.pane.isFlipped) || [self pointerAboveWindow];
 }
 
 - (BOOL)toolbarHasFocus {
@@ -131,12 +148,16 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
 }
 
 - (void)mouseExited:(NSEvent *)event {
+    // Leaving the window over its top, maybe past the strip between two moves, reveals the toolbar.
+    BOOL above = [self pointerAboveWindow];
+    if (above && !self.revealed && DPHideToolbar.on && DPRevealToolbarOnHover.on) self.revealed = YES;
     // Growing the tracking area on reveal sends a stray exit.
-    if (!self.revealed || [self containsPointer] || self.hideTimer) return;
+    if (!self.revealed || ([self containsPointer] && !above) || self.hideTimer) return;
     __weak DPToolbarHover *weakSelf = self;
     self.hideTimer = [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) {
         DPToolbarHover *me = weakSelf;
         if (!me) return [timer invalidate];
+        if ([me pointerAboveWindow]) return;  // No events come from outside the window: keep looking.
         if (![me containsPointer] && ([me toolbarHasFocus] || NSEvent.pressedMouseButtons)) return;
         [timer invalidate];
         me.hideTimer = nil;
@@ -165,6 +186,13 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
         }
     } else {
         [self stopReveal];
+    }
+    NSRect edge = NSIsEmptyRect(rect) ? NSZeroRect : self.pane.bounds;
+    if (!(self.edge && NSEqualRects(self.edge.rect, edge))) {
+        if (self.edge) [self.pane removeTrackingArea:self.edge];
+        self.edge = NSIsEmptyRect(edge) ? nil : [[NSTrackingArea alloc] initWithRect:edge options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow
+                                                                               owner:self userInfo:nil];
+        if (self.edge) [self.pane addTrackingArea:self.edge];
     }
     if (self.tracking && NSEqualRects(self.tracking.rect, rect)) return;
     if (self.tracking) [self.pane removeTrackingArea:self.tracking];

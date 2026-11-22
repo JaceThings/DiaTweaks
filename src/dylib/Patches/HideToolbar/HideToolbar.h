@@ -7,7 +7,7 @@ extern NSHashTable<NSView *> *DPPanes;
 
 @interface DPToolbarHover : NSObject
 @property (nonatomic, weak) NSView *pane, *bar, *bookmarks;
-@property (nonatomic, strong) NSTrackingArea *tracking;
+@property (nonatomic, strong) NSTrackingArea *tracking, *edge;  // The strip at the top; the whole pane, to see the pointer leave
 @property (nonatomic, strong) NSTimer *animation, *hideTimer, *inPlaceAnimation;
 @property (nonatomic, strong) NSHashTable<NSPopover *> *permissionPopovers;
 @property (nonatomic) BOOL revealed, inPlace, touched, barsLowered;
