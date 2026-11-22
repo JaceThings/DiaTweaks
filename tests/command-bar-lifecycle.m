@@ -518,6 +518,26 @@ int main(void) {
         [scene watch];
         CHECK(!scene.overlay.host && !scene.bar.closed, "a window Dia no longer lists doesn't leave the bar waiting for good");
 
+        // Closing the tab the bar came from while its still-blank tab is in front: the row must
+        // not appear, so the tab closes (or the bar keeps it when it's the space's only tab).
+        scene = [[DPScene alloc] initIn:browser];
+        [scene.old.appleScriptTabs addObject:DPTab(@"window-a-other", @"https://example.net")];
+        [scene.old.appleScriptTabs removeObject:scene.back];
+        scene.script.activeTab = scene.bar;
+        [gShownRows removeAllObjects];
+        [scene watch];
+        CHECK(!scene.overlay.host && scene.bar.closed, "the bar's blank tab closes when the tab it came from is gone");
+        CHECK(DPLast(gShownRows, scene.bar.tabId, YES), "the closing tab's row stays hidden when the tab it came from is gone");
+
+        scene = [[DPScene alloc] initIn:browser];
+        [scene.old.appleScriptTabs removeObject:scene.back];
+        scene.script.activeTab = scene.bar;
+        [gShownRows removeAllObjects];
+        [scene watch];
+        CHECK(scene.overlay.host == browser && !scene.bar.closed, "the bar keeps its blank tab when it's its space's only tab");
+        CHECK(scene.overlay.returnTab == nil && scene.overlay.overBlank, "the bar adopts its blank tab instead of leaving it visible");
+        CHECK(!DPHas(gShownRows, scene.bar.tabId, NO), "the only tab's row is never shown");
+
         scene = [[DPScene alloc] initIn:browser];
         gSpare = scene.overlay;
         [scene leave];

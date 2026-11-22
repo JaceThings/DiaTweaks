@@ -331,7 +331,7 @@ BOOL DPHasStrip(NSWindow *window) {
 static BOOL DPHasURL(id tab);
 
 void DPMakeBlank(NSView *page, NSString *tab, NSString *closing) {
-    if (!tab || DPInSplit(page)) return;
+    if (!tab || !page || DPInSplit(page)) return;
     [DPBlanks(page.window) addObject:tab];
     DPSet(page, &DPBlankKey, @YES);
     DPHidePage(page, YES);
@@ -462,9 +462,24 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
         return DPCloseTab(tab);
     }
     if (overlay.returnTab && !DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab))) {
+        NSString *openedID = DPTabID(tab);
+        id space = DPScriptProfileHolding(scriptWindow, openedID), spaceTabs = DPValueForKey(space, @"appleScriptTabs");
+        // The tab the bar came from is gone. Close the bar's still-unused blank tab instead of
+        // letting its row appear; keep the bar open over it when it's its space's only tab.
+        if (DPHiding() && !overlay.overBlank && !overlay.picked && !DPTaken(overlay, tab) && !DPHasURL(tab)) {
+            if ([spaceTabs isKindOfClass:NSArray.class] && [spaceTabs count] > 1) {
+                DPDismiss(overlay, YES);
+                DPNoteSpare(openedID, NO);
+                DPNoteOpenTab(openedID, NO);
+                return DPCloseTab(tab);
+            }
+            overlay.returnTab = nil;
+            overlay.overBlank = YES;
+            return DPMakeBlank(overlay.page, openedID, nil);
+        }
         DPDismissCommandBar(overlay);
-        DPNoteSpare(DPTabID(tab), NO);
-        DPNoteOpenTab(DPTabID(tab), NO);
+        DPNoteSpare(openedID, NO);
+        DPNoteOpenTab(openedID, NO);
         return DPFocusTab(tab);
     }
     if (!DPTaken(overlay, tab)) return;
