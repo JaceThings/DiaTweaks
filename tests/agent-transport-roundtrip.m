@@ -1,13 +1,14 @@
 #import "agent-transport.h"
+#import "Patches/AgentTransport/AgentRelay.h"
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
-NSTask *DPTestAgentTask(NSString *path) {
+NSTask *DPTestAgentTaskNamed(NSString *path, NSString *name) {
     NSTask *task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:path];
     NSMutableDictionary *environment = [NSProcessInfo.processInfo.environment mutableCopy];
-    environment[@"AGENT_SERVER_SOCKET_PATH"] = [NSString stringWithFormat:@"/tmp/dia-agent.server.%d.test.sock", getpid()];
+    environment[@"AGENT_SERVER_SOCKET_PATH"] = [NSString stringWithFormat:@"/tmp/dia-agent.server.%@.sock", name];
     environment[@"KEEP"] = @"preserved";
     task.environment = environment;
 #ifdef CONFIGURED_AGENT
@@ -16,13 +17,23 @@ NSTask *DPTestAgentTask(NSString *path) {
     return task;
 }
 
+NSTask *DPTestAgentTask(NSString *path) {
+    return DPTestAgentTaskNamed(path, [NSString stringWithFormat:@"%d.test", getpid()]);
+}
+
 void DPTestAgentRoundtrip(NSString *path, BOOL enabled) {
+    DPTestAgentRoundtripNamed(path, [NSString stringWithFormat:@"%d.test", getpid()], enabled);
+}
+
+void DPTestAgentRoundtripNamed(NSString *path, NSString *name, BOOL enabled) {
     atomic_store(&DPTestConnected, false);
-    NSTask *task = DPTestAgentTask(path);
+    NSTask *task = DPTestAgentTaskNamed(path, name);
     NSString *socketPath = task.environment[@"AGENT_SERVER_SOCKET_PATH"];
     NSDictionary *before = task.environment;
     NSError *error = nil;
     NSCAssert([task launchAndReturnError:&error], @"launch failed: %@", error);
+    NSCAssert(DPAgentServerRunning(), @"the launched agent isn't found among Dia's children");
+    NSCAssert(DPAgentRelayRunning() == enabled, @"an agent is reported as relayed only when it is");
     NSString *after = task.environment[@"AGENT_SERVER_SOCKET_PATH"];
     NSCAssert(enabled ? ![socketPath isEqual:after] : [socketPath isEqual:after], @"wrong process routing");
     int fd = -1;
@@ -58,4 +69,6 @@ void DPTestAgentRoundtrip(NSString *path, BOOL enabled) {
     NSCAssert([before[@"KEEP"] isEqual:task.environment[@"KEEP"]], @"environment lost");
     for (int attempt = 0; attempt < 100 && [NSFileManager.defaultManager fileExistsAtPath:socketPath]; attempt++) usleep(25000);
     NSCAssert(![NSFileManager.defaultManager fileExistsAtPath:socketPath], @"socket not cleaned");
+    for (int attempt = 0; attempt < 200 && (DPAgentRelayRunning() || DPAgentServerRunning()); attempt++) usleep(25000);
+    NSCAssert(!DPAgentRelayRunning() && !DPAgentServerRunning(), @"the relay must end with its agent");
 }

@@ -26,7 +26,7 @@ static BOOL DPWriteAgent(int fd, const void *data, size_t size) {
 }
 - (BOOL)write:(const void *)bytes length:(size_t)length {
     [_lock lock];
-    BOOL success = _fd >= 0 && DPWriteAgent(_fd, bytes, length);
+    BOOL success = _fd >= 0 && (!length || DPWriteAgent(_fd, bytes, length));
     [_lock unlock];
     return success;
 }

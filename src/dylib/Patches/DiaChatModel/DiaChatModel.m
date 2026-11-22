@@ -1,33 +1,66 @@
 #import "StdPatch/StdPatch.h"
+#import "Updates/Updates.h"
 #import "Patches/AgentTransport/AgentRelay.h"
+#import "Patches/AgentTransport/AgentSocket.h"
 
 NSData *DPChatAgentRequest(NSData *line, NSString *model);
 NSArray<NSString *> *DPInstalledChatModels(void);
 NSString *DPSelectedDiaChatModel(NSString *choice, NSArray<NSString *> *models, BOOL fallback);
 
-extern DPPatch DPDiaChatModel, DPDiaChatModelFallback;
+extern DPPatch DPDiaChatModel, DPDiaChatModelFallback, DPTurnOffAI;
 void DPInstallDiaModelOverview(void);
 void DPRefreshDiaModelPicker(void);
 NSString *DPVerifyDiaModelOverview(DPPatch *patch);
 
 static NSString *const DPDefaultDiaModel = @"dia-default";
 
+static BOOL gOfferedRelaunch, gAppliedTurnOffAI;
+
+// Dia starts its chat agent once. One that started before this tweak was on can't be reached until Dia relaunches.
+BOOL DPChatModelNeedsRelaunch(DPPatch *patch) {
+    return patch->on && DPSavedOn(patch) && !DPTurnOffAI.on && DPAgentTransportInstalled() &&
+        !DPAgentRelayRunning() && DPAgentServerRunning();
+}
+
+// Once per time the tweak is on, so changing the model while it waits doesn't ask again.
+BOOL DPChatModelTakeRelaunchOffer(DPPatch *patch) {
+    if (!patch->on) gOfferedRelaunch = NO;
+    if (gOfferedRelaunch || !DPChatModelNeedsRelaunch(patch)) return NO;
+    return gOfferedRelaunch = YES;
+}
+
+static void DPOfferChatModelRelaunch(DPPatch *patch) {
+    if (DPTesting || !DPChatModelTakeRelaunchOffer(patch)) return;
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Relaunch Dia to choose a chat model";
+    alert.informativeText = @"Dia's chat helper is already running without DiaTweaks.";
+    [alert addButtonWithTitle:@"Relaunch"];
+    [alert addButtonWithTitle:@"Later"];
+    if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
+}
+
+// Off, paused and Turn Off AI all leave Dia's agent socket alone: no filter is registered, and one already running passes frames through.
 void DPApplyDiaChatModel(DPPatch *patch) {
-    NSString *choice = patch->on ? DPChoice(patch) : nil;
-    NSString *model = DPSelectedDiaChatModel(choice, DPInstalledChatModels(), DPDiaChatModelFallback.on);
+    gAppliedTurnOffAI = DPTurnOffAI.on;
+    BOOL active = patch->on && !gAppliedTurnOffAI;
+    NSString *model = active ? DPSelectedDiaChatModel(DPChoice(patch), DPInstalledChatModels(), DPDiaChatModelFallback.on) : nil;
     DPAgentFilter filter = nil;
-    if (patch->on) filter = ^NSData *(NSData *line, DPAgentReply reply) {
-        return DPChatAgentRequest(line, model);
+    if (active) filter = ^NSData *(NSData *line, DPAgentReply reply) {
+        return DPTurnOffAI.on ? line : DPChatAgentRequest(line, model);
     };
     DPSetAgentFilters(patch->key, filter, nil);
     DPRefreshDiaModelPicker();
     [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
+    DPOfferChatModelRelaunch(patch);
 }
 
 static void DPInstallDiaChatModel(void) {
     DPInstallDiaModelOverview();
     DPApplyDiaChatModel(&DPDiaChatModel);
     DPOnLaunch(^{ DPApplyDiaChatModel(&DPDiaChatModel); });
+    [NSNotificationCenter.defaultCenter addObserverForName:DPPatchesDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        if (DPDiaChatModel.on && DPTurnOffAI.on != gAppliedTurnOffAI) DPApplyDiaChatModel(&DPDiaChatModel);
+    }];
 }
 
 NSMenu *DPDiaChatModels(void) {
@@ -42,20 +75,28 @@ NSMenu *DPDiaChatModels(void) {
     return menu;
 }
 
+static NSString *DPVerifyDiaChatModel(DPPatch *patch) {
+    BOOL active = patch->on && !DPTurnOffAI.on;
+    if (active && !DPAgentTransportInstalled()) return @"Dia's agent launch doesn't reach the chat model filter";
+    if (!active && DPAgentFiltersActive()) return @"a chat model filter is registered while the tweak is off";
+    return DPVerifyDiaModelOverview(patch);
+}
+
 DP_PATCH(DPDiaChatModel) {
     .key = @"diaChatModel",
-    .order = 103,
+    .order = 260,
     .title = @"Chat Model",
-    .detail = @"Restart Dia if this tweak was off when Dia opened.",
-    .hint = @"Model availability depends on your account.",
+    .detail = @"Choose which model Dia's chat uses, from the models Dia already lists. If Dia's chat helper was already running when you turn this on, DiaTweaks offers to relaunch Dia.",
+    .hint = @"Your account decides which models work, and Dia's own upgrade prompts still apply.",
     .symbol = @"sparkles",
     .tint = @"systemPurpleColor",
     .section = @"AI",
-    .classes = DPClasses(DPDiaCommandBarToolbar),
+    .disabledBy = @"turnOffAI",
+    .classes = DPClasses(DPDiaAssistantPanel),
     .choice = @"diaChatModelChoice",
     .defaultChoice = @"dia-default",
     .choices = DPDiaChatModels,
     .install = DPInstallDiaChatModel,
     .apply = DPApplyDiaChatModel,
-    .verify = DPVerifyDiaModelOverview,
+    .verify = DPVerifyDiaChatModel,
 };

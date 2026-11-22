@@ -16,6 +16,8 @@ int main(void) { @autoreleasepool {
         return [@"selected" dataUsingEncoding:NSUTF8StringEncoding];
     }, nil);
     DPTestAgentRoundtrip(agent, YES);
+    // Dia names the socket after the profile, and a profile name can hold spaces ("Profile 2").
+    DPTestAgentRoundtripNamed(agent, [NSString stringWithFormat:@"%d.Profile 2", getpid()], YES);
     DPSetAgentFilters(@"test", nil, nil);
 #ifndef CONFIGURED_AGENT
     DPTestAgentRoundtrip(agent, NO);

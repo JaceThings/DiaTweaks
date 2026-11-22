@@ -9,9 +9,10 @@ static NSString *DPSocketPath(NSDictionary *environment) {
     NSString *prefix = @"/tmp/dia-agent.server.";
     if (![path isKindOfClass:NSString.class] || ![path hasPrefix:prefix] || ![path hasSuffix:@".sock"] ||
         strlen(path.fileSystemRepresentation) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return nil;
+    // Dia names the socket after the profile, and a profile name can hold spaces and other punctuation
+    // ("Profile 2"), so only a path separator would let the name leave /tmp.
     NSString *name = [path substringFromIndex:prefix.length];
-    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"];
-    return [name rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound ? path : nil;
+    return [name rangeOfString:@"/"].location == NSNotFound ? path : nil;
 }
 
 static BOOL DPAgentTask_launchAndReturnError(NSTask *self, SEL _cmd, NSError **error) {
@@ -28,7 +29,7 @@ static BOOL DPAgentTask_launchAndReturnError(NSTask *self, SEL _cmd, NSError **e
     int listener = DPAgentSocket();
     struct sockaddr_un address = DPAgentAddress(socket.fileSystemRepresentation);
     BOOL bound = listener >= 0 && !bind(listener, (struct sockaddr *)&address, SUN_LEN(&address));
-    if (!bound || chmod(socket.fileSystemRepresentation, 0600) || listen(listener, 4)) {
+    if (!bound || chmod(socket.fileSystemRepresentation, 0600) || listen(listener, 16)) {
         if (bound) unlink(socket.fileSystemRepresentation);
         if (listener >= 0) close(listener);
         rmdir(directory);
@@ -63,9 +64,16 @@ static BOOL DPAgentTask_launchAndReturnError(NSTask *self, SEL _cmd, NSError **e
     }
 }
 
+static Class DPTaskClass;
+
 void DPInstallAgentTransport(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        DPHookClass([NSTask new].class, @selector(launchAndReturnError:), (IMP)DPAgentTask_launchAndReturnError);
+        DPTaskClass = [NSTask new].class;
+        DPHookClass(DPTaskClass, @selector(launchAndReturnError:), (IMP)DPAgentTask_launchAndReturnError);
     });
+}
+
+BOOL DPAgentTransportInstalled(void) {
+    return DPIsHooked(DPTaskClass, @selector(launchAndReturnError:), (IMP)DPAgentTask_launchAndReturnError);
 }

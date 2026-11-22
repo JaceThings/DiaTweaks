@@ -38,6 +38,8 @@ void DPInstallDiaModelOverview(void) {
 }
 
 NSString *DPVerifyDiaModelOverview(DPPatch *patch) {
+    Class list = objc_getClass("DPOverviewView");
+    if (list && !DPIsHooked(list, @selector(syncWithQuery:), (IMP)DPModelOverview_syncWithQuery)) return @"the tweak list doesn't show the selected model";
     for (NSView *overview in DPFindViews("DPOverviewView")) {
         if (overview.hiddenOrHasHiddenAncestor) continue;
         NSTextField *note = DPModelNote(overview);

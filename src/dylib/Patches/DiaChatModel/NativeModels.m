@@ -17,7 +17,7 @@ static const void *DPModelRelative(const int32_t *field) {
     return *field ? (const char *)field + *field : NULL;
 }
 
-NSArray<NSString *> *DPInstalledChatModels(void) {
+static NSArray<NSString *> *DPScanChatModels(void) {
     for (uint32_t image = 0; image < _dyld_image_count(); image++) {
         const struct mach_header_64 *header = (const void *)_dyld_get_image_header(image);
         if (header->magic != MH_MAGIC_64 || header->filetype != MH_EXECUTE) continue;
@@ -39,4 +39,19 @@ NSArray<NSString *> *DPInstalledChatModels(void) {
         }
     }
     return @[];
+}
+
+// Dia's catalog is fixed for a build, so a found list is kept. An empty one is looked for again a few times before it's trusted.
+NSArray<NSString *> *DPInstalledChatModels(void) {
+    static NSArray<NSString *> *found;
+    static NSUInteger misses;
+    static NSObject *lock;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ lock = [NSObject new]; });
+    @synchronized (lock) {
+        if (found && (found.count || misses >= 3)) return found;
+        found = DPScanChatModels();
+        if (!found.count) misses++;
+        return found;
+    }
 }

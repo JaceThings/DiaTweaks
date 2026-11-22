@@ -10,7 +10,7 @@ static void DPApplyModelFallback(DPPatch *patch) {
 DP_PATCH(DPDiaChatModelFallback) {
     .key = @"diaChatModelFallback",
     .defaultOn = YES,
-    .order = 104,
+    .order = 261,
     .title = @"Fall Back to Dia Default",
     .detail = @"Use Dia Default when the saved model is no longer listed.",
     .symbol = @"arrow.uturn.backward",

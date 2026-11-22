@@ -1,7 +1,9 @@
 #import "AgentSocket.h"
 #import "AgentRelay.h"
+#include <libproc.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 
@@ -46,11 +48,32 @@ static int DPConnectAgent(NSString *path, pid_t child) {
     return -1;
 }
 
+static _Atomic NSUInteger DPActiveRelays;
+
+BOOL DPAgentRelayRunning(void) { return atomic_load(&DPActiveRelays) != 0; }
+
+BOOL DPAgentServerRunning(void) {
+    static const char tail[] = "/agent-server-resources/dist/agent-server";
+    pid_t children[512];
+    int bytes = proc_listpids(PROC_PPID_ONLY, (uint32_t)getpid(), children, sizeof children);
+    for (int i = 0; i < bytes / (int)sizeof *children; i++) {
+        char path[PROC_PIDPATHINFO_MAXSIZE];
+        size_t length = proc_pidpath(children[i], path, sizeof path) > 0 ? strlen(path) : 0;
+        if (length >= sizeof tail - 1 && !strcmp(path + length - (sizeof tail - 1), tail)) return YES;
+    }
+    return NO;
+}
+
+// Each connection is relayed on its own, so a chat that is still streaming never holds up the next one.
+// Once the agent is gone nothing new is accepted, and its private folder goes when the last relay ends.
 void DPRelayChatAgent(int listener, NSString *socket, NSString *directory, pid_t child, DPAgentConnected connected) {
     struct stat identity = {0};
     lstat(socket.fileSystemRepresentation, &identity);
     NSString *path = [directory stringByAppendingPathComponent:@"agent.sock"];
+    atomic_fetch_add(&DPActiveRelays, 1);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
+        dispatch_group_t connections = dispatch_group_create();
         struct pollfd event = { .fd = listener, .events = POLLIN };
         while (!kill(child, 0)) {
             int ready = poll(&event, 1, 500);
@@ -60,22 +83,28 @@ void DPRelayChatAgent(int listener, NSString *socket, NSString *directory, pid_t
             int client = accept(listener, NULL, NULL);
             if (client < 0) continue;
             DPConfigureAgentSocket(client);
-            if (DPPeer(client, getpid())) {
+            if (!DPPeer(client, getpid())) {
+                close(client);
+                continue;
+            }
+            dispatch_group_async(connections, queue, ^{
                 int backend = DPConnectAgent(path, child);
                 if (backend >= 0) {
                     if (connected) connected(directory);
                     DPRelayAgentConnection(client, backend);
                     close(backend);
                 }
-            }
-            close(client);
+                close(client);
+            });
         }
         struct stat current;
         if (!lstat(socket.fileSystemRepresentation, &current) &&
             current.st_dev == identity.st_dev && current.st_ino == identity.st_ino)
             unlink(socket.fileSystemRepresentation);
         close(listener);
+        dispatch_group_wait(connections, DISPATCH_TIME_FOREVER);
         unlink(path.fileSystemRepresentation);
         rmdir(directory.fileSystemRepresentation);
+        atomic_fetch_sub(&DPActiveRelays, 1);
     });
 }
