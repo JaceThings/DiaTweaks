@@ -1,6 +1,5 @@
-#import "StdPatch/StdPatch.h"
+#import "TrueBlack.h"
 
-extern DPPatch DPTrueBlack;
 static char DPGradientKey;
 
 static CGColorRef DPBlack(void) { return CGColorGetConstantColor(kCGColorBlack); }
@@ -11,7 +10,7 @@ static BOOL DPIsDark(NSView *view) {
 }
 
 // Light text on black only: a light profile keeps its color.
-static BOOL DPBlackens(NSView *view) { return DPTrueBlack.on && DPIsDark(view); }
+BOOL DPBlackens(NSView *view) { return DPTrueBlack.on && DPIsDark(view); }
 
 // The window's and the floating sidebar's own tint, not the selected tab's copy, which sits deeper.
 static BOOL DPIsChromeTint(NSView *tint) {
@@ -59,6 +58,7 @@ static void DPInstallTrueBlack(void) {
     DPHook(DPDiaColorView, @selector(updateLayer), (IMP)DPColor_updateLayer);
     DPHook(DPDiaGradientView, @selector(updateLayer), (IMP)DPGradient_updateLayer);
     DPHook(DPDiaGradientView, @selector(layout), (IMP)DPGradient_layout);
+    DPInstallTabOutline();
 }
 
 // Off, updateLayer puts Dia's color back.
@@ -69,6 +69,7 @@ static void DPApplyTrueBlack(DPPatch *patch) {
         DPPaint(view);
     }
     for (NSView *view in DPFindViews(DPDiaGradientView)) DPApplyGradient(view);
+    DPApplyTabOutline();
 }
 
 static NSString *DPVerifyTrueBlack(DPPatch *patch) {
@@ -84,7 +85,7 @@ static NSString *DPVerifyTrueBlack(DPPatch *patch) {
         if (DPBlackens(view) && !hidden) return @"window gradient still shows";
         if (!DPBlackens(view) && hidden && [DPDiaValue(view, &DPGradientKey, @0) floatValue] != 0) return @"window gradient still hidden";
     }
-    return nil;
+    return DPVerifyTabOutline();
 }
 
 DP_PATCH(DPTrueBlack) {
@@ -95,7 +96,7 @@ DP_PATCH(DPTrueBlack) {
     .symbol = @"moon.fill circle.fill",
     .tint = @"systemBrownColor",
     .section = @"Window",
-    .classes = DPClasses(DPDiaWindowFrame, DPDiaWindowTint, DPDiaColorView, DPDiaGradientView, DPDiaToolbar),
+    .classes = DPClasses(DPDiaWindowFrame, DPDiaWindowTint, DPDiaColorView, DPDiaGradientView, DPDiaToolbar, DPDiaTabRim, DPDiaTabStrip),
     .install = DPInstallTrueBlack,
     .apply = DPApplyTrueBlack,
     .verify = DPVerifyTrueBlack,
