@@ -619,6 +619,7 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
 }
 
 static BOOL DPHasURL(id tab) { return [[DPValueForKey(tab, @"URL") description] length] > 0; }
+static void DPCoverSoon(NSWindow *window, int checks);
 
 static void DPCaughtUpSoon(NSWindow *window) {
     __weak NSWindow *weak = window;
@@ -676,6 +677,7 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
     } else DPStopExpecting();
 
     DPWatch(overlay);
+    DPCoverSoon(window, 8);
     if (!overlay.returnTab) return DPParkIfSpare(overlay);
     __weak DPCommandBarOverlay *weak = overlay;
     // Defer DPGoBack past Dia's tab switch (calling it inline crashes) inside a transaction to hide the flash.
@@ -700,6 +702,32 @@ static BOOL DPOpenOverBlank(NSWindow *window) {
     NSView *page = DPBlankPage(window);
     if (page) DPPresentCommandBar(page, YES);
     return page != nil;
+}
+
+static void DPCoverBlanks(void);
+
+// A blank tab still noted but standing without its bar (Dia showed its page again, or the bar was lost in a
+// switch) would sit there as a plain new tab page. Put the bar back over it instead.
+static BOOL DPCoverBlank(NSWindow *window) {
+    if (!DPGet(window, &DPOverlayKey) && !DPSpareIn(window) && DPOpenOverBlank(window)) return YES;
+    NSView *page = DPBlankPage(window);
+    if (!page || page.isHiddenOrHasHiddenAncestor || DPGet(page, &DPOverlayKey) || DPGet(page, &DPOwnBarKey) || DPHasStrip(window)) return NO;
+    NSView *pane = page.superview;
+    while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
+    [pane layoutSubtreeIfNeeded];
+    DPPresentCommandBar(page, YES);
+    return YES;
+}
+
+static void DPCoverSoon(NSWindow *window, int checks) {
+    if (!checks || !window || !DPCommandBar.on) return;
+    __weak NSWindow *weak = window;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 40 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPCoverSoon(weak, DPCoverBlank(weak) ? 0 : checks - 1); });
+}
+
+static void DPCoverBlanks(void) {
+    if (!DPCommandBar.on) return;
+    for (NSWindow *window in NSApp.windows) DPCoverBlank(window);
 }
 
 static void DPCloseLeftBlank(NSWindow *window) {
@@ -948,6 +976,7 @@ static void DPContentPane_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPContentPane_viewDidMoveToWindow, self);
     __weak NSWindow *window = self.window;
     if (!window) return;
+    DPCoverSoon(window, 8);
     id scriptWindow = DPScriptWindow(window);
     NSString *active = DPNoteActiveTab(window, scriptWindow, NULL);
     if (active && DPInSplit(self)) [DPSplits(window) addObject:active];
@@ -1078,6 +1107,7 @@ static void DPApplyCommandBar(DPPatch *patch) {
     if (patch != &DPCommandBar) return;
     for (NSView *page in DPFindViews(DPDiaNewTabPage))
         if (!DPGet(page, &DPBlankKey) && !DPGet(page, &DPOverlayKey) && !DPGet(page, &DPOwnBarKey)) DPPresentCommandBar(page, NO);
+    DPCoverBlanks();
 }
 
 static NSString *DPVerifyCommandBar(DPPatch *patch) {
@@ -1087,6 +1117,8 @@ static NSString *DPVerifyCommandBar(DPPatch *patch) {
         if (blank && !page.hidden) return @"a blank tab shows its new tab page";
         if (DPCommandBar.on && !overlay && !blank && !DPGet(page, &DPOwnBarKey)) return @"a new tab page shows without the bar over it";
         if (overlay && overlay.panel.superview != overlay) return @"the bar isn't on the overlay";
+        // A page left under a bar that moved on would show its new tab page behind it.
+        if (DPCommandBar.on && overlay.host && !overlay.hidden && !DPGet(overlay.host, &DPOverlayKey)) return @"the bar sits over a page its window no longer knows";
     }
     for (NSWindow *window in NSApp.windows) {
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);

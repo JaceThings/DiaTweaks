@@ -622,6 +622,34 @@ int main(void) {
         browser.identifier = @"window-a";
         gDelegate.appleScriptWindows = @[];
 
+        // A blank tab whose bar was lost (a stray notice showed its page again) gets the bar back
+        // instead of sitting there as a plain new tab page.
+        DPCommandBarOverlay *dropped = DPGet(browser, &DPOverlayKey);
+        if (dropped) DPDismiss(dropped, NO);
+        DPSet(browser, &DPRecentKey, nil);
+        DPSet(browser, &DPBlankKey, nil);
+        DPFakeTab *strayTab = DPTab(@"stray-blank", @"");
+        DPFakeSpace *straySpace = DPSpace(@[ DPTab(@"stray-other", @"https://example.org"), strayTab ]);
+        DPFakeScriptWindow *strayScript = [DPFakeScriptWindow new];
+        strayScript.windowId = browser.identifier = @"window-stray";
+        strayScript.appleScriptProfiles = @[ straySpace ];
+        strayScript.front = straySpace;
+        strayScript.activeTab = strayTab;
+        gDelegate.appleScriptWindows = @[ strayScript ];
+        NSView *strayPage = [[ntpCls alloc] initWithFrame:browser.contentView.bounds];
+        [strayPage addSubview:[[_TtC20AssistantPanelUIBase22AssistantPanelRootView alloc] initWithFrame:NSMakeRect(0, 0, 300, 60)]];
+        [DPBlanks(browser) addObject:strayTab.tabId];
+        [browser.contentView addSubview:strayPage];
+        DPCoverBlanks();
+        DPCommandBarOverlay *strayBar = DPGet(browser, &DPOverlayKey);
+        CHECK(strayBar != nil && [DPTabID(strayBar.openedTab) isEqual:strayTab.tabId], "a blank tab left without its bar gets the bar back");
+        CHECK(strayPage.hidden, "the new tab page is hidden again once the bar is back over it");
+        if (strayBar) DPDismiss(strayBar, NO);
+        [strayPage removeFromSuperview];
+        [DPBlanks(browser) removeAllObjects];
+        browser.identifier = @"window-a";
+        gDelegate.appleScriptWindows = @[];
+
         scene = [[DPScene alloc] initIn:browser];
         gSpare = scene.overlay;
         [scene leave];
