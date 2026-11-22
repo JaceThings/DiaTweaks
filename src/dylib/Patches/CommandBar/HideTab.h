@@ -7,6 +7,7 @@ BOOL DPHiding(void);
 void DPExpectNewTab(NSWindow *window);
 void DPStopExpecting(void);
 void DPHideTabRow(NSString *tabID, NSWindow *window);
+void DPHideBarTab(NSString *tabID, NSWindow *window);
 void DPForgetWindow(NSWindow *window);
 void DPCleanHideTab(void);
 void DPShowTabRow(NSString *tabID, BOOL closing);

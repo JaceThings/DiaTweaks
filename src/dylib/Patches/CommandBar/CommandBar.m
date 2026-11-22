@@ -667,6 +667,12 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
         DPFreezeLists(window);
         DPParkTab(openedID, NO);
         DPStandInFor(window, openedID);
+    } else if (openedID && !DPHasURL(openedTab)) {
+        // Nothing to return to but a blank new tab (first launch after every regular tab closed).
+        // Keep it out of the sidebar while the bar is over it, like a new tab the bar made.
+        DPHideBarTab(openedID, window);
+        DPStandInFor(window, openedID);
+        DPNoteOpenTab(openedID, YES);
     } else DPStopExpecting();
 
     DPWatch(overlay);

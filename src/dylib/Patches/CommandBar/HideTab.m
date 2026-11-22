@@ -103,6 +103,17 @@ void DPHideTabRow(NSString *tabID, NSWindow *window) {
     DPRelayoutLists();
 }
 
+// Hides a blank tab the bar opened over but didn't create (e.g. the one restored on the first
+// launch after every regular tab was closed). It isn't the expected new tab, so it isn't
+// parked; showing it again when the bar closes is enough.
+void DPHideBarTab(NSString *tabID, NSWindow *window) {
+    if (!tabID || !window || !DPHiding()) return;
+    [DPHidden addObject:tabID];
+    [DPOwner setObject:window forKey:tabID];
+    [DPParked removeObject:tabID];
+    DPRelayoutLists();
+}
+
 void DPShowTabRow(NSString *tabID, BOOL closing) {
     if (!tabID || ![DPHidden containsObject:tabID]) return;
     // Keep a closing tab hidden for 1 s so it doesn't flash in the list on its way out.

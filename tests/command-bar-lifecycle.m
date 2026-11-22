@@ -18,14 +18,16 @@ void DPExpectNewTab(NSWindow *window) {}
 void DPStopExpecting(void) { gOpenAttempts++; }
 void DPHideTabRow(NSString *tabID, NSWindow *window) {}
 static NSMutableArray<NSArray *> *gShownRows, *gNotedSpares;
+static NSMutableArray<NSString *> *gHiddenBarTabs, *gStandIns;
 void DPShowTabRow(NSString *tabID, BOOL closing) { [gShownRows addObject:@[ tabID ?: @"", @(closing) ]]; }
+void DPHideBarTab(NSString *tabID, NSWindow *window) { [gHiddenBarTabs addObject:tabID ?: @""]; }
 BOOL DPHidesTab(NSString *tabID) { return NO; }
 void DPParkTab(NSString *tabID, BOOL parked) {}
 void DPHideBlank(NSString *tabID, BOOL hidden, NSWindow *window) {}
 BOOL DPParksTab(NSString *tabID) { return NO; }
 void DPFreezeLists(NSWindow *window) {}
 BOOL DPOnlyListedTab(NSString *tabID, NSString *closingID, NSWindow *window) { return NO; }
-void DPStandInFor(NSWindow *window, NSString *tabID) {}
+void DPStandInFor(NSWindow *window, NSString *tabID) { [gStandIns addObject:tabID ?: @""]; }
 void DPStandInForTab(NSWindow *window, NSString *tabID) {}
 void DPStandInWhileSwitching(NSWindow *window, NSString *tabID, NSString *leaving) {}
 NSString *DPVerifyStandIn(NSWindow *window, NSString *tabID) { return nil; }
@@ -227,6 +229,8 @@ int main(void) {
         [NSApplication sharedApplication];
         gShownRows = [NSMutableArray array];
         gNotedSpares = [NSMutableArray array];
+        gHiddenBarTabs = [NSMutableArray array];
+        gStandIns = [NSMutableArray array];
         DPHookClass(NSApp.class, @selector(windows), (IMP)DPApp_windows);
 
         Class ntpCls = objc_allocateClassPair(DPFakeNewTabPage.class, DPDiaNewTabPage, 0);
@@ -537,6 +541,40 @@ int main(void) {
         CHECK(scene.overlay.host == browser && !scene.bar.closed, "the bar keeps its blank tab when it's its space's only tab");
         CHECK(scene.overlay.returnTab == nil && scene.overlay.overBlank, "the bar adopts its blank tab instead of leaving it visible");
         CHECK(!DPHas(gShownRows, scene.bar.tabId, NO), "the only tab's row is never shown");
+
+        // First launch after every regular tab was closed: the bar opens over the restored blank
+        // tab with nothing to return to, and must still keep that tab out of the sidebar.
+        DPCommandBarOverlay *stale = DPGet(browser, &DPOverlayKey);
+        if (stale) DPDismiss(stale, NO);
+        DPSet(browser, &DPRecentKey, nil);
+        DPSet(browser, &DPBlankKey, nil);
+        DPSet(browser, &DPClosedAtKey, nil);
+        DPSet(browser, &DPSeenKey, nil);
+        DPFakeTab *launchTab = DPTab(@"launch-only", @"");
+        DPFakeSpace *launchSpace = DPSpace(@[ launchTab ]);
+        DPFakeScriptWindow *launchScript = [DPFakeScriptWindow new];
+        launchScript.windowId = browser.identifier = @"window-launch";
+        launchScript.appleScriptProfiles = @[ launchSpace ];
+        DPSwitchTo(launchScript, launchSpace);
+        gDelegate.appleScriptWindows = @[ launchScript ];
+        NSView *launchPage = [[ntpCls alloc] initWithFrame:browser.contentView.bounds];
+        _TtC20AssistantPanelUIBase22AssistantPanelRootView *launchPanel =
+            [[_TtC20AssistantPanelUIBase22AssistantPanelRootView alloc] initWithFrame:NSMakeRect(0, 0, 300, 60)];
+        [launchPanel addSubview:[[NSTextView alloc] initWithFrame:launchPanel.bounds]];
+        [launchPage addSubview:launchPanel];
+        gHiding = YES;
+        [gHiddenBarTabs removeAllObjects];
+        [gStandIns removeAllObjects];
+        [browser.contentView addSubview:launchPage];
+        DPCommandBarOverlay *launchOverlay = DPGet(browser, &DPOverlayKey);
+        CHECK(launchOverlay != nil, "the bar opens over a restored blank tab");
+        CHECK([gHiddenBarTabs containsObject:launchTab.tabId], "a restored blank tab stays out of the sidebar while the bar is over it");
+        CHECK([gStandIns containsObject:launchTab.tabId], "the New Tab button stands in for a restored blank tab");
+        if (launchOverlay) DPDismiss(launchOverlay, NO);
+        [launchPage removeFromSuperview];
+        browser.identifier = @"window-a";
+        gDelegate.appleScriptWindows = @[];
+        gHiding = YES;
 
         scene = [[DPScene alloc] initIn:browser];
         gSpare = scene.overlay;
