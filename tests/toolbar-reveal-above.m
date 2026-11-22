@@ -78,7 +78,8 @@ int main(void) {
         NSPoint asideAbove = NSMakePoint(NSMaxX(w) + 20, NSMaxY(w) + 10);
 
         // 2026-11-22: a quick move to the top of the page skipped the 8 pt strip between two moves and
-        // ended over the menu bar, outside the window, and the toolbar never showed.
+        // ended over the menu bar, outside the window (or over the tabs at the top), and the toolbar
+        // never showed.
         pointer = overMenuBar;
         [hover mouseExited:nil];
         Check(hover.revealed, "leaving the window over its top reveals the toolbar");
@@ -108,6 +109,26 @@ int main(void) {
         pointer = [window convertPointToScreen:[pane convertPoint:NSMakePoint(200, 2) toView:nil]];
         [hover mouseEntered:nil];
         Check(hover.revealed, "the strip at the top of the page still reveals");
+
+        // Tabs at the top: the tab strip sits between the page and the top of the window.
+        hover.revealed = NO;
+        DPWait(0.3);
+        [pane removeFromSuperview];
+        pane.frame = NSMakeRect(0, 0, 400, 260);
+        [window.contentView addSubview:pane];
+        [pane layout];
+        NSPoint overTabs = NSMakePoint(NSMidX(w), NSMaxY(w) - 20);
+        pointer = overTabs;
+        [hover mouseExited:nil];
+        Check(hover.revealed, "leaving the page into the tabs at the top reveals the toolbar");
+        DPWait(0.5);
+        Check(hover.revealed, "the toolbar stays while the pointer is over the tabs");
+        pointer = overMenuBar;
+        DPWait(0.5);
+        Check(hover.revealed, "and while it goes on past the window");
+        pointer = inPage;
+        DPWait(0.5);
+        Check(!hover.revealed, "the toolbar hides once the pointer is back on the page below the tabs");
 
         [window close];
         if (failures) {
