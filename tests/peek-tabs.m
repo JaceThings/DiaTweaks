@@ -80,7 +80,14 @@ static NSMapTable<NSWindow *, id> *gScriptWindows;
 @interface _TtC11ContentPane15ContentPaneView : NSView
 @end
 @implementation _TtC11ContentPane15ContentPaneView
+- (BOOL)acceptsFirstResponder { return YES; }
 - (void)viewDidMoveToWindow { [super viewDidMoveToWindow]; }
+@end
+
+@interface DPPeekHostMock : NSView
+@end
+@implementation DPPeekHostMock
+- (BOOL)acceptsFirstResponder { return YES; }
 @end
 
 @interface ArcWebContents : NSObject <DPPeekPage>
@@ -91,7 +98,7 @@ static NSMapTable<NSWindow *, id> *gScriptWindows;
 @property (nonatomic, weak) NSView *attachedHost;
 @end
 @implementation ArcWebContents
-- (NSView *)createPaneHostView { return [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 200, 200)]; }
+- (NSView *)createPaneHostView { return [[DPPeekHostMock alloc] initWithFrame:NSMakeRect(0, 0, 200, 200)]; }
 - (void)attachToPaneHostView:(NSView *)host { self.attachedHost = host; }
 - (void)detachFromPaneHostView:(NSView *)host { gDetachCalls++; if (self.attachedHost == host) self.attachedHost = nil; }
 - (void)close { gCloseCalls++; }
@@ -240,7 +247,11 @@ static NSEvent *KeyEvent(NSWindow *window, NSString *chars, unsigned short code,
 }
 
 static void DrainMain(void) {
-    [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    __block BOOL drained = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{ drained = YES; });
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:1.0];
+    while (!drained && deadline.timeIntervalSinceNow > 0)
+        [NSRunLoop.mainRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
 }
 
 int main(void) {
