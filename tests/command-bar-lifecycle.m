@@ -576,6 +576,52 @@ int main(void) {
         gDelegate.appleScriptWindows = @[];
         gHiding = YES;
 
+        // Closing the last regular tab while the bar is open: Dia makes its replacement new tab page
+        // as it closes, and the bar must come forward in that tab instead of a plain new tab page.
+        DPCommandBarOverlay *leftOver = DPGet(browser, &DPOverlayKey);
+        if (leftOver) DPDismiss(leftOver, NO);
+        DPSet(browser, &DPRecentKey, nil);
+        DPSet(browser, &DPBlankKey, nil);
+        DPSet(browser, &DPClosedAtKey, nil);
+        DPSet(browser, &DPSeenKey, nil);
+        DPFakeTab *lastTab = DPTab(@"close-only", @"https://example.org");
+        DPFakeSpace *closeSpace = DPSpace(@[ lastTab ]);
+        DPFakeScriptWindow *closeScript = [DPFakeScriptWindow new];
+        closeScript.windowId = browser.identifier = @"window-close";
+        closeScript.appleScriptProfiles = @[ closeSpace ];
+        closeScript.front = closeSpace;
+        closeScript.activeTab = lastTab;
+        gDelegate.appleScriptWindows = @[ closeScript ];
+        NSView *closePage = [[ntpCls alloc] initWithFrame:browser.contentView.bounds];
+        [closePage addSubview:[[_TtC20AssistantPanelUIBase22AssistantPanelRootView alloc] initWithFrame:NSMakeRect(0, 0, 300, 60)]];
+        DPCommandBarOverlay *closeBar = DPBarFor(browser, lastTab, nil);
+        closeBar.overBlank = YES;
+        DPBlanks(browser);
+        [browser.contentView addSubview:closePage];
+        closePage.hidden = YES;
+        // Dia drops the closed tab and makes its replacement before the page comes forward.
+        DPFakeTab *replacement = DPTab(@"close-replacement", @"");
+        [closeSpace.appleScriptTabs removeAllObjects];
+        [closeSpace.appleScriptTabs addObject:replacement];
+        closeScript.activeTab = replacement;
+        lastTab.URL = nil;
+        [closeSpace.appleScriptTabs insertObject:lastTab atIndex:0];
+        [DPBlanks(browser) addObject:lastTab.tabId];
+        [gHiddenBarTabs removeAllObjects];
+        [gStandIns removeAllObjects];
+        DPNewTabPage_viewDidMoveToWindow(closePage, @selector(viewDidMoveToWindow));
+        DPCommandBarOverlay *closeNext = DPGet(browser, &DPOverlayKey);
+        CHECK(closeNext != nil && closeNext != closeBar, "the bar comes forward over the tab made when the last one closes");
+        CHECK(DPHas(gShownRows, @"close-only", YES), "the closed tab's row stays hidden while it closes");
+        { NSMutableString *d = [NSMutableString string]; for (NSArray *row in gShownRows) [d appendFormat:@"[%@ %@] ", row[0], row[1]];
+          printf("DBG rows=%s hidden=%d next=%p blankkey=%d\n", d.UTF8String, (int)closePage.hidden, closeNext, (int)(DPGet(closePage, &DPBlankKey) != nil)); }
+        CHECK(closeNext && closeNext.overBlank && !closeNext.returnTab, "the bar keeps the replacement as its own blank tab");
+        DPCommandBarOverlay *closeOpen = DPGet(browser, &DPOverlayKey);
+        if (closeOpen) DPDismiss(closeOpen, NO);
+        [closePage removeFromSuperview];
+        browser.identifier = @"window-a";
+        gDelegate.appleScriptWindows = @[];
+
         scene = [[DPScene alloc] initIn:browser];
         gSpare = scene.overlay;
         [scene leave];

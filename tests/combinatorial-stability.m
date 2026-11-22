@@ -131,6 +131,7 @@ void DPExpectNewTab(NSWindow *window) { gCommandBarExpectCount++; }
 void DPStopExpecting(void) {}
 void DPHideTabRow(NSString *tabID, NSWindow *window) { if (tabID) [gHiddenTabIDs addObject:tabID]; gHidingTabWindow = window; }
 void DPShowTabRow(NSString *tabID, BOOL closing) { if (tabID) [gHiddenTabIDs removeObject:tabID]; if (!gHiddenTabIDs.count) gHidingTabWindow = nil; }
+void DPHideBarTab(NSString *tabID, NSWindow *window) { DPHideTabRow(tabID, window); }
 BOOL DPHidesTab(NSString *tabID) { return tabID && [gHiddenTabIDs containsObject:tabID]; }
 BOOL DPHidingATab(NSWindow *window) { return gHiddenTabIDs.count > 0 && (!window || gHidingTabWindow == window); }
 BOOL DPParkingAny(void) { return NO; }

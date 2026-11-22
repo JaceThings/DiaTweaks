@@ -974,6 +974,12 @@ static void DPStrip_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPScheduleLayoutCheck(self.window);
 }
 
+// The page the bar was lifted from, while another new tab page keeps the window's own note.
+static NSView *DPLiftedPage(NSWindow *window) {
+    Class pageCls = objc_getClass(DPDiaNewTabPage);
+    return pageCls ? DPFindView(window.contentView, ^BOOL(NSView *view) { return [view isKindOfClass:pageCls] && DPGet(view, &DPOverlayKey); }) : nil;
+}
+
 static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPNewTabPage_viewDidMoveToWindow, self);
     NSWindow *window = self.window;
@@ -984,23 +990,37 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     if (!DPCommandBar.on || DPAdoptSpare(window, self)) return;
     NSString *previous = DPPreviousTabID(window);
     NSMutableSet<NSString *> *blanks = DPGet(window, &DPBlankKey);
-    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+    DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey) ?: DPGet(DPLiftedPage(window), &DPOverlayKey);
     if (overlay && [active isEqual:DPTabID(overlay.openedTab)]) {
         if (overlay.returnTab) dispatch_async(dispatch_get_main_queue(), ^{ if (overlay.host) DPFocusTab(overlay.returnTab); });
         return;
+    }
+    // Closing the bar's blank tab makes Dia a replacement new tab page, which the bar moves onto rather than
+    // leaving plain. The note the closed tab left would close that new tab as a leftover, so it drops it.
+    if (active && overlay) {
+        id openedTab = DPScriptTabIn(scriptWindow, DPTabID(overlay.openedTab));
+        if (openedTab && !DPHasURL(openedTab)) {
+            NSString *closedID = DPTabID(overlay.openedTab);
+            DPDismiss(overlay, YES);
+            DPNoteSpare(closedID, NO);
+            DPNoteOpenTab(closedID, NO);
+            DPShowTabRow(closedID, NO);
+            overlay = nil;
+        }
     }
     // Dia opens a closing last tab's replacement before removing it; returning to a closing tab crashes Dia.
     NSNumber *closedAt = DPGet(window, &DPClosedAtKey);
     DPSet(window, &DPClosedAtKey, nil);
     BOOL justClosed = closedAt && NSProcessInfo.processInfo.systemUptime - closedAt.doubleValue < 1;
     BOOL closing = justClosed || DPIsShortcut(NSApp.currentEvent, @"Close Tab") || (previous && !DPScriptTabIn(scriptWindow, previous));
-    BOOL wasBlank = [blanks containsObject:active];
+    BOOL wasBlank = (active != nil) && [blanks containsObject:active];
     if (active && (wasBlank || closing)) {
         if (!wasBlank && (seen || DPInSplit(self))) {
             [DPKeptTabs addObject:active];
             DPSet(self, &DPOwnBarKey, @YES);
         } else DPMakeBlank(self, active, previous);
-        if (overlay.returnTab && !DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab))) DPCancelCommandBar(overlay);
+        // The bar keeps the new tab page it has rather than leave it plain.
+        if (overlay) DPCancelCommandBar(overlay);
         return;
     }
     if (overlay) DPCancelCommandBar(overlay);
