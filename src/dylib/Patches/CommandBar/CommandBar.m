@@ -410,6 +410,27 @@ static BOOL DPTaken(DPCommandBarOverlay *overlay, id tab) {
     return (overlay.picked && !DPBarText(overlay).string.length) || !(url == overlay.startURL || [url isEqual:overlay.startURL]);
 }
 
+// Midway through a swipe between spaces Dia lists no tabs at all. Wait it out, but not for good.
+static BOOL DPSwipeSettling(DPCommandBarOverlay *overlay, id scriptWindow) {
+    id tabs = DPValueForKey(scriptWindow, @"appleScriptTabs");
+    if (![tabs isKindOfClass:NSArray.class] || [tabs count]) return overlay.listlessSince = 0, NO;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (!overlay.listlessSince) overlay.listlessSince = now;
+    return now - overlay.listlessSince < 3;
+}
+
+// Another space came forward, leaving the bar's tab in the old one. Close it unless a result is opening in it, it
+// was opened over a blank tab, or it's its space's only tab, since closing that would empty the space.
+static void DPLeaveSpace(DPCommandBarOverlay *overlay, id scriptWindow) {
+    NSString *openedID = DPTabID(overlay.openedTab);
+    id space = DPScriptProfileHolding(scriptWindow, openedID), left = DPScriptTabIn(space, openedID), spaceTabs = DPValueForKey(space, @"appleScriptTabs");
+    BOOL close = left && DPHiding() && !overlay.overBlank && !overlay.picked && !DPTaken(overlay, left)
+              && [spaceTabs isKindOfClass:NSArray.class] && [spaceTabs count] > 1;
+    DPDismiss(overlay, close);
+    DPNoteSpare(openedID, NO);
+    if (close) DPCloseTab(left);
+}
+
 static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
     NSWindow *window = overlay.host;
     NSView *content = window.contentView;
@@ -422,17 +443,9 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
     DPPlaceShade(overlay.shade, window);
     scriptWindow = scriptWindow ?: DPScriptWindow(window);
     id tab = DPScriptTabIn(scriptWindow, DPTabID(overlay.openedTab));
-    // Midway through a swipe between spaces Dia lists no tabs at all; wait for the next check.
-    if (!tab && ![DPValueForKey(scriptWindow, @"appleScriptTabs") count]) return;
-    if (!tab) {
-        // Another space came forward. Its unused new tab would stay behind in the old space; keep one a result is
-        // opening in, or one Escape would keep, since closing a space's only tab empties it.
-        id left = DPScriptTabInAnyProfile(scriptWindow, DPTabID(overlay.openedTab));
-        BOOL close = left && DPHiding() && !DPTaken(overlay, left) && !overlay.overBlank && !DPNowhereToGo(overlay);
-        DPDismiss(overlay, close);
-        if (close) DPCloseTab(left);
-        return;
-    }
+    if (!tab && DPSwipeSettling(overlay, scriptWindow)) return;
+    if (!tab) return DPLeaveSpace(overlay, scriptWindow);
+    overlay.listlessSince = 0;
     NSString *active = DPActiveTabIDIn(scriptWindow);
     if (active && ![active isEqual:DPTabID(tab)] && ![active isEqual:DPTabID(overlay.returnTab)]) {
         NSString *left = DPTabID(overlay.returnTab);
