@@ -534,6 +534,27 @@ int main(void) {
         [first leave];
         [first watch];
         CHECK(!first.overlay.host && first.bar.closed, "the other window's bar closes on its own switch");
+
+        // Escaping a bar left in another space judges it by its own space, so a one-tab space in front doesn't strand it.
+        NSView *barPage = [[ntpCls alloc] initWithFrame:browser.contentView.bounds];
+        [browser.contentView addSubview:barPage];
+        scene = [[DPScene alloc] initIn:browser];
+        scene.overlay.page = barPage;
+        [scene leave];
+        DPCancelCommandBar(scene.overlay);
+        CHECK(!scene.overlay.host && scene.bar.closed && !scene.back.closed, "cancelling a bar left in another space closes its tab even if the space in front has one tab");
+        scene = [[DPScene alloc] initIn:browser];
+        scene.overlay.page = barPage;
+        [scene.old.appleScriptTabs removeObject:scene.back];
+        scene.overlay.returnTab = scene.back;
+        [scene leave];
+        DPCancelCommandBar(scene.overlay);
+        CHECK(!scene.overlay.host && !scene.bar.closed, "cancelling a bar left in another space keeps its space's only tab");
+        scene = [[DPScene alloc] initIn:browser];
+        scene.overlay.page = barPage;
+        DPCancelCommandBar(scene.overlay);
+        CHECK(!scene.overlay.host && scene.bar.closed, "cancelling a bar in the space in front still closes its tab");
+        [barPage removeFromSuperview];
         gHiding = NO;
 
         if (failures) return 1;

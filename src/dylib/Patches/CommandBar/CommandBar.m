@@ -372,9 +372,12 @@ id DPDismiss(DPCommandBarOverlay *overlay, BOOL closing) {
 static BOOL DPNowhereToGo(DPCommandBarOverlay *overlay) {
     NSWindow *host = overlay.host;
     id scriptWindow = overlay.returnTab ? DPScriptWindow(host) : nil;
-    id tabs = DPValueForKey(scriptWindow, @"appleScriptTabs");
+    // Once another space is in front, the bar's tab and the tab it came from are counted in their own space.
+    NSString *openedID = DPTabID(overlay.openedTab);
+    id space = DPScriptTabIn(scriptWindow, openedID) ? scriptWindow : DPScriptProfileHolding(scriptWindow, openedID) ?: scriptWindow;
+    id tabs = DPValueForKey(space, @"appleScriptTabs");
     NSUInteger count = [tabs isKindOfClass:NSArray.class] ? [tabs count] : 0;
-    return !overlay.returnTab || (!DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab)) && count < 2);
+    return !overlay.returnTab || (!DPScriptTabIn(space, DPTabID(overlay.returnTab)) && count < 2);
 }
 
 static id DPDismissCommandBar(DPCommandBarOverlay *overlay) { return DPDismiss(overlay, NO); }
