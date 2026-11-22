@@ -19,6 +19,87 @@ void DPNoteSpare(NSString *tabID, BOOL parked) {
     [DPSettings() setObject:spares forKey:DPSparesKey];
 }
 
+static NSString *const DPOpenTabsKey = @"commandBarOpenTabs";
+
+// Tracks the bar's hidden new tab independently of the spare option, so quitting
+// (or crashing) with the bar open doesn't restore an empty "New Tab" on relaunch.
+// Unlike spares, this persists even when "Open the Bar Instantly" is off.
+void DPNoteOpenTab(NSString *tabID, BOOL open) {
+    if (!tabID) return;
+    NSArray *noted = [DPSettings() arrayForKey:DPOpenTabsKey] ?: @[];
+    if (open == [noted containsObject:tabID]) return;
+    NSMutableArray *tabs = noted.mutableCopy;
+    if (open) [tabs addObject:tabID];
+    else [tabs removeObject:tabID];
+    [DPSettings() setObject:tabs forKey:DPOpenTabsKey];
+}
+
+void DPCloseLeftOpenTabs(NSArray<NSString *> *left, BOOL last) {
+    BOOL hiding = DPHiding();
+    for (NSString *tabID in left) {
+        id tab = nil, space = nil, foundScript = nil;
+        NSWindow *foundWindow = nil;
+        for (NSWindow *window in NSApp.windows) {
+            id scriptWindow = DPScriptWindow(window);
+            id profiles = DPValueForKey(scriptWindow, @"appleScriptProfiles");
+            if (![profiles isKindOfClass:NSArray.class]) continue;
+            for (id profile in profiles)
+                if ((tab = DPScriptTabIn(profile, tabID))) {
+                    space = profile; foundScript = scriptWindow; foundWindow = window;
+                    break;
+                }
+            if (tab) break;
+        }
+        if (tab && [DPTabID(DPSpareIn(foundWindow).openedTab) isEqual:tabID]) continue;
+        if (tab && [DPActiveTabIDIn(foundScript) isEqual:tabID]) {
+            DPCommandBarOverlay *overlay = DPGet(foundWindow, &DPOverlayKey);
+            BOOL hasText = overlay && [DPTabID(overlay.openedTab) isEqual:tabID] && DPBarText(overlay).string.length > 0;
+            if (hasText || CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateCombinedSessionState, kCGAnyInputEventType) < 5) {
+                if (last) DPNoteOpenTab(tabID, NO);
+                continue;
+            }
+        }
+        NSString *url = [DPValueForKey(tab, @"URL") description];
+        id spaceTabs = DPValueForKey(space, @"appleScriptTabs");
+        if (hiding && tab && !url.length && [spaceTabs isKindOfClass:NSArray.class] && [spaceTabs count] > 1) DPCloseTab(tab);
+        if (tab || last) DPNoteOpenTab(tabID, NO);
+    }
+}
+
+// Hides restored abandoned tabs as soon as they appear so they never flash in
+// the sidebar. Closing waits for the 3 s / 12 s passes (closing a tab Dia is
+// still restoring crashes it); this only hides, never closes or un-notes.
+void DPHideLeftTabs(void) {
+    if (!DPHiding()) return;
+    for (NSString *key in @[ DPSparesKey, DPOpenTabsKey ]) {
+        NSArray *left = [DPSettings() arrayForKey:key] ?: @[];
+        for (NSString *tabID in left) {
+            id tab = nil, space = nil, foundScript = nil;
+            NSWindow *foundWindow = nil;
+            for (NSWindow *window in NSApp.windows) {
+                id scriptWindow = DPScriptWindow(window);
+                id profiles = DPValueForKey(scriptWindow, @"appleScriptProfiles");
+                if (![profiles isKindOfClass:NSArray.class]) continue;
+                for (id profile in profiles)
+                    if ((tab = DPScriptTabIn(profile, tabID))) {
+                        space = profile; foundScript = scriptWindow; foundWindow = window;
+                        break;
+                    }
+                if (tab) break;
+            }
+            if (!tab || [DPTabID(DPSpareIn(foundWindow).openedTab) isEqual:tabID]) continue;
+            if ([DPActiveTabIDIn(foundScript) isEqual:tabID]) {
+                DPCommandBarOverlay *overlay = DPGet(foundWindow, &DPOverlayKey);
+                BOOL hasText = overlay && [DPTabID(overlay.openedTab) isEqual:tabID] && DPBarText(overlay).string.length > 0;
+                if (hasText || CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateCombinedSessionState, kCGAnyInputEventType) < 5) continue;
+            }
+            NSString *url = [DPValueForKey(tab, @"URL") description];
+            id spaceTabs = DPValueForKey(space, @"appleScriptTabs");
+            if (!url.length && [spaceTabs isKindOfClass:NSArray.class] && [spaceTabs count] > 1) DPHideBlank(tabID, YES, foundWindow);
+        }
+    }
+}
+
 void DPCloseLeftSpares(NSArray<NSString *> *left, BOOL last) {
     if (!DPSparesOn()) return;
     for (NSString *tabID in left) {
@@ -57,6 +138,7 @@ void DPDropSpare(NSWindow *window) {
     DPSet(window, &DPSpareKey, nil);
     NSString *tabID = DPTabID(spare.openedTab);
     DPNoteSpare(tabID, NO);
+    DPNoteOpenTab(tabID, NO);
     DPWantSpare();
     DPDismiss(spare, YES);
     id scriptWindow = DPScriptWindow(window);
@@ -162,6 +244,7 @@ BOOL DPAdoptSpare(NSWindow *window, NSView *page) {
     if (!spare || !page.window || ![DPActiveTabID(window) isEqual:tabID]) return NO;
     DPSet(window, &DPSpareKey, nil);
     DPNoteSpare(tabID, NO);
+    DPNoteOpenTab(tabID, NO);
     DPDismiss(spare, YES);
     DPMakeBlank(page, tabID, nil);
     DPWantSpare();

@@ -392,6 +392,7 @@ void DPCancelCommandBar(DPCommandBarOverlay *overlay) {
     id tab = DPDismiss(overlay, !overBlank && !nowhereToGo);
     if (!tab) return;
     DPNoteSpare(DPTabID(tab), NO);
+    DPNoteOpenTab(DPTabID(tab), NO);
     // Closing a window's only tab would close the window, and Dia with it.
     if (overBlank || nowhereToGo) DPMakeBlank(page, DPTabID(tab), nil);
     else DPCloseTab(tab);
@@ -431,6 +432,7 @@ static void DPLeaveSpace(DPCommandBarOverlay *overlay, id scriptWindow) {
               && [spaceTabs isKindOfClass:NSArray.class] && [spaceTabs count] > 1;
     DPDismiss(overlay, close);
     DPNoteSpare(openedID, NO);
+    DPNoteOpenTab(openedID, NO);
     if (close) DPCloseTab(left);
 }
 
@@ -454,16 +456,21 @@ static void DPWatchNewTab(DPCommandBarOverlay *overlay, id scriptWindow) {
         NSString *left = DPTabID(overlay.returnTab);
         if (DPParkSpare(overlay)) return DPStandInWhileSwitching(window, DPTabID(tab), left);
         DPDismiss(overlay, YES);
+        DPNoteSpare(DPTabID(tab), NO);
+        DPNoteOpenTab(DPTabID(tab), NO);
         DPStandInWhileSwitching(window, DPTabID(tab), left);
         return DPCloseTab(tab);
     }
     if (overlay.returnTab && !DPScriptTabIn(scriptWindow, DPTabID(overlay.returnTab))) {
         DPDismissCommandBar(overlay);
+        DPNoteSpare(DPTabID(tab), NO);
+        DPNoteOpenTab(DPTabID(tab), NO);
         return DPFocusTab(tab);
     }
     if (!DPTaken(overlay, tab)) return;
     DPDismissCommandBar(overlay);
     DPNoteSpare(DPTabID(tab), NO);
+    DPNoteOpenTab(DPTabID(tab), NO);
     DPFocusTab(tab);
 }
 
@@ -640,6 +647,7 @@ static void DPPresentCommandBar(NSView *page, BOOL overBlank) {
         DPHideTabRow(openedID, window);
         DPStandInFor(window, openedID);
         DPNoteSpare(openedID, YES);
+        DPNoteOpenTab(openedID, YES);
     } else if (overBlank && DPParksTab(openedID)) {
         DPFreezeLists(window);
         DPParkTab(openedID, NO);
@@ -1008,6 +1016,7 @@ static void DPApplyCommandBar(DPPatch *patch) {
         BOOL nowhereToGo = DPNowhereToGo(overlay);
         id tab = DPDismissCommandBar(overlay);
         DPNoteSpare(DPTabID(tab), NO);
+        DPNoteOpenTab(DPTabID(tab), NO);
         if (tab && !nowhereToGo) DPCloseTab(tab);
     }
     if (!on) {
@@ -1064,6 +1073,7 @@ static void DPInstallCommandBar(void) {
         DPCommandBarOverlay *old = DPTakeHandOver(window);
         if (old) DPNoteSpare(DPTabID(DPDismiss(old, NO)), NO);
         DPCommandBarOverlay *overlay = DPGet(window, &DPOverlayKey);
+        // Keep the open-tab note so relaunch closes a restored empty bar tab (#582).
         if (overlay) DPNoteSpare(DPTabID(DPDismiss(overlay, NO)), NO);
     }];
     DPInstallAutoPipHold();

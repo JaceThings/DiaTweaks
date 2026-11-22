@@ -161,6 +161,8 @@ void DPForgetSpare(NSWindow *window) {}
 void DPUpdateSpareTimer(void) {}
 DPCommandBarOverlay *DPSpareIn(NSWindow *window) { return nil; }
 void DPNoteSpare(NSString *tabID, BOOL parked) {}
+void DPNoteOpenTab(NSString *tabID, BOOL open) {}
+void DPCloseLeftOpenTabs(NSArray<NSString *> *tabIDs, BOOL last) {}
 BOOL DPAdoptSpare(NSWindow *window, NSView *page) { return NO; }
 void DPNotMakingSpare(void) {}
 NSView *DPCommandBarPart(NSView *commandBar, const char *className) { return nil; }

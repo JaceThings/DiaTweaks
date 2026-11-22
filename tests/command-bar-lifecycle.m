@@ -49,6 +49,8 @@ void DPUpdateSpareTimer(void) { gUpdateSpareTimerCalls++; }
 static DPCommandBarOverlay *gSpare;
 DPCommandBarOverlay *DPSpareIn(NSWindow *window) { return gSpare.host == window ? gSpare : nil; }
 void DPNoteSpare(NSString *tabID, BOOL parked) { [gNotedSpares addObject:@[ tabID ?: @"", @(parked) ]]; }
+void DPNoteOpenTab(NSString *tabID, BOOL open) { [gNotedSpares addObject:@[ tabID ?: @"", @(open) ]]; }
+void DPCloseLeftOpenTabs(NSArray<NSString *> *tabIDs, BOOL last) {}
 BOOL DPAdoptSpare(NSWindow *window, NSView *page) { return NO; }
 void DPNotMakingSpare(void) {}
 NSView *DPCommandBarPart(NSView *commandBar, const char *className) { return nil; }

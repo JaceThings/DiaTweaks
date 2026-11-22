@@ -105,6 +105,21 @@ static void DPInstallSpares(void) {
     NSArray *left = [DPSettings() arrayForKey:@"commandBarSpares"];
     for (int delay = 3; left.count && delay <= 12; delay += 9)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPCloseLeftSpares(left, delay > 3); });
+    // Abandoned bar tabs (quit/crash with the bar open) are tracked separately so they
+    // are cleaned even when "Open the Bar Instantly" is off.
+    NSArray *leftOpen = [DPSettings() arrayForKey:@"commandBarOpenTabs"];
+    for (int delay = 3; leftOpen.count && delay <= 12; delay += 9)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ DPCloseLeftOpenTabs(leftOpen, delay > 3); });
+    // Hide restored leftovers as soon as they appear so they never flash in the
+    // sidebar; the 3 s / 12 s passes above close them once restore settles.
+    if (left.count || leftOpen.count) {
+        DPHideLeftTabs();
+        int marks[] = { 200, 500, 1000, 2000, 2800, 6000, 9000, 11800 };
+        for (size_t i = 0; i < sizeof(marks) / sizeof(*marks); i++) {
+            int ms = marks[i];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, ms * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPHideLeftTabs(); });
+        }
+    }
 }
 
 static void DPApplySpares(DPPatch *patch) {
