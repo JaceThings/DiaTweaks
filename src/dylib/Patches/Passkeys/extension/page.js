@@ -1,10 +1,17 @@
 (() => {
   const credentials = navigator.credentials;
+  const proto = typeof CredentialsContainer === 'function' ? CredentialsContainer.prototype : null;
+  if (!credentials || !proto || typeof PublicKeyCredential !== 'function') return;
   // A password manager that keeps its own passkeys, such as Proton Pass, got here first: its prompt is the one wanted.
   // One that comes after wraps this instead, and hands Apple Passwords what it doesn't take.
-  if (credentials.get !== CredentialsContainer.prototype.get || credentials.create !== CredentialsContainer.prototype.create) return;
-  const create = credentials.create.bind(credentials);
-  const get = credentials.get.bind(credentials);
+  const native = (fn) => typeof fn === 'function' && /\{\s*\[native code\]\s*\}/.test(Function.prototype.toString.call(fn));
+  const untouched = (name) => {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, name);
+    return !Object.prototype.hasOwnProperty.call(credentials, name) && credentials[name] === proto[name] && native(proto[name]) && !!descriptor?.writable;
+  };
+  if (!untouched('get') || !untouched('create')) return;
+  const create = proto.create.bind(credentials);
+  const get = proto.get.bind(credentials);
   const isConditional = PublicKeyCredential.isConditionalMediationAvailable?.bind(PublicKeyCredential);
   let nextId = 0;
   let pending = false;
@@ -83,9 +90,11 @@
     });
 
   // Autofill would start the other Dia on every page load.
-  credentials.create = (options) => (options?.publicKey ? ask('create', options.publicKey, options.signal) : create(options));
+  const ourCreate = (options) => (options?.publicKey ? ask('create', options.publicKey, options.signal) : create(options));
   const ourGet = (options) => (options?.publicKey && options.mediation !== 'conditional' ? ask('get', options.publicKey, options.signal) : get(options));
-  credentials.get = ourGet;
+  // On the prototype, where Chromium keeps them, so a manager that patches either surface later still runs.
+  proto.create = ourCreate;
+  proto.get = ourGet;
   // A manager that wraps get after this one keeps its own autofill.
   PublicKeyCredential.isConditionalMediationAvailable = () => (credentials.get !== ourGet && isConditional ? isConditional() : Promise.resolve(false));
   PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
