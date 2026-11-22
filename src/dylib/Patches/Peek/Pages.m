@@ -232,6 +232,7 @@ void DPPeekOpen(NSWindow *window, NSString *originTabID, NSURL *url, NSPoint ori
 void DPPeekCloseAll(void) {
     DPPeekCool();
     DPPeekHideDragZone();
+    DPPeekCancelHandoffs();
     for (DPPeekCard *peek in DPPeekAllCards(nil)) {
         id page = peek.page;
         [peek handOverTo:nil attach:nil];
@@ -286,6 +287,7 @@ void DPPeekInstallPages(void) {
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         if (note.object) DPSet(note.object, &DPPeekWindowClosedKey, @YES);
         if (DPPeekWarmView.window == note.object) DPPeekCool();
+        DPPeekHandoffSelectionChanged(note.object, nil);
         for (DPPeekCard *peek in DPPeekAllCards(note.object)) {
             id page = peek.page;
             DPPeekChatDetachQuiet(peek);

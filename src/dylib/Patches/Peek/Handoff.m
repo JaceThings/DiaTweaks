@@ -16,6 +16,7 @@ static DPPeekWindowCapture DPPeekCaptureOwnWindow(void) {
 }
 
 @interface DPPeekCover : NSWindow
+@property (nonatomic, weak) DPPeekCard *peek;
 @property (nonatomic, weak) NSView *destination;
 @property (nonatomic, copy) NSString *originTabID, *destinationTabID;
 @property (nonatomic, strong) CADisplayLink *displayLink;
@@ -36,6 +37,9 @@ static DPPeekWindowCapture DPPeekCaptureOwnWindow(void) {
     self.displayLink = nil;
     [self orderOut:nil];
     [self.parentWindow removeChildWindow:self];
+    DPPeekCard *peek = self.peek;
+    if (peek && DPGet(peek, &DPPeekCoverKey) == self) DPSet(peek, &DPPeekCoverKey, nil);
+    DPPeekUpdateSyncTimer();
     if (promote) promote();
 }
 
@@ -60,6 +64,36 @@ static DPPeekWindowCapture DPPeekCaptureOwnWindow(void) {
     if (self.visibleFrames >= 3) [self dismiss];
 }
 @end
+
+static DPPeekCover *DPPeekCoverIn(NSWindow *window) {
+    for (NSWindow *child in window.childWindows)
+        if ([child isKindOfClass:DPPeekCover.class]) return (DPPeekCover *)child;
+    return nil;
+}
+
+BOOL DPPeekHandoffActive(void) {
+    for (NSWindow *window in NSApp.windows)
+        if (DPPeekCoverIn(window)) return YES;
+    return NO;
+}
+
+void DPPeekHandoffSync(void) {
+    for (NSWindow *window in [NSApp.windows copy]) {
+        if (!DPPeekCoverIn(window)) continue;
+        NSString *active = DPActiveTabID(window);
+        if (active) DPPeekHandoffSelectionChanged(window, active);
+    }
+}
+
+void DPPeekCancelHandoffs(void) {
+    for (NSWindow *window in [NSApp.windows copy])
+        for (NSWindow *child in [window.childWindows copy]) {
+            if (![child isKindOfClass:DPPeekCover.class]) continue;
+            DPPeekCover *cover = (DPPeekCover *)child;
+            cover.promote = nil;
+            [cover dismiss];
+        }
+}
 
 void DPPeekCompleteHandoff(DPPeekCard *peek, NSView *destination) {
     DPPeekCover *cover = DPGet(peek, &DPPeekCoverKey);
@@ -111,12 +145,14 @@ static void DPPeekShowCover(DPPeekCard *peek, CGImageRef contents, void (^promot
     content.layer = layer;
     content.wantsLayer = YES;
     cover.contentView = content;
+    cover.peek = peek;
     cover.promote = promote;
     cover.originTabID = peek.originTabID;
     DPSet(peek, &DPPeekCoverKey, cover);
     [parent addChildWindow:cover ordered:NSWindowAbove];
     cover.displayLink = [parent displayLinkWithTarget:cover selector:@selector(step:)];
     [cover.displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    DPPeekUpdateSyncTimer();
     // A hidden or switched-away destination may never get its display ticks.
     __weak DPPeekCover *weak = cover;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
@@ -129,8 +165,9 @@ void DPPeekPrepareHandoff(DPPeekCard *peek, void (^complete)(void)) {
     NSWindow *window = peek.window;
     NSScreen *primary = NSScreen.screens.firstObject;
     DPPeekWindowCapture capture = DPPeekCaptureOwnWindow();
-    if (!capture || !primary || !window.isVisible || peek.isHiddenOrHasHiddenAncestor ||
-        window.windowNumber <= 0 || window.sharingType == NSWindowSharingNone) return complete();
+    // An occluded window has nothing to bridge, and its image would be stale.
+    if (!capture || !primary || !window.isVisible || !(window.occlusionState & NSWindowOcclusionStateVisible) ||
+        peek.isHiddenOrHasHiddenAncestor || window.windowNumber <= 0 || window.sharingType == NSWindowSharingNone) return complete();
     NSRect frame = [window convertRectToScreen:[peek convertRect:peek.bounds toView:nil]];
     if (NSIsEmptyRect(frame)) return complete();
     CGRect screenBounds = CGRectMake(NSMinX(frame), NSMaxY(primary.frame) - NSMaxY(frame), NSWidth(frame), NSHeight(frame));

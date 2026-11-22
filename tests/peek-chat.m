@@ -418,6 +418,10 @@ int main(void) {
         [peek layoutSubtreeIfNeeded];
 
         CHECK(NSEqualRects(peek.frame, NSMakeRect(0, 0, 820, 800)), "Peek card shrinks to page pane width when docked AI Side Chat opens");
+        // The Peek-to-tab handoff cover spans the Peek's page pane, so AI Side Chat beside it stays uncovered.
+        NSRect coverInWindow = [peek convertRect:peek.bounds toView:nil];
+        NSRect chatInWindow = [chatPanel convertRect:chatPanel.bounds toView:nil];
+        CHECK(NSMaxX(coverInWindow) <= NSMinX(chatInWindow), "handoff cover bounds stop at the page pane and never cover AI Side Chat");
         NSRect chatInPeek = [peek convertRect:chatBtn.bounds fromView:chatBtn];
         CHECK(!NSIntersectsRect(peek.controls.frame, chatInPeek), "Peek controls shift clear of visible toolbar Chat button");
 
