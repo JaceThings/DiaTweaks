@@ -66,6 +66,7 @@ body:
         - Hide Upgrade Banner
         - Hide Personalize Button
         - Hide Skills Suggestions
+        - Hide Connect App Prompt
         - Window Material
         - Keep Windows Active
         - Drag Window from Page
@@ -76,6 +77,7 @@ body:
         - Skip Account
         - Allow 1Password
         - Allow Bitwarden
+        - Allow Proton Pass
         - Allow iCloud Passkeys
         - Allow iCloud Passwords
         - Group Tabs by Domain
