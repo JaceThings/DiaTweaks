@@ -2,8 +2,6 @@
 #import "Patches/CommandBar/Tabs.h"
 #import "Patches/CommandBar/HideTab.h"
 
-static char DPRefocusKey;
-
 BOOL DPInTabLayout(NSView *view) {
     for (; view; view = view.superview) {
         const char *name = object_getClassName(view);
@@ -20,12 +18,9 @@ NSEvent *DPTabLayoutMouseDown(DPCommandBarOverlay *overlay, NSEvent *event) {
     while (button && !DPIsNewTabButton(button)) button = button.superview;
     while (tabView && !(tabCls && [tabView isKindOfClass:tabCls])) tabView = tabView.superview;
     if (!DPInTabLayout(under) || (button && DPHidesTab(DPTabID(overlay.openedTab)))) return event;
+    // Clicking the current tab dismisses the bar like any other outside click (#583).
+    // Swallow it so Dia doesn't take a single click as focus or a double click as rename.
     BOOL onFront = tabView && overlay.returnTab && [DPStripTabID(tabView) isEqual:DPTabID(overlay.returnTab)];
-    if (onFront && event.clickCount < 2) {
-        if (event.type == NSEventTypeLeftMouseDown) DPSet(overlay, &DPRefocusKey, @YES);
-        dispatch_async(dispatch_get_main_queue(), ^{ DPFocusBar(overlay); });
-        return event;
-    }
     NSWindow *window = overlay.host;
     NSString *tab = DPTabID(overlay.openedTab), *front = DPActiveTabID(window);
     DPCancelCommandBar(overlay);
@@ -36,9 +31,7 @@ NSEvent *DPTabLayoutMouseDown(DPCommandBarOverlay *overlay, NSEvent *event) {
     return event;
 }
 
-// Dia may give the page the keyboard as the tab the bar is over is clicked.
+// Front-tab clicks now dismiss the bar, so there is nothing to refocus.
 void DPTabLayoutMouseUp(DPCommandBarOverlay *overlay) {
-    if (!DPGet(overlay, &DPRefocusKey)) return;
-    DPSet(overlay, &DPRefocusKey, nil);
-    dispatch_async(dispatch_get_main_queue(), ^{ DPFocusBar(overlay); });
+    (void)overlay;
 }
