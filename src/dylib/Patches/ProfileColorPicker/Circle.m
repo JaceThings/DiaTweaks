@@ -1,12 +1,16 @@
 #import "ProfileColorPicker.h"
 
-static CGFloat DPHairline(void) {
-    return 1.5 / MAX(NSScreen.mainScreen.backingScaleFactor, 1.0);
+static CGFloat DPBackingScale(NSView *view) {
+    return MAX(view.window.backingScaleFactor ?: NSScreen.mainScreen.backingScaleFactor, 1.0);
 }
 
-// Dia's ThemeOptionButton draws its ring at 1.5pt snapped to whole device pixels, not at a hairline.
-static CGFloat DPRingWidth(void) {
-    CGFloat scale = MAX(NSScreen.mainScreen.backingScaleFactor, 1.0);
+static CGFloat DPHairline(CGFloat scale) {
+    return MIN(1.5 / scale, 1.0);
+}
+
+// Dia's ThemeOptionButton ring is 1.5pt, kept on whole device pixels from @2x up so a @1x display doesn't round it to 2pt.
+static CGFloat DPRingWidth(CGFloat scale) {
+    scale = MAX(scale, 2.0);
     return round(1.5 * scale) / scale;
 }
 
@@ -168,7 +172,6 @@ static NSImage *DPSymbol(NSString *name, CGFloat size, NSFontWeight weight) {
     _fill.identifier = @"DPProfileColorFill";
     _fill.wantsLayer = YES;
     _fill.layer.masksToBounds = YES;
-    _fill.layer.borderWidth = DPHairline();
     _fill.layer.borderColor = [NSColor colorWithWhite:0.5 alpha:0.25].CGColor;
     [self addSubview:_fill];
 
@@ -206,7 +209,9 @@ static NSImage *DPSymbol(NSString *name, CGFloat size, NSFontWeight weight) {
     _ring.bounds = CGRectMake(0, 0, ring, ring);
     _ring.position = CGPointMake(NSMidX(self.bounds), NSMidY(self.bounds));
     _ring.cornerRadius = ring / 2;
-    _ring.borderWidth = DPRingWidth();
+    CGFloat scale = DPBackingScale(self);
+    _fill.layer.borderWidth = DPHairline(scale);
+    _ring.borderWidth = DPRingWidth(scale);
     DPUnclip(self);
 }
 

@@ -848,6 +848,24 @@ static NSString *DPHexFromRawComponents(NSColor *color) {
     return [NSString stringWithFormat:@"#%02lX%02lX%02lX", r, g, b];
 }
 
+// Rendered at a fixed @2x so a @1x CI display doesn't anti-alias the ring and swatch edges across neighbouring pixels.
+static NSBitmapImageRep *DPRenderAt2x(NSView *view) {
+    // AppKit only attaches the subviews' layers once the view has displayed.
+    [view cacheDisplayInRect:view.bounds toBitmapImageRep:[view bitmapImageRepForCachingDisplayInRect:view.bounds]];
+    const CGFloat scale = 2.0;
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(NULL, (size_t)(NSWidth(view.bounds) * scale), (size_t)(NSHeight(view.bounds) * scale),
+                                                 8, 0, space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextScaleCTM(context, scale, scale);
+    [view.layer renderInContext:context];
+    CGImageRef image = CGBitmapContextCreateImage(context);
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithCGImage:image];
+    CGImageRelease(image);
+    CGContextRelease(context);
+    return rep;
+}
+
 // The ring lives 3pt outside the 24pt swatch, so it only survives if the circle stops clipping to its bounds.
 static void TestRingRendersOutsideTheSwatch(void) {
     DPProfileColorPicker.on = NO;
@@ -873,10 +891,10 @@ static void TestRingRendersOutsideTheSwatch(void) {
     Check(circle.clipsToBounds == NO && circle.layer.masksToBounds == NO, @"circle does not clip its 3pt-outset ring");
     Check(DPRingOf(circle).opacity == 1, @"active custom colour shows the ring");
     Check(fabs(DPRingOf(circle).borderWidth - 1.5) < 0.01, @"ring border is Dia's 1.5pt, not a hairline");
+    Check(DPPartOf(circle, @"DPProfileColorFill").layer.borderWidth <= 1.0, @"swatch outline is at most one point wide");
     Check(fabs(NSWidth(DPRingOf(circle).bounds) - 30.0) < 0.01, @"ring is Dia's 30pt circle around the 24pt swatch");
 
-    NSBitmapImageRep *rep = [host bitmapImageRepForCachingDisplayInRect:host.bounds];
-    [host cacheDisplayInRect:host.bounds toBitmapImageRep:rep];
+    NSBitmapImageRep *rep = DPRenderAt2x(host);
     Check(rep != nil && rep.pixelsWide > 0, @"offscreen render produced a bitmap");
     CGFloat scale = (CGFloat)rep.pixelsWide / NSWidth(host.bounds);
     CGFloat cx = NSMidX(circle.frame) * scale;
