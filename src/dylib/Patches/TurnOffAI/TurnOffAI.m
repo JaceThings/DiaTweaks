@@ -121,7 +121,7 @@ static BOOL gCutOff;
 static void DPCutOffAIServers(void) {
     gCutOff = DPTurnOffAI.on;
     NSMutableArray<NSString *> *rules = [NSMutableArray array];
-    for (NSString *host in @[ @"ai-service", @"aiproxy", @"webresultproxy", @"websearch", @"artifactcdn", @"tools-cache" ])
+    for (NSString *host in @[ @"ai-service", @"aiproxy", @"artifactcdn", @"tools-cache" ])
         [rules addObject:[NSString stringWithFormat:@"MAP %@.diabrowser.engineering ~NOTFOUND", host]];
     NSString *flag = [@"--host-resolver-rules=" stringByAppendingString:[rules componentsJoinedByString:@", "]];
     if (gCutOff) DPAddLaunchFlag(flag);
@@ -175,7 +175,7 @@ DP_PATCH(DPTurnOffAI) {
     .order = 95,
     .section = @"AI",
     .title = @"Turn Off AI",
-    .detail = @"Turn off every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Morning Brief, and Settings' Apps and Skills. After a relaunch, Dia can't reach its AI servers either. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
+    .detail = @"Turn off every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Morning Brief, and Settings' Apps and Skills. After a relaunch, Dia can't reach its AI servers; search still works. To send questions to search, set Address Bar to Prefer Search Engine.",
     .symbol = @"bubble.left.and.exclamationmark.bubble.right.fill bubble.left.fill",
     .tint = @"systemPurpleColor",
     .hides = DPIsAIView,
