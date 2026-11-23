@@ -8,7 +8,9 @@
 
 extern DPPatch DPCommandBar, DPCommandBarBlur, DPCommandBarDarken, DPCommandBarShadow, DPCommandBarInteractive, DPCommandBarKeepText;
 char DPOverlayKey;
-static char DPLayoutKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey, DPSeenKey;
+static char DPLayoutKey, DPHomeKey, DPRecentKey, DPBlankKey, DPSplitKey, DPOwnBarKey, DPLeftTextKey, DPClosedAtKey, DPGroupTabsKey, DPGoingBackKey, DPSeenKey;
+// Set while Dia's New Group menu item runs, which opens the group's tab. A right-click needn't make its window key.
+static BOOL DPInGroupMenu;
 
 static NSString *const DPHeightKey = @"commandBarHeight", *const DPDarknessKey = @"commandBarDarkness",
                 *const DPBlurRadiusKey = @"commandBarBlurRadius", *const DPBlurWindowKey = @"commandBarBlurWindow",
@@ -507,6 +509,7 @@ static void DPGoBack(DPCommandBarOverlay *overlay) {
     NSView *paneHost = web.superview;
     NSString *returnID = DPTabID(overlay.returnTab);
     __weak DPCommandBarOverlay *weak = overlay;
+    DPSet(overlay, &DPGoingBackKey, @(NSProcessInfo.processInfo.systemUptime));
     DPFocusTab(overlay.returnTab);
     if (web) {
         CFRunLoopObserverRef beforeDraw = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, NO, 0, ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
@@ -925,6 +928,8 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     id scriptWindow = DPScriptWindow(window);
     BOOL seen;
     NSString *active = DPNoteActiveTab(window, scriptWindow, &seen);
+    BOOL forGroup = DPInGroupMenu;
+    DPInGroupMenu = NO;
     if (!DPCommandBar.on || DPAdoptSpare(window, self)) return;
     NSString *previous = DPPreviousTabID(window);
     NSMutableSet<NSString *> *blanks = DPGet(window, &DPBlankKey);
@@ -937,6 +942,18 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     NSNumber *closedAt = DPGet(window, &DPClosedAtKey);
     DPSet(window, &DPClosedAtKey, nil);
     BOOL justClosed = closedAt && NSProcessInfo.processInfo.systemUptime - closedAt.doubleValue < 1;
+    // A new group's tab keeps Dia's page until it loads one, since Dia focuses the group's name field.
+    NSMutableSet<NSString *> *groupTabs = DPWindowSet(window, &DPGroupTabsKey);
+    if (active && forGroup) [groupTabs addObject:active];
+    for (NSString *tabID in groupTabs.allObjects) {
+        id tab = DPScriptTabIn(scriptWindow, tabID);
+        if (!tab || DPHasURL(tab)) [groupTabs removeObject:tabID];
+    }
+    BOOL groupPage = active && [groupTabs containsObject:active];
+    // The bar opened from that tab switches back to it, which shows its page again; that mustn't cancel the bar.
+    NSNumber *wentBack = DPGet(overlay, &DPGoingBackKey);
+    if (groupPage && wentBack && [active isEqual:DPTabID(overlay.returnTab)] && NSProcessInfo.processInfo.systemUptime - wentBack.doubleValue < 1)
+        return (void)DPSet(self, &DPOwnBarKey, @YES);
     BOOL closing = justClosed || DPIsShortcut(NSApp.currentEvent, @"Close Tab") || (previous && !DPScriptTabIn(scriptWindow, previous));
     BOOL wasBlank = [blanks containsObject:active];
     if (active && (wasBlank || closing)) {
@@ -958,6 +975,7 @@ static void DPNewTabPage_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     NSView *pane = self.superview;
     while (pane && !DPIsKind(pane, DPDiaContentPane)) pane = pane.superview;
     [pane layoutSubtreeIfNeeded];
+    if (groupPage) return (void)DPSet(self, &DPOwnBarKey, @YES);
     DPPresentCommandBar(self, blank != nil);
 }
 
@@ -1040,6 +1058,10 @@ static void DPInstallCommandBar(void) {
         DPNoteOpenTab(DPTabID(overlay.openedTab), NO);
         DPDismiss(overlay, NO);
     }];
+    [NSNotificationCenter.defaultCenter addObserverForName:NSMenuWillSendActionNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        DPInGroupMenu = DPCommandBar.on && [[note.userInfo[@"MenuItem"] title] isEqualToString:@"New Group"];
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:NSMenuDidSendActionNotification object:nil queue:nil usingBlock:^(NSNotification *note) { DPInGroupMenu = NO; }];
     DPInstallAutoPipHold();
     DPHook(DPDiaPopover, @selector(viewDidMoveToWindow), (IMP)DPPopover_viewDidMoveToWindow);
     DPHook(DPDiaPopover, @selector(hitTest:), (IMP)DPPopover_hitTest);
