@@ -5,6 +5,7 @@
 #import "LaunchServices.h"
 #import "Passkeys.h"
 #import "Passwords.h"
+#import "../dylib/Patches/TidyNames/DownloadBridge.h"
 #include <dlfcn.h>
 #include <libproc.h>
 #include <mach-o/loader.h>
@@ -852,7 +853,7 @@ static BOOL purge(void) {
     for (NSString *name in @[ @"bin", @DYLIB, @"patches.json", @"release.plist", @"pristine", @"staged", @"identity", @"diapatch.log", @"safe-mode.plist", @"paused",
                               @".diatweaks.lock", @".incoming", @"icons", @"app-icons", @"passwords-helper", @"passwords.sock", @"onepassword.sock", @"passwords-launch",
                               @"passkey-helper", @"passkey-helper.lock", @"passkeys-extension", @"unpatchable.plist",
-                              @"methods.txt", @"views.txt", @"layout-loops.txt" ])
+                              @"methods.txt", @"views.txt", @"layout-loops.txt", DPTidyDownloadExtensionFolder ])
         if (!discard(inHome(name))) return NO;
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gHome error:NULL])
         if (([name hasPrefix:@".update-"] || [name hasPrefix:@"little-dia-"]) && !removeTree(inHome(name))) return NO;
@@ -871,7 +872,9 @@ static BOOL uninstall(BOOL purgeFiles) {
     BOOL needRestore = !claimsOfficial(gApp);
     if (needRestore && !exists(gPristine)) return fail(@"no official Dia at %@; reinstall Dia from https://www.diabrowser.com", gPristine);
     removeRelay();
-    removePasswordsHost();
+    removePasswordsHost();  // the official Dia reaches iCloud Passwords itself
+    NSString *tidyHost = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/" DPTidyDownloadManifest];
+    if (DPTidyDownloadManifestOwned(tidyHost, inHome(@"bin/diapatch")) && !removeTree(tidyHost)) return NO;
     if (!env("DIAPATCH_HOME") && !removeTree(DPCopyFolder)) return NO;
     NSString *signature = signatureOf(gApp);
     if (needRestore) {
@@ -999,6 +1002,8 @@ int main(int argc, const char *argv[]) {
         gStaged = inHome(@"staged/Dia.app");
         gReady = inHome(@"staged/ready");
         gStagedTweaks = inHome(@"staged/DiaTweaks");
+        // Started by Dia as a native messaging host.
+        if (argc > 1 && !strcmp(argv[1], DPTidyDownloadExtensionOrigin)) return DPRunTidyDownloadHost();
         if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) {
             if (!DPIsPasswordsOrigin(argv[1])) return DPRunPasskeyHost(gHome);
             return DPRunPasswordsHost(gHome, gApp, argc, argv);

@@ -8,7 +8,11 @@ FOUNDATION_MODELS := $(if $(wildcard $(SDK)/System/Library/Frameworks/Foundation
 SWIFTFLAGS := -target arm64-apple-macos14.0 -O -parse-as-library -wmo -module-name DiaPatchesSwift \
 	-Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
 PASSKEYS := src/dylib/Patches/Passkeys/extension
+TIDY_NAMES := src/dylib/Patches/TidyNames
+TIDY_EXTENSION := $(TIDY_NAMES)/extension
 EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectcreate,__TEXT,__pk_$(basename $(file)),$(PASSKEYS)/$(file))
+
+EXTENSION += $(foreach file,manifest.json worker.js,-Wl,-sectcreate,__TEXT,__td_$(basename $(file)),$(TIDY_EXTENSION)/$(file))
 
 # Local tweaks compile against the headers of the installed dylib, so every header rides inside it.
 DYLIB_HEADERS := $(shell find src/dylib -name '*.h')
@@ -24,8 +28,11 @@ build/commit: FORCE | build
 
 FORCE:
 
-build/diapatch: $(wildcard src/diapatch/*.[hm]) build/commit | build
-	clang $(CFLAGS) -DDIATWEAKS_COMMIT='"$(COMMIT)"' -framework AppKit -framework CoreGraphics -framework Security -o $@ $(filter %.m,$^)
+build/diapatch: $(wildcard src/diapatch/*.[hm]) $(TIDY_NAMES)/Names.m $(TIDY_NAMES)/DownloadBridge.h build/TidyDownloadModel.o build/commit | build
+	clang $(CFLAGS) -DDIATWEAKS_COMMIT='"$(COMMIT)"' -framework AppKit -framework CoreGraphics -framework Security -L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
+
+build/TidyDownloadModel.o: $(TIDY_NAMES)/TidyNameModel.swift | build
+	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
 
 build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 	swiftc $(SWIFTFLAGS) -emit-object -o $@ $^
@@ -33,7 +40,7 @@ build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 $(HEADERS_BIN): $(DYLIB_HEADERS) scripts/pack-headers | build
 	scripts/pack-headers src/dylib $@
 
-build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(HEADERS_BIN) $(wildcard $(PASSKEYS)/*) | build
+build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(HEADERS_BIN) $(wildcard $(PASSKEYS)/* $(TIDY_EXTENSION)/*) | build
 	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -Wl,-sectcreate,__TEXT,__dp_headers,$(HEADERS_BIN) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
 
@@ -60,6 +67,12 @@ build/split-client-hello: tests/split-client-hello.m $(wildcard $(SPLIT)/Split.[
 
 build/vertical-tab-glow: tests/vertical-tab-glow.m $(wildcard src/dylib/Patches/HideVerticalTabGlow/*.[hm]) | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $<
+
+build/tidy-names-checks: tests/tidy-names.m $(TIDY_NAMES)/Names.m $(TIDY_NAMES)/Names.h $(TIDY_NAMES)/DownloadBridge.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework Foundation -o $@ $(filter %.m,$^)
+
+build/tidy-tab-outline-checks: tests/tidy-tab-outline.swift $(TIDY_NAMES)/TabOutline.swift | build
+	swiftc -parse-as-library -o $@ $^
 
 build/peek-cursor: tests/peek-cursor.m src/dylib/Patches/Peek/Cursor.m src/dylib/Patches/Peek/Peek.h src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/dylib -framework AppKit -o $@ $<
@@ -201,8 +214,8 @@ build/tab-titles: tests/tab-titles.m src/dylib/Patches/TabTitles/Title.m src/dyl
 
 DIAPATCH_PARTS := $(filter-out src/diapatch/main.m,$(wildcard src/diapatch/*.m))
 
-build/diapatch-tests: tests/diapatch.m $(wildcard src/diapatch/*.[hm]) | build
-	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/diapatch -framework AppKit -framework CoreGraphics -framework Security -o $@ tests/diapatch.m $(DIAPATCH_PARTS)
+build/diapatch-tests: tests/diapatch.m $(wildcard src/diapatch/*.[hm]) $(TIDY_NAMES)/Names.m $(TIDY_NAMES)/DownloadBridge.h build/TidyDownloadModel.o | build
+	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/diapatch -framework AppKit -framework CoreGraphics -framework Security -L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ tests/diapatch.m $(DIAPATCH_PARTS) $(TIDY_NAMES)/Names.m build/TidyDownloadModel.o
 
 build/ai-history-search: tests/ai-history-search.m src/dylib/Patches/AIHistorySearch/AIHistorySearch.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/dylib -framework AppKit -o $@ tests/ai-history-search.m
@@ -399,10 +412,12 @@ check-local-tweaks: build/local-tweaks
 check: check-local-tweaks
 .PHONY: check-local-tweaks
 
-check: build/diapatch build/diapatch-tests build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/split-client-hello build/peek-cursor build/peek-link build/peek-tabs build/peek-chat build/safe-mode build/pause build/hook-table build/updates-runtime build/settings-preview build/runtime-guards build/tidy-tabs build/drag-offset build/small-tab-shape build/toolbar-permission build/launch-flags build/little-dia-stack build/little-dia-profile build/little-dia-over build/little-dia-focus build/tracking build/hide-toolbar-settle build/command-bar-swap build/command-bar-spare build/tab-titles build/show-address-field build/destination-toggle-engine-name build/hide-chat-button build/hide-connect-app-prompt build/hide-ntp-prompts build/open-sidebar-instantly build/ai-history-search build/native-messaging build/diapatch-passkeys build/passkeys-origin build/app-icon-signing build/little-dia-route build/chat-card build/peek-lifecycle build/hide-toolbar-off build/hide-toolbar-focus-bookmarks build/little-dia-launcher build/pinned-cmd-click build/command-bar-lifecycle build/window-patches build/pinned-tab-close-button build/pinned-split-close build/sidebar-tab-bugs build/unload-tab build/profile-color-picker build/historical-regressions build/abi-kvc-kvo build/view-reuse-layout build/combinatorial-stability build/local-tweaks build/patches.json
+check: build/tidy-names-checks build/tidy-tab-outline-checks build/diapatch build/diapatch-tests build/group-tabs build/mouse-back-forward build/vertical-tab-glow build/split-client-hello build/peek-cursor build/peek-link build/peek-tabs build/peek-chat build/safe-mode build/pause build/hook-table build/updates-runtime build/settings-preview build/runtime-guards build/tidy-tabs build/drag-offset build/small-tab-shape build/toolbar-permission build/launch-flags build/little-dia-stack build/little-dia-profile build/little-dia-over build/little-dia-focus build/tracking build/hide-toolbar-settle build/command-bar-swap build/command-bar-spare build/tab-titles build/show-address-field build/destination-toggle-engine-name build/hide-chat-button build/hide-connect-app-prompt build/hide-ntp-prompts build/open-sidebar-instantly build/ai-history-search build/native-messaging build/diapatch-passkeys build/passkeys-origin build/app-icon-signing build/little-dia-route build/chat-card build/peek-lifecycle build/hide-toolbar-off build/hide-toolbar-focus-bookmarks build/little-dia-launcher build/pinned-cmd-click build/command-bar-lifecycle build/window-patches build/pinned-tab-close-button build/pinned-split-close build/sidebar-tab-bugs build/unload-tab build/profile-color-picker build/historical-regressions build/abi-kvc-kvo build/view-reuse-layout build/combinatorial-stability build/local-tweaks build/patches.json
 	tests/tweaks-update
 	build/diapatch-tests
 	build/group-tabs
+	build/tidy-names-checks
+	build/tidy-tab-outline-checks
 	build/tidy-tabs
 	build/mouse-back-forward
 	build/vertical-tab-glow
