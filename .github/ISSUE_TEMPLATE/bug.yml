@@ -127,6 +127,10 @@ body:
         - Not sure
     validations:
       required: true
+        - Tidy Downloads
+        - Tidy Names
+        - Tidy Tab Titles
+
   - type: textarea
     id: what
     attributes:
