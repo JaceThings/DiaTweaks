@@ -15,7 +15,7 @@ void DPRestoreHorizontalNavigation(DPSidebarNavigationState *state) {
     }
     [state.shiftedViews removeAllObjects];
 }
-void DPRefreshHorizontalNavigation(NSView *strip) {
+static void DPLayoutHorizontalNavigation(NSView *strip) {
     DPSidebarNavigationState *state = DPNavigationState(strip, NO);
     if (!DPHorizontalNavigationAvailable(strip) || !DPSidebarNavigation.on) {
         DPRestoreSidebarNavigation(state); return;
@@ -41,7 +41,11 @@ void DPRefreshHorizontalNavigation(NSView *strip) {
     for (NSView *child in strip.subviews) {
         if (child == traffic || (traffic && [traffic isDescendantOf:child]) || DPNavigationSlotFor(child).owner == strip || child.hidden) continue;
         NSRect native = child.frame, frame = native;
-        if (NSWidth(native) >= NSWidth(strip.bounds)-1) {
+        if (NSWidth(native) <= 48 && NSMinX(native) > NSMidX(strip.bounds)) continue;
+        BOOL tabViewport = [NSStringFromClass(child.class) containsString:@"FeatheredContainerView"];
+        // The clipping view can start to the left of the traffic lights’ right edge.
+        // Shift its tabs with the Favorites dock regardless of that leading inset.
+        if (tabViewport || NSWidth(native) >= NSWidth(strip.bounds)-1) {
             frame.origin.x += shift; frame.size.width = MAX(0, frame.size.width-shift);
         } else if (NSMinX(native) >= NSMaxX(lights)) frame.origin.x += shift;
         else continue;
@@ -59,4 +63,11 @@ void DPRefreshHorizontalNavigation(NSView *strip) {
         DPNavigationLayout(slot, NSMakeRect(start+i*28,y,28,28));
         state.toolbarControls[key] = slot;
     }
+}
+
+void DPRefreshHorizontalNavigation(NSView *strip) {
+    // Unwind Library’s reservation before moving the shared tab viewport.
+    [NSNotificationCenter.defaultCenter postNotificationName:@"DPSidebarNavigationWillLayoutStrip" object:strip];
+    @try { DPLayoutHorizontalNavigation(strip); }
+    @finally { [NSNotificationCenter.defaultCenter postNotificationName:@"DPSidebarNavigationDidLayoutStrip" object:strip]; }
 }

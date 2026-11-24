@@ -80,6 +80,14 @@ int main(void) { @autoreleasepool {
         NSCAssert(NSMinX(back.frame) == 82 && NSMaxX(reload.frame) < NSMinX(dock.frame), @"navigation fits after traffic lights and before the pinned dock");
         NSCAssert(NSMinX(dock.frame) == 178 && NSMinX(tabs.frame) == 92 && NSWidth(tabs.frame) == 708, @"dock and tabs shift equally without layout drift");
     }
+    NSView *viewport = MakeView("FixtureFeatheredContainerView", NSMakeRect(66,0,690,62));
+    [strip addSubview:viewport];
+    for (NSUInteger i = 0; i < 4; i++) {
+        DPRefreshHorizontalNavigation(strip);
+        NSCAssert(NSMinX(viewport.frame) == 158 && NSMaxX(viewport.frame) == 756,
+            @"an inset clipping viewport must still move with the dock without extending its trailing edge");
+    }
+    [viewport removeFromSuperview];
     DPSidebarNavigation.on = NO; DPRefreshHorizontalNavigation(strip);
     NSCAssert(back.superview == toolbar && NSMinX(dock.frame) == 86 && NSMinX(tabs.frame) == 0 && NSWidth(tabs.frame) == 800, @"horizontal option off restores native frames and buttons");
     DPSidebarNavigation.on = YES; DPRefreshHorizontalNavigation(strip);
