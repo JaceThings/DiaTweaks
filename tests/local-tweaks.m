@@ -254,7 +254,7 @@ int main(int argc, const char *argv[]) {
         DPLoadPatches();
         DPPatch *tweak = DPPatchNamed(@"myTweak");
         expect(tweak != NULL, @"a single .m tweak loads");
-        expect(DPPatchCount == 106, @"the table holds the 105 official tweaks and the local one");
+        expect(DPPatchCount == 109, @"the table holds the 108 built-in tweaks and the local one");
         expect(DPIsLocalPatch(tweak), @"the tweak is marked local");
         expectEqual(tweak->section, @"Local", @"a local tweak defaults to the Local section");
         expectEqual(tweak->tint, @"systemOrangeColor", @"a local tweak defaults to the orange tint");
