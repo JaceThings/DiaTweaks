@@ -47,6 +47,25 @@ static void DPNavigationRoot_layout(NSView *self, SEL _cmd) {
     @try { DPRefreshSidebarNavigation(DPSubview(self, DPDiaSidebarHeader)); }
     @finally { DPRefreshingNavigation = NO; }
 }
+static void DPNavigationHeader_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPNavigationHeader_layout, self);
+    if (DPRefreshingNavigation) return;
+    DPRefreshingNavigation = YES;
+    @try { DPRefreshSidebarNavigation(self); }
+    @finally { DPRefreshingNavigation = NO; }
+}
+
+static void DPNavigationDownloadsChanged(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPNavigationDownloadsChanged, self);
+    if (DPRefreshingNavigation || !DPSidebarNavigationControls.on || !DPSidebarNavigation.on) return;
+    // Showing Downloads can be a local header change, with no toolbar layout.
+    for (NSView *view = self.superview; view; view = view.superview) {
+        if (!DPIsKind(view, DPDiaSidebarHeader)) continue;
+        view.needsLayout = YES;
+        break;
+    }
+}
+
 static void DPNavigationHeader_attached(NSView *self, SEL _cmd) {
     DPCallOriginal(DPNavigationHeader_attached, self);
     if (!self.window || !self.superview) return;
@@ -82,6 +101,11 @@ void DPInstallSidebarNavigationLayout(void) {
     DPHookClass(objc_getClass(DPDiaTabStrip), @selector(layout), (IMP)DPNavigationStrip_layout);
     DPHookClass(objc_getClass(DPDiaTabStrip), @selector(viewDidMoveToWindow), (IMP)DPNavigationStrip_attached);
     DPHookClass(objc_getClass(DPDiaTabStrip), @selector(viewWillMoveToWindow:), (IMP)DPNavigationHeader_detaching);
+    DPHook(DPDiaSidebarHeader, @selector(layout), (IMP)DPNavigationHeader_layout);
+    Class downloads = objc_getClass(DPDiaDownloadsButton);
+    DPHookClass(downloads, @selector(viewDidMoveToSuperview), (IMP)DPNavigationDownloadsChanged);
+    DPHookClass(downloads, @selector(viewDidHide), (IMP)DPNavigationDownloadsChanged);
+    DPHookClass(downloads, @selector(viewDidUnhide), (IMP)DPNavigationDownloadsChanged);
     DPHook(DPDiaSidebarHeader, @selector(viewDidMoveToWindow), (IMP)DPNavigationHeader_attached);
     DPHook(DPDiaSidebarHeader, @selector(viewWillMoveToWindow:), (IMP)DPNavigationHeader_detaching);
     DPHook(DPDiaToolbar, @selector(layout), (IMP)DPNavigationToolbar_layout);

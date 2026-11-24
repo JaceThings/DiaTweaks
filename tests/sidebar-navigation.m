@@ -56,9 +56,17 @@ int main(void) { @autoreleasepool {
     NSCAssert(back.superview == header && !wrapper.hidden, @"moved navigation works with profile switcher visible");
     [lights removeFromSuperview]; DPRefreshSidebarNavigation(header);
     NSCAssert(back.superview == header && forward.superview == header && reload.superview == header, @"Hide Traffic Lights preserves navigation");
-    NSView *download = [[NavFixtureButton alloc] initWithFrame:NSMakeRect(200,0,28,28)];
-    download.accessibilityLabel = @"Downloads"; [header addSubview:download]; DPRefreshSidebarNavigation(header);
-    NSCAssert(NSMinX(download.frame) >= NSMaxX(reload.frame), @"downloads keep the rightmost slot");
+    NSView *download = MakeView(DPDiaDownloadsButton, reload.frame);
+    download.accessibilityLabel = @"Downloads";
+    download.hidden = YES;
+    DPInstallSidebarNavigationLayout();
+    [header addSubview:download];
+    [header layoutSubtreeIfNeeded];
+    NSRect withoutDownloads = reload.frame;
+    download.hidden = NO;
+    [header layoutSubtreeIfNeeded];
+    NSCAssert(!NSEqualRects(withoutDownloads, reload.frame) && NSMinX(download.frame) >= NSMaxX(reload.frame),
+        @"revealing Downloads moves Reload before any click or toolbar refresh");
     [footer removeFromSuperview]; DPRefreshSidebarNavigation(header);
     NSCAssert(back.superview == toolbar && !wrapper.hidden, @"horizontal tabs suspend navigation and profile hiding");
     NSView *strip = MakeView(DPDiaTabStrip, NSMakeRect(0,0,800,62)); [window.contentView addSubview:strip];
