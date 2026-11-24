@@ -17,6 +17,9 @@ body:
       label: Which patch?
       multiple: true
       options:
+        - Sidebar navigation
+        - Move navigation buttons
+        - Hide sidebar profile switcher
         - Edge-to-Edge Web Pages
         - Only in Full Screen
         - Square Corners Next to Sidebar
