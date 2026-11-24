@@ -2,7 +2,6 @@
 
 static BOOL DPIsUpgradeBanner(NSView *view) { return DPIsKind(view, DPDiaChatUsage); }
 
-// The command bar is outside the hide hosts.
 static void DPChatUsage_layout(NSView *self, SEL _cmd) {
     [DPHideHosts addObject:self];
     DPEnforceHides(self);
@@ -17,6 +16,7 @@ DP_PATCH(DPHideUpgradeBanner) {
     .key = @"hideUpgradeBanner",
     .order = 95,
     .section = @"AI",
+    .group = @"aiPrompts",
     .title = @"Hide Upgrade Banner",
     .detail = @"Hide the “Looking for chat?” upgrade banner under the command bar.",
     .symbol = @"crown.fill",

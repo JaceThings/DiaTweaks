@@ -1,23 +1,30 @@
 #import "LittleDia.h"
 #import "Updates/Updates.h"
 
-static BOOL gLoadedOn;  // The extension only loads as Dia starts.
+static BOOL gLoadedOn;
 
 static void DPInstallLittleDia(void) {
     gLoadedOn = DPLittleDia.on;
     DPInstallLittleDiaExtension();
     DPInstallLittleDiaRoute();
     DPInstallLittleDiaWindows();
+    DPInstallLittleDiaOver();
     DPInstallLittleDiaLinkMenu();
     DPInstallLittleDiaNewWindow();
     DPInstallLittleDiaShortcuts();
 }
 
 static void DPApplyLittleDia(DPPatch *patch) {
+    if (!patch->on) {
+        DPHideLittleDiaLauncher();
+        DPUncoverAllLittleDia();
+        DPRestoreLittleDiaStack();
+    }
     DPRefreshLittleDiaWindows();
     DPRefreshLittleDiaNewWindow();
     if (patch->on && !gLoadedOn) DPWriteLittleDiaExtension(YES);
-    if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch) || DPLittleDiaExtensionProblem()) return;  // the self-test flips patches without saving
+    // Self-tests flip patches without saving, so skip the relaunch prompt for them.
+    if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch) || DPLittleDiaExtensionProblem()) return;
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Relaunch Dia to use Little Dia";
     alert.informativeText = @"Until then, links from other apps keep opening in a tab.";
@@ -26,7 +33,6 @@ static void DPApplyLittleDia(DPPatch *patch) {
     if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
 }
 
-// Only checks open Little Dia windows: their bar has its buttons while on, and Dia's own bar is back while off.
 static NSString *DPLittleDiaProblem(DPPatch *patch) { return DPLittleDiaExtensionProblem(); }
 
 static NSString *DPVerifyLittleDia(DPPatch *patch) {
@@ -50,6 +56,7 @@ DP_PATCH(DPLittleDia) {
     .tint = @"systemMintColor",
     .classes = DPClasses(DPDiaOpenURLEvents, DPDiaPopupWindow, DPDiaPopupBar, DPDiaPopupTitle),
     .rows = DPLittleDiaRows,
+    .relaunch = YES,
     .install = DPInstallLittleDia,
     .apply = DPApplyLittleDia,
     .verify = DPVerifyLittleDia,

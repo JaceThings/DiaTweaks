@@ -1,7 +1,5 @@
 #import "StdPatch/StdPatch.h"
 
-static BOOL DPIsChatButton(NSView *view) { return DPHasLabel(view, @"Chat with this tab"); }
-
 DP_PATCH(DPHideChatButton) {
     .key = @"hideChatButton",
     .order = 95,
@@ -10,6 +8,7 @@ DP_PATCH(DPHideChatButton) {
     .symbol = @"bubble.fill",
     .tint = @"systemPurpleColor",
     .section = @"AI",
+    .group = @"aiPrompts",
     .classes = DPClasses(DPDiaToolbar),
     .disabledBy = @"hideToolbar",
     .hides = DPIsChatButton,

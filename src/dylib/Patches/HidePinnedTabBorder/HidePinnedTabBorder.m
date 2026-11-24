@@ -1,12 +1,14 @@
 #import "StdPatch/Hide.h"
 
+extern DPPatch DPHidePinnedTabBorder;
+
 static BOOL DPIsPinnedTabOutline(NSView *view) { return DPIsKind(view, DPDiaPinnedTabOutline); }
 
-// The outline is deeper than the hide hosts search.
 static void DPPinnedTab_layout(NSView *self, SEL _cmd) {
     [DPHideHosts addObject:self];
     DPEnforceHides(self);
     DPCallOriginal(DPPinnedTab_layout, self);
+    if (DPHidePinnedTabBorder.on) DPEnforceHides(self);
 }
 
 static void DPInstallHidePinnedTabBorder(void) { DPHook(DPDiaPinnedTab, @selector(layout), (IMP)DPPinnedTab_layout); }
@@ -19,6 +21,7 @@ DP_PATCH(DPHidePinnedTabBorder) {
     .symbol = @"pin.fill",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
+    .group = @"pinnedTabs",
     .classes = DPClasses(DPDiaPinnedTab, DPDiaPinnedTabOutline),
     .hides = DPIsPinnedTabOutline,
     .install = DPInstallHidePinnedTabBorder,

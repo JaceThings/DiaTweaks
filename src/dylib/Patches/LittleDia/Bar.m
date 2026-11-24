@@ -1,18 +1,18 @@
 #import "LittleDia.h"
 #import <objc/message.h>
 
-// One per popup bar: the buttons around Dia's address, which keeps its own look and Dia's updates to it.
 @interface DPLittleBar : NSObject
 @property (nonatomic, weak) NSView *title;
-@property (nonatomic) NSArray<NSButton *> *leading;  // close, back, forward, reload
+@property (nonatomic) NSArray<NSButton *> *leading;
 @property (nonatomic) NSButton *open;
-@property (nonatomic) NSButton *profiles;  // Open in another profile; hidden with only one.
+@property (nonatomic) NSButton *profiles;
 @property (nonatomic) NSView *address;
 @property (nonatomic) NSView *divider;
+@property (nonatomic, copy) NSString *profile;
 @property (nonatomic) NSTimer *timer;
 @end
 
-static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20;
+static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20, DPOpenLabelMax = 150;
 
 @interface DPBarDivider : NSView
 @end
@@ -28,7 +28,6 @@ static const CGFloat DPInset = 6, DPGap = 2, DPButton = 28, DPChevron = 20;
 
 NSView *DPMakeDivider(void) { return [DPBarDivider new]; }
 
-// The page's background, or failing that its theme-color. Chromium has neither for some pages: nil.
 static NSColor *DPPageColor(id page) {
     id root = [page respondsToSelector:@selector(rootBackgroundColor)] ? ((id (*)(id, SEL))objc_msgSend)(page, @selector(rootBackgroundColor)) : nil;
     float (*part)(id, SEL) = (void *)objc_msgSend;
@@ -44,21 +43,25 @@ static NSColor *DPPageColor(id page) {
 static char DPColorKey;
 
 void DPMatchPage(NSView *row, id page) {
-    NSColor *color = DPPageColor(page);
-    if ([DPGet(row, &DPColorKey) isEqual:color] || (!color && !DPGet(row, &DPColorKey))) return;
+    NSColor *color = DPPageColor(page), *current = DPGet(row, &DPColorKey);
+    if ([current isEqual:color] || (!color && !current)) return;
     DPSet(row, &DPColorKey, color);
     row.wantsLayer = YES;
-    row.layer.backgroundColor = color.CGColor;
+    DPWithoutAnimation(^{ row.layer.backgroundColor = color.CGColor; });
+    if (!color) {
+        row.appearance = nil;
+        return;
+    }
     CGFloat luminance = 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent;
-    row.appearance = !color ? nil : [NSAppearance appearanceNamed:luminance > 0.55 ? NSAppearanceNameAqua : NSAppearanceNameDarkAqua];
+    row.appearance = [NSAppearance appearanceNamed:luminance > 0.55 ? NSAppearanceNameAqua : NSAppearanceNameDarkAqua];
 }
 
 @interface DPBarButton : NSButton
 @property (nonatomic, copy) void (^handler)(void);
-@property (nonatomic) BOOL hovered, pill;  // pill: a filled button with an icon and a word, laid out like Dia's Chat button
+@property (nonatomic) BOOL hovered, pill;
 @property (nonatomic) NSImageView *pillIcon;
 @property (nonatomic) NSTextField *pillLabel;
-@property (nonatomic) CGFloat outerCorner;  // The radius of the top corner nearest the window's, for a button tucked into it.
+@property (nonatomic) CGFloat outerCorner;
 @property (nonatomic) BOOL outerCornerOnRight;
 @end
 
@@ -82,9 +85,8 @@ void DPMatchPage(NSView *row, id page) {
 
 - (void)run:(id)sender { if (self.handler) self.handler(); }
 
-// Dia's Chat button: a 16pt icon 10pt in, the word 4pt after it, 9pt after that.
 - (NSSize)intrinsicContentSize {
-    return self.pill ? NSMakeSize(30 + ceil(self.pillLabel.intrinsicContentSize.width) + 9, 28) : NSMakeSize(28, 28);
+    return self.pill ? NSMakeSize(30 + NSWidth(self.pillLabel.frame) + 9, 28) : NSMakeSize(28, 28);
 }
 
 - (NSView *)hitTest:(NSPoint)point { return [super hitTest:point] ? self : nil; }
@@ -92,8 +94,9 @@ void DPMatchPage(NSView *row, id page) {
 - (BOOL)mouseDownCanMoveWindow { return NO; }
 
 - (void)updateTint {
-    self.contentTintColor = !self.enabled ? NSColor.tertiaryLabelColor : self.hovered || self.pill ? NSColor.labelColor : NSColor.secondaryLabelColor;
-    // labelColor with alpha keeps the appearance it was made in, so this follows the bar's light or dark look itself.
+    if (!self.enabled) self.contentTintColor = NSColor.tertiaryLabelColor;
+    else self.contentTintColor = self.hovered || self.pill ? NSColor.labelColor : NSColor.secondaryLabelColor;
+    // labelColor with alpha freezes the appearance it was made in, so it is resolved per appearance.
     CGFloat alpha = self.hovered ? 1 : 0.85;
     self.pillIcon.contentTintColor = self.pillLabel.textColor = [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
         __block NSColor *color;
@@ -128,8 +131,10 @@ void DPMatchPage(NSView *row, id page) {
 
 - (void)layout {
     [super layout];
-    if (!self.outerCorner) return;
-    // CALayer rounds every corner alike, so the shape is drawn: one corner follows the window's, the rest stay small.
+    if (!self.outerCorner) {
+        if (self.layer.mask) self.layer.mask = nil;
+        return;
+    }
     CGFloat small = self.layer.cornerRadius, big = MIN(self.outerCorner, NSHeight(self.bounds) / 2);
     CGFloat left = self.outerCornerOnRight ? small : big, right = self.outerCornerOnRight ? big : small;
     NSRect r = self.bounds;
@@ -141,14 +146,19 @@ void DPMatchPage(NSView *row, id page) {
     CGPathAddArcToPoint(path, NULL, NSMaxX(r), bottom, NSMinX(r), bottom, small);
     CGPathAddArcToPoint(path, NULL, NSMinX(r), bottom, NSMinX(r), top, small);
     CGPathCloseSubpath(path);
-    CAShapeLayer *mask = [CAShapeLayer layer];
-    mask.path = path;
+    CAShapeLayer *mask = [self.layer.mask isKindOfClass:CAShapeLayer.class] ? (CAShapeLayer *)self.layer.mask : [CAShapeLayer layer];
+    DPWithoutAnimation(^{
+        mask.frame = self.bounds;
+        if (!mask.path || !CGPathEqualToPath(mask.path, path)) mask.path = path;
+        if (self.layer.mask != mask) self.layer.mask = mask;
+    });
     CGPathRelease(path);
-    self.layer.mask = mask;
 }
 
 - (void)drawRect:(NSRect)rect {
-    CGFloat fill = self.pill ? (self.hovered ? 0.12 : 0.08) : (self.hovered && self.enabled ? 0.08 : 0);
+    CGFloat fill = 0;
+    if (self.pill) fill = self.hovered ? 0.12 : 0.08;
+    else if (self.hovered && self.enabled) fill = 0.08;
     self.layer.backgroundColor = fill ? [NSColor.labelColor colorWithAlphaComponent:fill].CGColor : nil;
     [super drawRect:rect];
 }
@@ -165,6 +175,9 @@ NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void
     return button;
 }
 
+// A label that truncates reports the width it has, not the width its text needs.
+static CGFloat DPTextWidth(NSTextField *label) { return ceil([label.cell cellSizeForBounds:NSMakeRect(0, 0, 10000, 16)].width); }
+
 static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     DPBarButton *button = [[DPBarButton alloc] initWithSymbol:@"arrow.up.forward" size:12 label:@"Open in Dia"];
     button.pill = YES;
@@ -173,7 +186,8 @@ static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     button.pillIcon.frame = NSMakeRect(10, 6, 16, 16);
     button.pillLabel = [NSTextField labelWithString:@"Open in Dia"];
     button.pillLabel.font = [NSFont systemFontOfSize:13];
-    button.pillLabel.frame = NSMakeRect(30, 6, ceil(button.pillLabel.intrinsicContentSize.width), 16);
+    button.pillLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    button.pillLabel.frame = NSMakeRect(30, 6, DPTextWidth(button.pillLabel), 16);
     [button addSubview:button.pillIcon];
     [button addSubview:button.pillLabel];
     button.toolTip = @"Open this page in a tab (⌘O)";
@@ -184,7 +198,6 @@ static NSButton *DPMakeOpenInDiaButton(void (^action)(void)) {
     return button;
 }
 
-// Dia's main window comes forward on the chosen profile, with the page as a new tab, and the small window closes.
 static void DPShowProfiles(NSButton *button) {
     NSWindow *window = button.window;
     NSMenu *menu = [NSMenu new];
@@ -198,7 +211,7 @@ static void DPShowProfiles(NSButton *button) {
             });
         });
         item.image = DPLittleDiaProfileImage(name);
-        if (@available(macOS 27, *)) [item setValue:@1 forKey:@"preferredImageVisibility"];  // 1: .visible
+        if (@available(macOS 27, *)) DPSetValueForKey(item, @"preferredImageVisibility", @1);  // 1: .visible
         [menu addItem:item];
     }];
     [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, NSHeight(button.bounds) + 4) inView:button];
@@ -218,7 +231,7 @@ static NSButton *DPMakeProfilesButton(void) {
 - (void)dealloc { [_timer invalidate]; }
 @end
 
-static char DPBarKey;  // The DPLittleBar on Dia's address view.
+static char DPBarKey;
 static char DPHiddenByUsKey;
 static const CGFloat DPAddressHeight = 30;
 
@@ -226,9 +239,23 @@ static const CGFloat DPAddressHeight = 30;
 static void DPUpdateButtons(DPLittleBar *bar) {
     id page = DPLittleDiaPage(bar.title.window);
     BOOL (*flag)(id, SEL) = (void *)objc_msgSend;
-    bar.leading[1].enabled = page && flag(page, @selector(canGoBack));
-    bar.leading[2].enabled = page && flag(page, @selector(canGoForward));
+    bar.leading[1].enabled = page && [page respondsToSelector:@selector(canGoBack)] && flag(page, @selector(canGoBack));
+    bar.leading[2].enabled = page && [page respondsToSelector:@selector(canGoForward)] && flag(page, @selector(canGoForward));
     bar.leading[3].enabled = page != nil;
+}
+
+static BOOL DPNameOpenButton(DPLittleBar *bar) {
+    NSString *profile = DPLittleDiaProfileName(bar.title.window);
+    if (!profile.length || [profile isEqual:bar.profile]) return NO;
+    bar.profile = profile;
+    DPBarButton *open = (DPBarButton *)bar.open;
+    NSString *label = DPOpenInLabel(profile, DPLittleDiaProfiles().count);
+    if ([label isEqual:open.pillLabel.stringValue]) return NO;
+    open.pillLabel.stringValue = label;
+    open.pillLabel.frame = NSMakeRect(30, 6, MIN(DPTextWidth(open.pillLabel), DPOpenLabelMax), 16);
+    open.toolTip = [NSString stringWithFormat:@"Open this page in a tab in %@ (⌘O)", profile];
+    [open invalidateIntrinsicContentSize];
+    return YES;
 }
 
 static DPLittleBar *DPMakeBar(NSView *title) {
@@ -246,14 +273,18 @@ static DPLittleBar *DPMakeBar(NSView *title) {
         else NSBeep();
     });
     bar.profiles = DPMakeProfilesButton();
+    DPNameOpenButton(bar);
     bar.address = DPMakeAddressView(title);
     bar.divider = DPMakeDivider();
     __weak DPLittleBar *weakBar = bar;
     bar.timer = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
-        if (!weakBar.title.window) return;
-        DPUpdateButtons(weakBar);
-        DPRefreshAddressView(weakBar.address);
-        DPMatchPage(weakBar.title.superview, DPLittleDiaPage(weakBar.title.window));
+        DPLittleBar *live = weakBar;
+        if (!live) return [timer invalidate];
+        if (!live.title.window) return;
+        DPUpdateButtons(live);
+        if (DPNameOpenButton(live)) DPRelayoutLittleDiaBars();
+        DPRefreshAddressView(live.address);
+        DPMatchPage(live.title.superview, DPLittleDiaPage(live.title.window));
     }];
     return bar;
 }
@@ -268,29 +299,35 @@ static void DPPlaceBar(DPLittleBar *bar) {
     NSSize open = bar.open.intrinsicContentSize;
     if (bar.open.superview != row) [row addSubview:bar.open];
     if (bar.profiles.superview != row) [row addSubview:bar.profiles];
-    // The same gap above them as beside them.
     CGFloat top = round(mid - open.height / 2), gap = NSHeight(row.bounds) - NSMaxY(NSMakeRect(0, top, 0, open.height));
     CGFloat chevron = bar.profiles.hidden ? 0 : DPGap + DPChevron;
     bar.open.frame = NSMakeRect(NSWidth(row.bounds) - gap - chevron - open.width, top, open.width, open.height);
     bar.profiles.frame = NSMakeRect(NSMaxX(bar.open.frame) + DPGap, top, DPChevron, open.height);
     CGFloat corner = [row.window respondsToSelector:@selector(_cornerRadius)] ? ((CGFloat (*)(id, SEL))objc_msgSend)(row.window, @selector(_cornerRadius)) : 16;
-    // The first and last buttons sit in the window's top corners, so those corners of them follow the window's.
+    DPBarButton *openButton = (DPBarButton *)bar.open;
+    if (!bar.profiles.hidden && openButton.outerCorner > 0) {
+        openButton.outerCorner = 0;
+        openButton.needsLayout = YES;
+    }
     for (DPBarButton *button in @[ bar.leading.firstObject, bar.profiles.hidden ? bar.open : bar.profiles ]) {
         NSRect inWindow = [row convertRect:button.frame toView:nil];
-        button.outerCornerOnRight = button != bar.leading.firstObject;
-        CGFloat side = button.outerCornerOnRight ? NSWidth(row.window.frame) - NSMaxX(inWindow) : NSMinX(inWindow);
-        button.outerCorner = MAX(button.layer.cornerRadius, corner - MAX(side, NSHeight(row.window.frame) - NSMaxY(inWindow)));
-        button.needsLayout = YES;
+        BOOL onRight = button != bar.leading.firstObject;
+        CGFloat side = onRight ? NSWidth(row.window.frame) - NSMaxX(inWindow) : NSMinX(inWindow);
+        CGFloat outer = MAX(button.layer.cornerRadius, corner - MAX(side, NSHeight(row.window.frame) - NSMaxY(inWindow)));
+        if (button.outerCornerOnRight != onRight || fabs(button.outerCorner - outer) > 0.01) {
+            button.outerCornerOnRight = onRight;
+            button.outerCorner = outer;
+            button.needsLayout = YES;
+        }
     }
     // Dia's address stays, unseen, so its frame keeps telling this layout where the address belongs.
-    title.alphaValue = 0;
+    if (title.alphaValue != 0) title.alphaValue = 0;
     if (bar.address.superview != row) [row addSubview:bar.address positioned:NSWindowAbove relativeTo:title];
     bar.address.frame = NSMakeRect(NSMinX(title.frame), round(mid - DPAddressHeight / 2), NSWidth(title.frame), DPAddressHeight);
     CGFloat hairline = 1 / MAX(1, row.window.backingScaleFactor);
     if (bar.divider.superview != row) [row addSubview:bar.divider];
     bar.divider.frame = NSMakeRect(0, row.isFlipped ? NSHeight(row.bounds) - hairline : 0, NSWidth(row.bounds), hairline);
-    // Dia's Downloads button would sit under Open in Dia. Newer Dia puts it in a stack it shows and hides it in itself, so
-    // the row's view holding it is what's hidden.
+    // Newer Dia shows and hides its Downloads button inside a stack, so hide the row's view that holds it.
     for (NSView *view in row.subviews)
         if (!view.hidden && DPFindView(view, ^BOOL(NSView *each) { return DPHasLabel(each, @"Downloads"); })) {
             view.hidden = YES;
@@ -316,16 +353,15 @@ static void DPRemoveBar(NSView *title) {
         }
 }
 
-// Dia lays out its popup bar around its address view, so this follows that view's frame to lay out Little Dia's bar.
 static char DPDiaOriginKey, DPDiaSizeKey;
 
 static BOOL DPInPopupBar(NSView *view) {
+    Class barClass = objc_getClass(DPDiaPopupBar);
+    if (!barClass) return NO;
     for (NSView *each = view.superview; each; each = each.superview)
-        if (DPIsKind(each, DPDiaPopupBar)) return YES;
+        if ([each isKindOfClass:barClass]) return YES;
     return NO;
 }
-
-static BOOL DPShowsBar(NSView *title) { return DPLittleDia.on && DPInPopupBar(title) && DPIsLittleDiaWindow(title.window); }
 
 static NSRect DPTitleFrame(NSView *title, DPLittleBar *bar) {
     NSRect bounds = title.superview.bounds;
@@ -342,33 +378,36 @@ static DPLittleBar *DPBarFor(NSView *title) {
     return bar;
 }
 
-// Dia keeps setting the address's frame; in a Little Dia window it gets this layout's instead.
+static DPLittleBar *DPActiveBar(NSView *title) {
+    if (DPLittleDia.on && DPIsLittleDiaWindow(title.window)) return DPBarFor(title);
+    DPRemoveBar(title);
+    return nil;
+}
+
 static void DPTitle_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
     if (!DPInPopupBar(self)) return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
     DPSet(self, &DPDiaOriginKey, [NSValue valueWithPoint:origin]);
-    if (!DPShowsBar(self)) {
-        DPRemoveBar(self);
-        return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
-    }
-    DPCallOriginal(DPTitle_setFrameOrigin, self, DPTitleFrame(self, DPBarFor(self)).origin);
-    DPPlaceBar(DPBarFor(self));
+    DPLittleBar *bar = DPActiveBar(self);
+    if (!bar) return DPCallOriginal(DPTitle_setFrameOrigin, self, origin);
+    DPCallOriginal(DPTitle_setFrameOrigin, self, DPTitleFrame(self, bar).origin);
+    DPPlaceBar(bar);
 }
 
 static void DPTitle_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     if (!DPInPopupBar(self)) return DPCallOriginal(DPTitle_setFrameSize, self, size);
     DPSet(self, &DPDiaSizeKey, [NSValue valueWithSize:size]);
     if (!DPGet(self, &DPDiaOriginKey)) DPSet(self, &DPDiaOriginKey, [NSValue valueWithPoint:self.frame.origin]);
-    if (!DPShowsBar(self)) {
-        DPRemoveBar(self);
-        return DPCallOriginal(DPTitle_setFrameSize, self, size);
-    }
-    DPCallOriginal(DPTitle_setFrameSize, self, DPTitleFrame(self, DPBarFor(self)).size);
-    DPPlaceBar(DPBarFor(self));
+    DPLittleBar *bar = DPActiveBar(self);
+    if (!bar) return DPCallOriginal(DPTitle_setFrameSize, self, size);
+    DPCallOriginal(DPTitle_setFrameSize, self, DPTitleFrame(self, bar).size);
+    DPPlaceBar(bar);
 }
 
 void DPRelayoutLittleDiaBars(void) {
+    Class titleClass = objc_getClass(DPDiaPopupTitle);
+    if (!titleClass) return;
     for (NSView *bar in DPFindViews(DPDiaPopupBar)) {
-        NSView *title = DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaPopupTitle); });
+        NSView *title = DPFindView(bar, ^BOOL(NSView *view) { return [view isKindOfClass:titleClass]; });
         if (!title) continue;
         NSValue *origin = DPGet(title, &DPDiaOriginKey), *size = DPGet(title, &DPDiaSizeKey);
         [title setFrameOrigin:origin ? origin.pointValue : title.frame.origin];

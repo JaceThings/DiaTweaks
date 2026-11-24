@@ -8,8 +8,22 @@ static NSView *DPWebRow(NSString *title, NSString *path) {
                      title, ^{ [NSWorkspace.sharedWorkspace openURL:url]; });
 }
 
+static NSString *DPUpdateSummary(DPUpdates *updates) {
+    NSUInteger available = 0, staged = 0;
+    for (NSString *part in @[DPDia, DPTweaks]) {
+        available += [updates available:part];
+        staged += [updates staged:part];
+    }
+    if (staged) return @"Ready to install";
+    if (available) return [NSString stringWithFormat:@"%lu update%@", available, available == 1 ? @"" : @"s"];
+    if (updates.checking) return @"Checking…";
+    if (updates.checkProblem) return @"Couldn’t check";
+    return updates.found ? @"Up to date" : @"";
+}
+
 @implementation DPHomeView {
-    NSTextField *_version, *_updateSummary;
+    NSTextField *_version, *_updateSummary, *_pauseLabel;
+    NSButton *_pauseButton;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -26,44 +40,51 @@ static NSView *DPWebRow(NSString *title, NSString *path) {
         DPLabel(@"Software Update", 13, NSFontWeightRegular, NSColor.labelColor),
     ]];
     leading.spacing = 10;
-    NSStackView *trailing = [NSStackView stackViewWithViews:@[_updateSummary, DPSymbol(@"chevron.right", 11, NSColor.tertiaryLabelColor)]];
-    trailing.spacing = 10;
     __weak DPHomeView *weakSelf = self;
-    NSView *updateRow = DPLinkRow(DPRow(leading, trailing), @"Software Update", ^{
-        weakSelf.open(@"Software Update", [DPSoftwareUpdateView new]);
+    NSView *updateRow = DPLinkRow(DPRow(leading, DPDisclosure(_updateSummary)), @"Software Update", ^{
+        if (weakSelf.open) weakSelf.open(@"Software Update", [DPSoftwareUpdateView new]);
     });
+    _pauseLabel = DPLabel(@"", 13, NSFontWeightRegular, NSColor.labelColor);
+    _pauseButton = [NSButton buttonWithTitle:@"" target:self action:@selector(togglePause:)];
+    NSView *pauseRow = DPRow(_pauseLabel, _pauseButton);
     NSView *restoreRow = DPRow(DPLabel(@"Restore the original Dia without patches.", 13, NSFontWeightRegular, NSColor.labelColor),
                                [NSButton buttonWithTitle:@"Restore…" target:self action:@selector(restore:)]);
 
     NSTextField *notice = DPLabel(@"DiaTweaks is unofficial and not affiliated with The Browser Company.", 11, NSFontWeightRegular, NSColor.tertiaryLabelColor);
     NSView *help = DPGroup(@[DPWebRow(@"Wiki", @"/wiki"), DPWebRow(@"Report a Bug", @"/issues/new/choose"), DPWebRow(@"GitHub", @"")]);
-    DPFillStack(self, @[about, DPGroup(@[updateRow]), DPHeader(@"Help"), help, DPGroup(@[restoreRow]), notice]);
+    DPFillStack(self, @[about, DPGroup(@[updateRow]), DPHeader(@"Help"), help, DPGroup(@[pauseRow, restoreRow]), notice]);
     [self setCustomSpacing:20 afterView:about];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updatesDidChange) name:DPUpdatesDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(syncPause) name:DPPatchesDidChangeNotification object:nil];
     [self updatesDidChange];
+    [self syncPause];
     return self;
+}
+
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
 - (void)updatesDidChange {
     DPUpdates *updates = DPUpdates.shared;
-    NSUInteger available = 0, staged = 0;
-    for (NSString *part in @[DPDia, DPTweaks]) {
-        available += [updates available:part];
-        staged += [updates staged:part];
-    }
-    _updateSummary.stringValue = staged ? @"Ready to install"
-        : available ? [NSString stringWithFormat:@"%lu update%@", available, available == 1 ? @"" : @"s"]
-        : updates.checking ? @"Checking…"
-        : updates.found ? @"Up to date" : @"";
+    _updateSummary.stringValue = DPUpdateSummary(updates);
 
+    static NSCharacterSet *vSet;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ vSet = [NSCharacterSet characterSetWithCharactersInString:@"v"]; });
     id installed = updates.found[DPTweaks][@"installed"];
-    _version.stringValue = [installed isKindOfClass:NSString.class] ? [@"Version " stringByAppendingString:[installed stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"v"]]]
-        : updates.found ? @"Development build" : @"";
+    if ([installed isKindOfClass:NSString.class]) _version.stringValue = [@"Version " stringByAppendingString:[installed stringByTrimmingCharactersInSet:vSet]];
+    else _version.stringValue = updates.found ? @"Development build" : @"";
     _version.hidden = !_version.stringValue.length;
 }
 
+- (void)syncPause { DPSyncPauseRow(_pauseLabel, _pauseButton); }
+
+- (void)togglePause:(id)sender { DPSetTweaksPaused(!DPPaused, self.window); }
+
 - (void)refresh {
     [self updatesDidChange];
+    [self syncPause];
     [DPUpdates.shared check:nil];
 }
 
@@ -73,8 +94,10 @@ static NSView *DPWebRow(NSString *title, NSString *path) {
     alert.informativeText = @"Dia will relaunch without patches, and its own updater takes over again. Run the installer to patch it again later.";
     [alert addButtonWithTitle:@"Restore and Relaunch"];
     [alert addButtonWithTitle:@"Cancel"];
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
+    void (^finish)(NSModalResponse) = ^(NSModalResponse response) {
         if (response == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[@"uninstall"]);
-    }];
+    };
+    if (self.window) [alert beginSheetModalForWindow:self.window completionHandler:finish];
+    else finish([alert runModal]);
 }
 @end

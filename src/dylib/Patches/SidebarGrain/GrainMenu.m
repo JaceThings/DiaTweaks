@@ -3,7 +3,7 @@
 @interface DPGrainMenu : NSObject
 @property (weak) NSView *sidebar;
 @property NSPoint anchor;
-@property NSString *profile, *space;  // The profile of this window, and the one the popover edits: nil edits all profiles.
+@property NSString *profile, *space;
 @property NSPopUpButton *picker;
 @property NSButton *shown;
 @property NSArray<NSView *> *rows;
@@ -12,6 +12,21 @@
 - (void)chooseTexture:(NSPopUpButton *)picker;
 - (void)toggleShown:(NSButton *)button;
 @end
+
+static NSStackView *DPGrainLabeledRow(NSString *title, NSView *control) {
+    NSTextField *label = [NSTextField labelWithString:title];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSStackView *row = [NSStackView stackViewWithViews:@[ label, control ]];
+    row.distribution = NSStackViewDistributionFill;
+    return row;
+}
+
+static NSPopover *DPGrainPopover;
+
+void DPCloseGrainPopover(void) {
+    [DPGrainPopover close];
+    DPGrainPopover = nil;
+}
 
 @implementation DPGrainMenu
 - (void)chooseTexture:(NSPopUpButton *)picker {
@@ -42,10 +57,9 @@
 
 - (void)editGrain:(NSMenuItem *)item {
     NSView *sidebar = self.sidebar;
-    if (!sidebar.window) return;
-    static NSPopover *popover;
-    [popover close];
-    popover = [NSPopover new];
+    if (!DPSidebarGrain.on || !sidebar.window) return;
+    [DPGrainPopover close];
+    NSPopover *popover = DPGrainPopover = [NSPopover new];
     popover.behavior = NSPopoverBehaviorTransient;
     self.profile = DPGrainSpaceOf(sidebar);
     self.space = DPGrainHasOverrides(self.profile) ? self.profile : nil;
@@ -54,10 +68,7 @@
     self.picker.controlSize = NSControlSizeSmall;
     self.picker.target = self;
     self.picker.action = @selector(chooseTexture:);
-    NSTextField *label = [NSTextField labelWithString:@"Texture"];
-    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-    NSStackView *texture = [NSStackView stackViewWithViews:@[ label, self.picker ]];
-    texture.distribution = NSStackViewDistributionFill;
+    NSStackView *texture = DPGrainLabeledRow(@"Texture", self.picker);
     self.shown = [NSButton checkboxWithTitle:@"Show grain in this profile" target:self action:@selector(toggleShown:)];
     self.rows = DPGrainRows();
     NSMutableArray<NSView *> *views = [@[ texture, self.shown ] arrayByAddingObjectsFromArray:self.rows].mutableCopy;
@@ -68,11 +79,7 @@
         scope.controlSize = NSControlSizeSmall;
         scope.target = self;
         scope.action = @selector(chooseScope:);
-        NSTextField *applies = [NSTextField labelWithString:@"Apply to"];
-        [applies setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-        NSStackView *row = [NSStackView stackViewWithViews:@[ applies, scope ]];
-        row.distribution = NSStackViewDistributionFill;
-        [views insertObject:row atIndex:0];
+        [views insertObject:DPGrainLabeledRow(@"Apply to", scope) atIndex:0];
     }
     [self reload];
     NSStackView *rows = [NSStackView stackViewWithViews:views];
@@ -84,7 +91,7 @@
     [rows.widthAnchor constraintEqualToConstant:300].active = YES;
     NSViewController *controller = [NSViewController new];
     controller.view = rows;
-    controller.representedObject = self;  // The popover's controls only point at this.
+    controller.representedObject = self;
     popover.contentViewController = controller;
     BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
     NSRect anchor = horizontal ? NSMakeRect(self.anchor.x, self.anchor.y, 1, 1) :
@@ -103,12 +110,8 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
         if (!NSPointInRect(point, DPGrainHostBounds(sidebar))) continue;
         NSView *hit = [sidebar hitTest:[sidebar convertPoint:point toView:sidebar.superview]];
         NSCollectionView *collection = nil;
-        for (NSView *view = hit; view && view != sidebar; view = view.superview) {
-            if ([view isKindOfClass:NSCollectionView.class]) {
-                collection = (NSCollectionView *)view;
-                break;
-            }
-        }
+        for (NSView *view = hit; view && view != sidebar && !collection; view = view.superview)
+            if ([view isKindOfClass:NSCollectionView.class]) collection = (NSCollectionView *)view;
         BOOL horizontal = DPIsKind(sidebar, DPDiaTabStrip);
         if (horizontal && ([hit isKindOfClass:NSControl.class] ||
             [hit.accessibilityRole isEqual:NSAccessibilityButtonRole] ||
@@ -126,6 +129,7 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
         DPGrainMenu *target = [DPGrainMenu new];
         target.sidebar = sidebar;
         target.anchor = point;
+        item.representedObject = target;
         item.target = target;
         NSInteger index = [menu indexOfItemWithTitle:@"Auto-Hide Tabs"];
         if (index >= 0) {
@@ -136,11 +140,7 @@ NSEvent *DPGrainRightClick(NSEvent *event) {
             if (iconSize.width > 0) item.image = [[NSImage alloc] initWithSize:iconSize];
         }
         if (index < 0) index = [menu indexOfItemWithTitle:@"Show Tabs in Sidebar"];
-        if (index >= 0) index++;
-        else {
-            index = [menu indexOfItemWithTitle:@"Close All Tabs"];
-            if (index < 0) index = 0;
-        }
+        index = index >= 0 ? index + 1 : MAX(0, [menu indexOfItemWithTitle:@"Close All Tabs"]);
         [menu insertItem:item atIndex:index];
         [NSMenu popUpContextMenu:menu withEvent:event forView:sidebar];
         [menu removeItem:item];

@@ -1,7 +1,17 @@
 (() => {
   const credentials = navigator.credentials;
-  const create = credentials.create.bind(credentials);
-  const get = credentials.get.bind(credentials);
+  const proto = typeof CredentialsContainer === 'function' ? CredentialsContainer.prototype : null;
+  if (!credentials || !proto || typeof PublicKeyCredential !== 'function') return;
+  // A manager with its own passkeys, such as Proton Pass, that got here first keeps its prompt; one that comes later wraps this.
+  const native = (fn) => typeof fn === 'function' && /\{\s*\[native code\]\s*\}/.test(Function.prototype.toString.call(fn));
+  const untouched = (name) => {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, name);
+    return !Object.prototype.hasOwnProperty.call(credentials, name) && credentials[name] === proto[name] && native(proto[name]) && !!descriptor?.writable;
+  };
+  if (!untouched('get') || !untouched('create')) return;
+  const create = proto.create.bind(credentials);
+  const get = proto.get.bind(credentials);
+  const isConditional = PublicKeyCredential.isConditionalMediationAvailable?.bind(PublicKeyCredential);
   let nextId = 0;
   let pending = false;
 
@@ -50,26 +60,41 @@
     });
   };
 
-  const ask = (kind, options) =>
+  const ask = (kind, options, signal) =>
     new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(signal.reason);
       if (pending) return reject(new DOMException('A request is already pending.', 'OperationError'));
       pending = true;
       const id = ++nextId;
+      const finish = () => {
+        window.removeEventListener('message', listen);
+        signal?.removeEventListener('abort', abort);
+        pending = false;
+      };
       const listen = (event) => {
         if (event.source !== window || event.data?.diaTweaksPasskey !== 'response' || event.data.id !== id) return;
-        window.removeEventListener('message', listen);
-        pending = false;
+        finish();
         const { credential, error } = event.data.response ?? {};
         if (credential) resolve(toCredential(credential));
         else reject(new DOMException(error?.message ?? 'The passkey request failed.', error?.name ?? 'NotAllowedError'));
       };
+      const abort = () => {
+        finish();
+        window.postMessage({ diaTweaksPasskey: 'cancel', id }, '*');
+        reject(signal.reason);
+      };
+      signal?.addEventListener('abort', abort);
       window.addEventListener('message', listen);
       window.postMessage({ diaTweaksPasskey: 'request', id, kind, options: toJSON(options) }, '*');
     });
 
   // Autofill would start the other Dia on every page load.
-  credentials.create = (options) => (options?.publicKey ? ask('create', options.publicKey) : create(options));
-  credentials.get = (options) => (options?.publicKey && options.mediation !== 'conditional' ? ask('get', options.publicKey) : get(options));
-  PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false);
+  const ourCreate = (options) => (options?.publicKey ? ask('create', options.publicKey, options.signal) : create(options));
+  const ourGet = (options) => (options?.publicKey && options.mediation !== 'conditional' ? ask('get', options.publicKey, options.signal) : get(options));
+  // On the prototype, where Chromium keeps them, so a manager that patches either surface later still runs.
+  proto.create = ourCreate;
+  proto.get = ourGet;
+  // A manager that wraps get after this one keeps its own autofill.
+  PublicKeyCredential.isConditionalMediationAvailable = () => (credentials.get !== ourGet && isConditional ? isConditional() : Promise.resolve(false));
   PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
 })();

@@ -11,18 +11,27 @@ static NSDictionary *DPDefaultSaveShortcut(void) {
 }
 
 static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
-    [DPPages addObject:self];
+    if ([self respondsToSelector:@selector(nativeView)] && [self respondsToSelector:@selector(visibility)] && [self respondsToSelector:@selector(hasFocus)]
+        && [self respondsToSelector:@selector(save)])
+        [DPPages addObject:self];
     DPCallOriginal(DPPage_setVisibility, self, visibility);
 }
 
 static id DPFrontPage(void) {
-    id found = nil;
-    for (id page in DPPages.allObjects) {
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    if (!window) return nil;
+    NSView *hit = [window.contentView.superview hitTest:window.mouseLocationOutsideOfEventStream];
+    id focused = nil, under = nil, only = nil;
+    NSUInteger count = 0;
+    for (id page in DPPages) {
         NSView *view = [page performSelector:@selector(nativeView)];
-        if (view.window != NSApp.keyWindow || ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) != DPWebContentsVisible) continue;
-        if (!found || ((BOOL (*)(id, SEL))objc_msgSend)(page, @selector(hasFocus))) found = page;
+        if (view.window != window || ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) != DPWebContentsVisible) continue;
+        if (((BOOL (*)(id, SEL))objc_msgSend)(page, @selector(hasFocus))) focused = page;
+        if ([hit isDescendantOf:view]) under = page;
+        only = page;
+        count++;
     }
-    return found;
+    return focused ?: under ?: (count == 1 ? only : nil);
 }
 
 static void DPSaveFrontPage(void) { [DPFrontPage() performSelector:@selector(save)]; }
@@ -61,12 +70,12 @@ static NSString *DPVerifySavePageAs(DPPatch *patch) {
 
 DP_PATCH(DPSavePageAs) {
     .key = @"savePageAs",
-    .order = 86,
+    .order = 11,
     .title = @"Save Page As",
     .detail = @"Add Save Page As… to the File menu, with a shortcut, ⌥⌘S unless you set another.",
     .symbol = @"square.and.arrow.down.fill",
-    .tint = @"systemPinkColor",
-    .section = @"Tabs",
+    .tint = @"systemBlueColor",
+    .section = @"Page",
     .classes = DPClasses(DPDiaWebContents),
     .install = DPInstallSavePageAs,
     .apply = DPApplySavePageAs,

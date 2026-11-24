@@ -2,7 +2,9 @@
 
 #define DPVerticalSidebarRoot "_TtC10TabSidebar15SidebarRootView"
 extern DPPatch DPHideVerticalTabGlow;
+extern char DPTabStyledKey;
 BOOL DPIsVerticalTab(NSView *shape);
+void DPTrackStyledShape(NSView *shape);
 id DPTabDecoration(NSView *shape, const char *name);
 BOOL DPHasTabOverride(id part);
 void DPHideTabDecoration(id part, NSView *shape);
@@ -11,5 +13,4 @@ void DPFlattenTabMaterial(NSView *view, NSView *shape);
 NSString *DPVerifyFlatTabMaterial(NSView *shape, BOOL on);
 void DPInstallFlatTabMaterial(void);
 void DPStyleUniformTabBorder(NSView *shape);
-void DPRestoreTabBorder(NSView *shape);
 NSString *DPVerifyUniformTabBorder(NSView *shape, BOOL on);

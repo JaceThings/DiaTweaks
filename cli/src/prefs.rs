@@ -22,9 +22,13 @@ pub struct Prefs {
 
 impl Prefs {
     pub fn new(domain: &str) -> Self {
+        let cf_domain = CFString::new(domain);
+        unsafe {
+            CFPreferencesAppSynchronize(cf_domain.as_concrete_TypeRef());
+        }
         Self {
             name: domain.to_string(),
-            domain: CFString::new(domain),
+            domain: cf_domain,
         }
     }
 
@@ -45,7 +49,7 @@ impl Prefs {
         }
         value
             .downcast::<CFString>()
-            .map(|text| string_is_true(&text.to_string()))
+            .map(|text| is_true_string(&text.to_string()))
     }
 
     pub fn set(&self, key: &str, on: bool) {
@@ -64,23 +68,146 @@ impl Prefs {
         if unsafe { CFPreferencesAppSynchronize(self.domain.as_concrete_TypeRef()) } == 0 {
             bail!("Couldn't save the settings in {}.", self.name);
         }
-        let notification = CString::new(format!("{}.changed", self.name))?;
-        let status = unsafe { notify_post(notification.as_ptr()) };
-        if status != 0 {
-            bail!("Saved, but couldn't tell Dia (notify_post returned {status}). Restart Dia to see the changes.");
-        }
-        Ok(())
+        notify(&self.name)
     }
 }
 
-/// How NSString's boolValue, and so Dia, reads `defaults write com.diapatches key YES`.
-fn string_is_true(text: &str) -> bool {
-    let number = text
-        .trim_start()
-        .trim_start_matches(['+', '-'])
-        .trim_start_matches('0');
+pub fn notify(domain: &str) -> Result<()> {
+    let notification = CString::new(format!("{domain}.changed"))?;
+    let status = unsafe { notify_post(notification.as_ptr()) };
+    if status != 0 {
+        bail!("Saved, but couldn't tell Dia (notify_post returned {status}). Restart Dia to see the changes.");
+    }
+    Ok(())
+}
+
+// Matches NSString.boolValue.
+fn is_true_string(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if matches!(trimmed.chars().next(), Some('Y' | 'y' | 'T' | 't')) {
+        return true;
+    }
+    let unsigned = trimmed.strip_prefix(['+', '-']).unwrap_or(trimmed);
     matches!(
-        number.chars().next(),
-        Some('Y' | 'y' | 'T' | 't' | '1'..='9')
+        unsigned.trim_start_matches('0').chars().next(),
+        Some('1'..='9')
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clear(prefs: &Prefs, keys: &[&str]) {
+        for key in keys {
+            let key = CFString::new(key);
+            unsafe {
+                CFPreferencesSetAppValue(
+                    key.as_concrete_TypeRef(),
+                    std::ptr::null(),
+                    prefs.domain.as_concrete_TypeRef(),
+                );
+            }
+        }
+        unsafe {
+            CFPreferencesAppSynchronize(prefs.domain.as_concrete_TypeRef());
+        }
+    }
+
+    #[test]
+    fn string_bool_matches_foundation() {
+        for truthy in [
+            "YES", "yes", "true", "T", "1", " 1", "+1", "-1", "001", "+001", "-001", "2",
+        ] {
+            assert!(is_true_string(truthy), "expected true for {truthy:?}");
+        }
+        for falsy in [
+            "", "0", "NO", "false", "+YES", "-YES", "0YES", "++1", "+-1", "-true", " 000T", "0.5",
+        ] {
+            assert!(!is_true_string(falsy), "expected false for {falsy:?}");
+        }
+    }
+
+    #[test]
+    fn prefs_round_trips_booleans_and_numbers() {
+        let domain = format!("com.diapatches.test.prefs.{}", std::process::id());
+        let prefs = Prefs::new(&domain);
+        prefs.set("flagOn", true);
+        prefs.set("flagOff", false);
+        assert!(prefs.save().is_ok());
+
+        let reloaded = Prefs::new(&domain);
+        assert_eq!(reloaded.get("flagOn"), Some(true));
+        assert_eq!(reloaded.get("flagOff"), Some(false));
+        assert_eq!(reloaded.get("missing"), None);
+
+        clear(&reloaded, &["flagOn", "flagOff"]);
+    }
+
+    #[test]
+    fn prefs_preserves_dictionaries_and_arrays_and_ignores_non_bools() {
+        use core_foundation::{array::CFArray, dictionary::CFDictionary};
+
+        let domain = format!("com.diapatches.test.containers.{}", std::process::id());
+        let prefs = Prefs::new(&domain);
+
+        let dict = CFDictionary::from_CFType_pairs(&[(
+            CFString::new("space-1"),
+            CFString::new("#112233"),
+        )]);
+        let array = CFArray::from_CFTypes(&[CFString::new("--disable-gpu")]);
+        let dict_key = CFString::new("profileColors");
+        let array_key = CFString::new("launchFlagsArgs");
+        unsafe {
+            CFPreferencesSetAppValue(
+                dict_key.as_concrete_TypeRef(),
+                dict.as_CFTypeRef(),
+                prefs.domain.as_concrete_TypeRef(),
+            );
+            CFPreferencesSetAppValue(
+                array_key.as_concrete_TypeRef(),
+                array.as_CFTypeRef(),
+                prefs.domain.as_concrete_TypeRef(),
+            );
+        }
+        prefs.set("profileColorPicker", true);
+        prefs.set("launchFlags", true);
+        assert!(prefs.save().is_ok());
+
+        let reloaded = Prefs::new(&domain);
+        assert_eq!(reloaded.get("profileColorPicker"), Some(true));
+        assert_eq!(reloaded.get("launchFlags"), Some(true));
+        assert_eq!(reloaded.get("profileColors"), None);
+        assert_eq!(reloaded.get("launchFlagsArgs"), None);
+
+        let raw_dict = unsafe {
+            CFPreferencesCopyAppValue(
+                dict_key.as_concrete_TypeRef(),
+                reloaded.domain.as_concrete_TypeRef(),
+            )
+        };
+        assert!(!raw_dict.is_null());
+        let raw_dict = unsafe { CFType::wrap_under_create_rule(raw_dict) };
+        assert!(raw_dict.downcast::<CFDictionary>().is_some());
+
+        let raw_array = unsafe {
+            CFPreferencesCopyAppValue(
+                array_key.as_concrete_TypeRef(),
+                reloaded.domain.as_concrete_TypeRef(),
+            )
+        };
+        assert!(!raw_array.is_null());
+        let raw_array = unsafe { CFType::wrap_under_create_rule(raw_array) };
+        assert!(raw_array.downcast::<CFArray>().is_some());
+
+        clear(
+            &reloaded,
+            &[
+                "profileColorPicker",
+                "launchFlags",
+                "profileColors",
+                "launchFlagsArgs",
+            ],
+        );
+    }
 }

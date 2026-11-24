@@ -2,7 +2,7 @@
 
 static char DPSettingsKey, DPSearchItemKey;
 
-// Our rows follow Dia's. Dia never sees their indexes: its cell lookup traps past the end of its items.
+// Dia's cell lookup traps past its own rows, so it never sees our indexes.
 typedef NS_ENUM(NSInteger, DPSidebarRow) { DPDiaRow = -1, DPDividerRow, DPHomeRow, DPPatchesRow, DPOurRowCount };
 
 static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
@@ -10,8 +10,24 @@ static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
     return row >= 0 && ours >= 0 ? ours : DPDiaRow;
 }
 
+static void DPRemoveDiaPaneItems(NSToolbar *toolbar) {
+    void **slot = DPIvar(toolbar.delegate, "paneToolbarItems");
+    // A Swift array of objects is its storage, an NSArray; one bridged from Objective-C is tagged and left alone.
+    if (!slot || !*slot || ((uintptr_t)*slot & 0xC000000000000001)) return;
+    id raw = (__bridge id)*slot;
+    if (![raw isKindOfClass:NSArray.class]) return;
+    NSMutableSet *identifiers = [NSMutableSet set];
+    for (id item in (NSArray *)raw) {
+        id identifier = DPValueForKey(item, @"itemIdentifier");
+        if ([identifier isKindOfClass:NSString.class]) [identifiers addObject:identifier];
+    }
+    for (NSInteger i = toolbar.items.count - 1; i >= 0; i--)
+        if ([identifiers containsObject:toolbar.items[i].itemIdentifier]) [toolbar removeItemAtIndex:i];
+}
+
 @interface DPSettings : NSObject
 @property (nonatomic, weak) NSTableView *table;
+@property (nonatomic, weak) NSClipView *watchedClip;
 @property (nonatomic, weak) NSTextField *title;
 @property (nonatomic, copy) NSString *originalTitle, *shownTitle;
 @property (nonatomic, strong) DPPaneView *home, *patches;
@@ -20,7 +36,7 @@ static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
 @property (nonatomic) NSWindowCollectionBehavior behavior;
 @property (nonatomic) NSSize minSize, maxSize;
 @property (nonatomic) CGFloat fixedHeight, dividerHeight;
-@property (nonatomic) BOOL backWasEnabled, watchingHeight;
+@property (nonatomic) BOOL backWasEnabled, backBorrowed, zoomWasEnabled;
 @end
 
 static CGFloat const DPDividerMinHeight = 17;
@@ -39,13 +55,17 @@ static __weak DPPaneView *DPShownPane;
     return settings;
 }
 
-// The divider takes the sidebar's spare height, so our rows sit at its bottom. It's sized when the table first asks for its height, and re-fitted when the clip's size or insets change.
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
 - (CGFloat)fittedDividerHeight {
     NSTableView *table = self.table;
     NSClipView *clip = table.enclosingScrollView.contentView;
     if (!clip || table.numberOfRows < DPOurRowCount) return DPDividerMinHeight;
-    if (!self.watchingHeight) {
-        self.watchingHeight = YES;
+    if (self.watchedClip != clip) {
+        [NSNotificationCenter.defaultCenter removeObserver:self];
+        self.watchedClip = clip;
         clip.postsFrameChangedNotifications = clip.postsBoundsChangedNotifications = YES;
         for (NSNotificationName name in @[NSViewFrameDidChangeNotification, NSViewBoundsDidChangeNotification])
             [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(fitDivider) name:name object:clip];
@@ -56,9 +76,10 @@ static __weak DPPaneView *DPShownPane;
 }
 
 - (void)fitDivider {
+    NSInteger divider = self.table.numberOfRows - DPOurRowCount + DPDividerRow;
+    if (divider < 0) return;
     CGFloat before = self.dividerHeight;
     if ([self fittedDividerHeight] == before) return;
-    NSInteger divider = self.table.numberOfRows - DPOurRowCount + DPDividerRow;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         [self.table noteHeightOfRowsWithIndexesChanged:[NSIndexSet indexSetWithIndex:divider]];
@@ -71,9 +92,9 @@ static __weak DPPaneView *DPShownPane;
     return nil;
 }
 
-// Building and laying out a pane takes a moment, so it's done hidden as Settings opens and a click only shows it.
 - (void)preparePane:(DPPaneView *)pane {
-    NSView *detail = ((NSSplitViewController *)self.table.window.contentViewController).splitViewItems.lastObject.viewController.view;
+    NSViewController *controller = self.table.window.contentViewController;
+    NSView *detail = [controller isKindOfClass:NSSplitViewController.class] ? ((NSSplitViewController *)controller).splitViewItems.lastObject.viewController.view : nil;
     if (!detail || pane.superview == detail) return;
     pane.hidden = YES;
     pane.frame = detail.bounds;
@@ -92,12 +113,13 @@ static __weak DPPaneView *DPShownPane;
     self.shown = DPShownPane = pane;
     __weak DPSettings *weakSelf = self;
     pane.titleChanged = ^(NSString *title, BOOL canGoBack) {
-        weakSelf.title.stringValue = weakSelf.shownTitle = title;
+        if (title) weakSelf.title.stringValue = weakSelf.shownTitle = title;
         [weakSelf borrowBack:canGoBack];
     };
     [self allowResizing:YES];
 
     NSToolbar *toolbar = window.toolbar;
+    DPRemoveDiaPaneItems(toolbar);
     if (pane.searchItem) {
         DPSet(toolbar, &DPSearchItemKey, pane.searchItem);
         [toolbar insertItemWithItemIdentifier:NSToolbarFlexibleSpaceItemIdentifier atIndex:toolbar.items.count];
@@ -105,10 +127,12 @@ static __weak DPPaneView *DPShownPane;
     }
 
     for (NSToolbarItem *item in toolbar.items)
-        if ([item.itemIdentifier isEqualToString:@"PreferencesPaneTitle"])
+        if ([item.itemIdentifier isEqualToString:@"PreferencesPaneTitle"]) {
             self.title = (NSTextField *)DPFindView(item.view, ^BOOL(NSView *v) { return [v isKindOfClass:NSTextField.class]; });
+            break;
+        }
     self.originalTitle = self.title.stringValue;
-    self.title.stringValue = self.shownTitle = pane.title;
+    if (pane.title) self.title.stringValue = self.shownTitle = pane.title;
 }
 
 - (void)hidePane {
@@ -116,7 +140,6 @@ static __weak DPPaneView *DPShownPane;
     [self allowResizing:NO];
 }
 
-// Leaves the window resizable, for when another of our panes is about to show.
 - (void)closeShownPane {
     DPPaneView *pane = self.shown;
     if (!pane) return;
@@ -125,18 +148,21 @@ static __weak DPPaneView *DPShownPane;
     NSUInteger index = pane.searchItem ? [toolbar.items indexOfObject:pane.searchItem] : NSNotFound;
     if (index != NSNotFound) {
         [toolbar removeItemAtIndex:index];
-        if (index > 0 && [toolbar.items[index - 1].itemIdentifier isEqualToString:NSToolbarFlexibleSpaceItemIdentifier]) [toolbar removeItemAtIndex:index - 1];
+        if (index > 0 && index - 1 < toolbar.items.count && [toolbar.items[index - 1].itemIdentifier isEqualToString:NSToolbarFlexibleSpaceItemIdentifier])
+            [toolbar removeItemAtIndex:index - 1];
     }
     NSString *shown = self.title.stringValue;
     if (pane.showsPage) [self borrowBack:NO];
     [pane reset];
     self.shown = DPShownPane = nil;
-    if ([shown isEqualToString:self.shownTitle]) self.title.stringValue = self.originalTitle;
+    if (self.originalTitle && [shown isEqualToString:self.shownTitle]) self.title.stringValue = self.originalTitle;
 }
 
 - (void)borrowBack:(BOOL)borrow {
+    if (borrow == self.backBorrowed) return;
     NSToolbarItem *back = [self backItem];
     if (borrow) self.backWasEnabled = back.enabled;
+    self.backBorrowed = borrow;
     back.enabled = borrow || self.backWasEnabled;
 }
 
@@ -148,16 +174,16 @@ static __weak DPPaneView *DPShownPane;
 
 - (void)allowResizing:(BOOL)allow {
     NSWindow *window = self.table.window;
-    if (allow == (self.fixedHeight > 0)) return;
+    if (!window || allow == (self.fixedHeight > 0)) return;
     if (allow) {
         self.mask = window.styleMask;
         self.behavior = window.collectionBehavior;
         self.minSize = window.contentMinSize;
         self.maxSize = window.contentMaxSize;
         self.fixedHeight = window.frame.size.height;
+        self.zoomWasEnabled = [window standardWindowButton:NSWindowZoomButton].enabled;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
-        // Resizable enables zoom and full screen; Settings should only grow taller.
         window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) | NSWindowCollectionBehaviorFullScreenNone;
         [window standardWindowButton:NSWindowZoomButton].enabled = NO;
         window.contentMinSize = NSMakeSize(width, 400);
@@ -169,6 +195,7 @@ static __weak DPPaneView *DPShownPane;
     window.collectionBehavior = self.behavior;
     window.contentMinSize = self.minSize;
     window.contentMaxSize = self.maxSize;
+    [window standardWindowButton:NSWindowZoomButton].enabled = self.zoomWasEnabled;
     [window setFrame:NSMakeRect(frame.origin.x, NSMaxY(frame) - self.fixedHeight, frame.size.width, self.fixedHeight) display:YES];
     self.fixedHeight = 0;
 }
@@ -242,7 +269,17 @@ static void DPSettings_handleBack(id self, SEL _cmd) {
     DPCallOriginal(DPSettings_handleBack, self);
 }
 
-// Dia's sidebar implements neither, so there's nothing to hook or call through to.
+static NSEvent *DPSettings_findKey(NSEvent *event) {
+    DPPaneView *pane = DPShownPane;
+    NSSearchToolbarItem *item = pane.searchItem;
+    if (!item || pane.hidden || event.window != pane.window || !event.window.isKeyWindow || DPShortcutRecording()) return event;
+    NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~(NSEventModifierFlagCapsLock | NSEventModifierFlagNumericPad);
+    if (mods != NSEventModifierFlagCommand || !DPEventIsKey(event, @"f")) return event;
+    [item beginSearchInteraction];
+    [item.searchField selectText:nil];
+    return nil;
+}
+
 static void DPAddSidebarMethod(SEL sel, IMP imp) {
     const char *types = protocol_getMethodDescription(@protocol(NSTableViewDelegate), sel, NO, YES).types;
     if (!class_addMethod(objc_getClass(DPDiaSettingsSidebar), sel, imp, types))
@@ -258,4 +295,5 @@ void DPInstallSettings(void) {
     DPAddSidebarMethod(@selector(tableView:shouldSelectRow:), (IMP)DPSidebar_shouldSelectRow);
     DPAddSidebarMethod(@selector(tableView:heightOfRow:), (IMP)DPSidebar_heightOfRow);
     DPHook(DPDiaSettingsController, @selector(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:), (IMP)DPSettings_toolbarItem);
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) { return DPSettings_findKey(event); }];
 }

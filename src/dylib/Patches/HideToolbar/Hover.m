@@ -1,7 +1,6 @@
 #import "HideToolbar.h"
 
 static const CGFloat DPToolbarHoverHeight = 8;
-static const NSTimeInterval DPPeekDuration = 1.6;  // Long enough for Dia's Copied message to come and go.
 static char DPHoverKey;
 
 static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOOL done)) {
@@ -15,7 +14,10 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     return timer;
 }
 
-@implementation DPToolbarHover
+@implementation DPToolbarHover {
+    __unsafe_unretained id _lastResponder;
+    __weak NSWindow *_observedWindow;
+}
 
 + (DPToolbarHover *)forPane:(NSView *)pane {
     return DPGet(pane, &DPHoverKey);
@@ -42,21 +44,40 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     [_animation invalidate];
     [_hideTimer invalidate];
     [_inPlaceAnimation invalidate];
-    [_peekTimer invalidate];
     if (_tracking) [_pane removeTrackingArea:_tracking];
+    if (_paneTracking) [_pane removeTrackingArea:_paneTracking];
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
 - (void)stopReveal {
     [self.animation invalidate];
     [self.hideTimer invalidate];
-    [self.peekTimer invalidate];
-    self.animation = self.hideTimer = self.peekTimer = nil;
-    _revealed = _peeking = NO;
+    self.animation = self.hideTimer = nil;
+    _revealed = NO;
     self.progress = 0;
+    _lastResponder = nil;
+}
+
+- (void)stopInPlace {
+    [self.inPlaceAnimation invalidate];
+    self.inPlaceAnimation = nil;
+    _inPlace = NO;
+    self.inPlaceProgress = 0;
+}
+
+- (void)detach {
+    [self stopReveal];
+    [self stopInPlace];
+    [self stopObservingWindow];
+    if (self.tracking) [self.pane removeTrackingArea:self.tracking];
+    self.tracking = nil;
+    if (self.paneTracking) [self.pane removeTrackingArea:self.paneTracking];
+    self.paneTracking = nil;
+    if (self.pane) DPSet(self.pane, &DPHoverKey, nil);
 }
 
 - (void)reset {
+    if (!self.revealed && self.progress == 0 && !self.animation && !self.hideTimer) return;
     [self stopReveal];
     if (self.pane) DPApplyToolbar(self.pane);
 }
@@ -72,12 +93,71 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     return self.tracking && NSMouseInRect(point, self.tracking.rect, self.pane.isFlipped);
 }
 
+// Moving fast out of the page skips the 8pt strip between mouse events, so the pointer can sit over the top of the window unseen.
+- (BOOL)pointerAbovePage {
+    NSWindow *window = self.pane.window;
+    if (!window.isKeyWindow || !NSApp.isActive || self.pane.hiddenOrHasHiddenAncestor) return NO;
+    NSPoint mouse = NSEvent.mouseLocation;
+    NSRect pane = [window convertRectToScreen:[self.pane convertRect:self.pane.bounds toView:nil]];
+    if (mouse.x < NSMinX(pane) || mouse.x > NSMaxX(pane)) return NO;
+    // With tabs at the top the tab bar sits above the page, so only the window's top edge counts as overshoot.
+    CGFloat lower = DPTabsAtTop(window) && !self.inPlace ? NSMaxY(window.frame) - 12 : NSMaxY(pane) - 1;
+    if (mouse.y < lower) return NO;
+    return mouse.y <= NSMaxY(window.frame) + 24;
+}
+
 - (BOOL)toolbarHasFocus {
-    NSResponder *responder = self.pane.window.firstResponder;
-    // The shared field editor lives outside the toolbar; its delegate is the edited control.
+    NSWindow *window = self.pane.window;
+    if (!window.isKeyWindow || !NSApp.isActive) return NO;
+    NSResponder *responder = window.firstResponder;
     if ([responder isKindOfClass:NSTextView.class] && ((NSTextView *)responder).isFieldEditor)
         responder = (NSResponder *)((NSTextView *)responder).delegate;
     return [responder isKindOfClass:NSView.class] && [(NSView *)responder isDescendantOf:self.bar];
+}
+
+- (void)armHideTimer {
+    if (self.hideTimer) return;
+    __weak DPToolbarHover *weakSelf = self;
+    self.hideTimer = [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) {
+        DPToolbarHover *me = weakSelf;
+        if (!me) return [timer invalidate];
+        if ([me containsPointer]) {
+            [timer invalidate];
+            me.hideTimer = nil;
+            return;
+        }
+        if ([me pointerAbovePage] || [me toolbarHasFocus] || NSEvent.pressedMouseButtons) return;
+        [timer invalidate];
+        me.hideTimer = nil;
+        me.revealed = NO;
+    }];
+}
+
+- (void)observeWindow:(NSWindow *)window {
+    if (window == _observedWindow) return;
+    [self stopObservingWindow];
+    if (!window) return;
+    _observedWindow = window;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(windowDidUpdate:) name:NSWindowDidUpdateNotification object:window];
+}
+
+- (void)stopObservingWindow {
+    if (!_observedWindow) return;
+    [NSNotificationCenter.defaultCenter removeObserver:self name:NSWindowDidUpdateNotification object:_observedWindow];
+    _observedWindow = nil;
+    _lastResponder = nil;
+}
+
+- (void)windowDidUpdate:(NSNotification *)notification {
+    NSWindow *window = self.pane.window;
+    if (notification.object != window || !window.isKeyWindow || !NSApp.isActive) return;
+    NSResponder *responder = window.firstResponder;
+    if (responder == _lastResponder) return;
+    _lastResponder = responder;
+    if (!DPHideToolbar.on || self.inPlace || self.revealed) return;
+    if (!self.bar || self.bar.hiddenOrHasHiddenAncestor || ![self toolbarHasFocus]) return;
+    self.revealed = YES;
+    [self armHideTimer];
 }
 
 - (void)setRevealed:(BOOL)revealed {
@@ -92,7 +172,6 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
         DPApplyToolbarOpacity(me);
         if (!done) return;
         me.animation = nil;
-        if (!me.revealed) me.peeking = NO;  // Only once faded out, so the fade isn't cut short.
         DPApplyToolbar(me.pane);
     });
     DPApplyToolbar(self.pane);
@@ -115,60 +194,51 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
 - (void)mouseEntered:(NSEvent *)event {
     if (!DPHideToolbar.on || !DPRevealToolbarOnHover.on || ![self containsPointer]) return;
     [self.hideTimer invalidate];
-    [self.peekTimer invalidate];
-    self.hideTimer = self.peekTimer = nil;
-    _peeking = NO;
+    self.hideTimer = nil;
     self.revealed = YES;
 }
 
 - (void)mouseExited:(NSEvent *)event {
-    // Growing the tracking area on reveal sends an exit from the old, narrow strip.
-    if (!self.revealed || self.peeking || [self containsPointer] || self.hideTimer) return;
-    __weak DPToolbarHover *weakSelf = self;
-    self.hideTimer = [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) {
-        DPToolbarHover *me = weakSelf;
-        if (!me) return [timer invalidate];
-        if (![me containsPointer] && ([me toolbarHasFocus] || NSEvent.pressedMouseButtons)) return;
-        [timer invalidate];
-        me.hideTimer = nil;
-        if (![me containsPointer]) me.revealed = NO;
-    }];
-}
-
-- (void)peek {
-    if (!DPHideToolbar.on || self.inPlace || !self.bar || (self.revealed && !self.peeking)) return;
-    [self.hideTimer invalidate];
-    [self.peekTimer invalidate];
-    self.hideTimer = nil;
-    _peeking = YES;
-    self.revealed = YES;
-    __weak DPToolbarHover *weakSelf = self;
-    self.peekTimer = [NSTimer scheduledTimerWithTimeInterval:DPPeekDuration repeats:NO block:^(NSTimer *timer) { [weakSelf endPeek]; }];
-}
-
-- (void)endPeek {
-    if (!self.peeking) return;
-    [self.peekTimer invalidate];
-    self.peekTimer = nil;
-    if (DPRevealToolbarOnHover.on && [self containsPointer]) {
-        _peeking = NO;
+    if (!DPHideToolbar.on) return;
+    if (!self.revealed) {
+        // The pointer left the page upward, over the top of the window: reveal, then hide once it comes back.
+        if (DPRevealToolbarOnHover.on && [self pointerAbovePage]) {
+            self.revealed = YES;
+            [self armHideTimer];
+        }
         return;
     }
-    self.revealed = NO;
+    // Growing the tracking area on reveal sends a stray exit.
+    if ([self containsPointer] || self.hideTimer) return;
+    [self armHideTimer];
+}
+
+- (NSTrackingArea *)trackingArea:(NSTrackingArea *)area rect:(NSRect)rect {
+    if (area && NSEqualRects(area.rect, rect)) return area;
+    if (area) [self.pane removeTrackingArea:area];
+    if (NSIsEmptyRect(rect)) return nil;
+    NSTrackingArea *fresh = [[NSTrackingArea alloc] initWithRect:rect options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow
+                                                           owner:self userInfo:nil];
+    [self.pane addTrackingArea:fresh];
+    return fresh;
 }
 
 - (void)updateForBar:(NSView *)bar bookmarks:(NSView *)bookmarks {
     self.bar = bar;
     self.bookmarks = bookmarks;
-    self.inPlace = DPKeptInPlace(self.pane);
+    if (DPHideToolbar.on || DPHideToolbar.progress > 0) self.inPlace = DPKeptInPlace(self.pane);
+    else [self stopInPlace];
+    // AppKit posts this whenever firstResponder changes, so ⌘L into a hidden bar reveals it without polling.
+    if (DPHideToolbar.on && !self.inPlace) [self observeWindow:self.pane.window];
+    else [self stopObservingWindow];
+    BOOL watching = DPHideToolbar.on && DPRevealToolbarOnHover.on && !self.inPlace && !bar.hiddenOrHasHiddenAncestor;
     NSRect rect = NSZeroRect;
-    if (DPHideToolbar.on && (DPRevealToolbarOnHover.on || self.peeking) && !self.inPlace && !bar.hiddenOrHasHiddenAncestor) {
+    if (watching) {
         rect = DPLaidOutFrame(bar);
         if (bookmarks) rect = NSUnionRect(rect, DPLaidOutFrame(bookmarks));
         rect = NSIntersectionRect(rect, self.pane.bounds);
         CGFloat height = MIN(DPToolbarHoverHeight, NSHeight(rect));
         if (self.revealed) {
-            // A margin keeps the revealed bar from flickering at its edge.
             if (!self.pane.isFlipped) rect.origin.y -= DPToolbarHoverHeight;
             rect.size.height += DPToolbarHoverHeight;
             rect = NSIntersectionRect(rect, self.pane.bounds);
@@ -176,15 +246,10 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
             if (!self.pane.isFlipped) rect.origin.y = NSMaxY(rect) - height;
             rect.size.height = height;
         }
-    } else {
+    } else if (![self toolbarHasFocus]) {
         [self stopReveal];
     }
-    if (self.tracking && NSEqualRects(self.tracking.rect, rect)) return;
-    if (self.tracking) [self.pane removeTrackingArea:self.tracking];
-    self.tracking = nil;
-    if (NSIsEmptyRect(rect)) return;
-    self.tracking = [[NSTrackingArea alloc] initWithRect:rect options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow
-                                                   owner:self userInfo:nil];
-    [self.pane addTrackingArea:self.tracking];
+    self.tracking = [self trackingArea:self.tracking rect:rect];
+    self.paneTracking = [self trackingArea:self.paneTracking rect:watching ? self.pane.bounds : NSZeroRect];
 }
 @end

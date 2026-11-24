@@ -2,16 +2,15 @@
 
 static char DPChatKey, DPPendingRestyleKey, DPCheckChatKey;
 
-void DPRestyleContainer(NSView *container) {
+static void DPRestyleContainerBody(NSView *container, BOOL allowFrame) {
     DPApplySquareCorners(container);
-    CALayer *card = DPChatCard(container).layer;
-    if (!card) return;
-    if (card.cornerCurve != kCACornerCurveContinuous) card.cornerCurve = kCACornerCurveContinuous;
+    if (!allowFrame || !DPChatCard(container)) return;
     NSValue *requested = DPRequestedFrame(container);
     if (requested && !NSEqualRects(container.frame, requested.rectValue) && DPMayAdjust(container)) container.frame = requested.rectValue;
 }
 
-// Layout, layer updates and shadow layout often coincide, so they share one deferred restyle.
+void DPRestyleContainer(NSView *container) { DPRestyleContainerBody(container, YES); }
+
 static void DPQueueRestyle(NSView *container, BOOL checkChat) {
     if (checkChat) DPSet(container, &DPCheckChatKey, @YES);
     if ([DPGet(container, &DPPendingRestyleKey) boolValue]) return;
@@ -34,11 +33,10 @@ static void DPQueueRestyle(NSView *container, BOOL checkChat) {
 
 static void DPContainer_layoutOrUpdateLayer(NSView *self, SEL _cmd) {
     DPCallOriginal(DPContainer_layoutOrUpdateLayer, self);
-    DPRestyleContainer(self);
+    DPRestyleContainerBody(self, _cmd != @selector(updateLayer));
     DPQueueRestyle(self, NO);
 }
 
-// Opening or closing Chat reshapes the content without resizing the container.
 static void DPShadow_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPShadow_layout, self);
     NSView *container = self;
@@ -50,13 +48,11 @@ void DPInstallRestyle(void) {
     DPHook(DPDiaContentContainer, @selector(layout), (IMP)DPContainer_layoutOrUpdateLayer);
     DPHook(DPDiaContentContainer, @selector(updateLayer), (IMP)DPContainer_layoutOrUpdateLayer);
     DPHook(DPDiaShadowView, @selector(layout), (IMP)DPShadow_layout);
-    // A screen-sized window doesn't lay out entering or leaving full screen. AppKit flips the style mask just after each will.
+    // AppKit flips the style mask just after each will, and a screen-sized window doesn't lay out.
     NSArray<NSNotificationName> *names = @[NSWindowWillEnterFullScreenNotification, NSWindowDidEnterFullScreenNotification,
                                            NSWindowWillExitFullScreenNotification, NSWindowDidExitFullScreenNotification];
     for (NSNotificationName name in names)
         [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *_) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                for (NSView *container in DPContainers.allObjects) DPRestyleContainer(container);
-            });
+            dispatch_async(dispatch_get_main_queue(), ^{ DPRelayoutContainers(); });
         }];
 }

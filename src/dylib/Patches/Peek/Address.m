@@ -1,24 +1,10 @@
 #import "Patches/Peek/Peek.h"
 
-// The Peek's address, as Little Dia draws its own: "site / Page Title", and "site/path" in a soft field under the
-// pointer. A click, or ⌘L, edits the whole URL; Return loads it in the Peek, Escape doesn't. Dia's own address field
-// belongs to the tab behind the card, so it can't show or change the Peek's page.
 @interface DPPeekAddress : NSView <NSTextFieldDelegate>
 @property (nonatomic, weak) id page;
 @property (nonatomic) NSTextField *label, *field;
 @property (nonatomic) BOOL hovered, beginning, ending;
 @end
-
-// Anything with a scheme, or a host like example.com or localhost:3000. Else nil: a search.
-static NSURL *DPPeekTypedURL(NSString *text) {
-    if (!text.length || [text rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet].location != NSNotFound) return nil;
-    NSURL *url = [NSURL URLWithString:text];
-    NSString *scheme = url.scheme.lowercaseString;
-    if (scheme && ([text containsString:@"://"] || [@[ @"about", @"chrome", @"data", @"mailto" ] containsObject:scheme])) return url;
-    if ([text hasPrefix:@"localhost"]) return [NSURL URLWithString:[@"http://" stringByAppendingString:text]];
-    if ([text containsString:@"."]) return [NSURL URLWithString:[@"https://" stringByAppendingString:text]];
-    return nil;
-}
 
 @implementation DPPeekAddress
 
@@ -36,7 +22,6 @@ static NSURL *DPPeekTypedURL(NSString *text) {
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
-// The label inside would take the click for itself; while editing, the field gets it.
 - (NSView *)hitTest:(NSPoint)point {
     NSView *hit = [super hitTest:point];
     if (!hit) return nil;
@@ -56,16 +41,18 @@ static NSURL *DPPeekTypedURL(NSString *text) {
 - (void)mouseExited:(NSEvent *)event { self.hovered = NO; [self refresh]; }
 
 - (NSURL *)url {
-    NSURL *url = [(NSObject *)self.page valueForKey:@"url"];
+    NSURL *url = DPValueForKey(self.page, @"url");
     return [url isKindOfClass:NSURL.class] ? url : nil;
 }
 
 - (void)refresh {
     BOOL open = self.hovered || self.field;
-    self.layer.backgroundColor = open ? [NSColor.labelColor colorWithAlphaComponent:0.07].CGColor : nil;
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        self.layer.backgroundColor = open ? [NSColor.labelColor colorWithAlphaComponent:0.07].CGColor : nil;
+    }];
     if (self.field) return;
     NSURL *url = self.url;
-    NSString *title = [(NSObject *)self.page valueForKey:@"title"];
+    NSString *title = DPValueForKey(self.page, @"title");
     NSString *host = url.host.lowercaseString ?: url.absoluteString ?: @"", *rest = @"";
     if ([host hasPrefix:@"www."]) host = [host substringFromIndex:4];
     if (self.hovered) {
@@ -82,7 +69,8 @@ static NSURL *DPPeekTypedURL(NSString *text) {
     if (![self.label.attributedStringValue isEqual:text]) self.label.attributedStringValue = text;
     self.label.toolTip = url.absoluteString;
     CGFloat height = ceil(self.label.intrinsicContentSize.height);
-    self.label.frame = NSMakeRect(10, round((NSHeight(self.bounds) - height) / 2), MAX(0, NSWidth(self.bounds) - 20), height);
+    NSRect frame = NSMakeRect(10, round((NSHeight(self.bounds) - height) / 2), MAX(0, NSWidth(self.bounds) - 20), height);
+    if (!NSEqualRects(self.label.frame, frame)) self.label.frame = frame;
 }
 
 - (void)setFrameSize:(NSSize)size {
@@ -90,7 +78,6 @@ static NSURL *DPPeekTypedURL(NSString *text) {
     [self refresh];
 }
 
-#pragma mark Typing another address
 - (void)begin {
     if (self.field) return (void)[self.window makeFirstResponder:self.field];
     NSString *shown = [self.url.absoluteString isEqual:@"about:blank"] ? @"" : self.url.absoluteString;
@@ -121,9 +108,11 @@ static NSURL *DPPeekTypedURL(NSString *text) {
     [self.field removeFromSuperview];
     self.field = nil;
     self.label.hidden = NO;
-    // Back to the Peek's page, not the tab behind it.
     for (NSView *view = self.superview; view; view = view.superview)
-        if ([view isKindOfClass:DPPeekCard.class]) [self.window makeFirstResponder:((DPPeekCard *)view).host];
+        if ([view isKindOfClass:DPPeekCard.class]) {
+            DPPeekCard *card = (DPPeekCard *)view;
+            if (!card.closing && !card.isHiddenOrHasHiddenAncestor) [self.window makeFirstResponder:card.host];
+        }
     self.ending = NO;
     [self refresh];
 }
@@ -134,7 +123,7 @@ static NSURL *DPPeekTypedURL(NSString *text) {
     NSString *typed = [self.field.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     [self end];
     if (!go || !typed.length) return;
-    NSURL *url = DPPeekTypedURL(typed) ?: DPPeekSearchURL(self.page, typed);
+    NSURL *url = DPAddressURL(typed) ?: DPPeekSearchURL(self.page, typed);
     if (url) DPPeekLoad(self.page, url);
 }
 

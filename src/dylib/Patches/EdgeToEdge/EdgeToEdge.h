@@ -1,12 +1,17 @@
 #import "StdPatch/StdPatch.h"
 
-extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners;
+extern DPPatch DPEdgeToEdge, DPSquareSidebarCorners, DPWindowCorners, DPFullScreenOnly;
 extern const CGFloat DPWindowPadding;
 extern NSHashTable<NSView *> *DPContainers;
 static const CACornerMask DPLeftCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
 static const CACornerMask DPRightCorners = kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
 
+static inline BOOL DPEdgeToEdgeActive(void) { return DPEdgeToEdge.on || DPEdgeToEdge.progress > 0 || DPWindowCorners.on; }
+
 NSValue *DPRequestedFrame(NSView *container);
+CGFloat DPEdgeToEdgeAmount(NSView *view);
+BOOL DPWindowFullScreen(NSWindow *window);
+void DPRelayoutContainers(void);
 NSView *DPRoundedContent(NSView *container);
 NSView *DPChatCard(NSView *container);
 CGFloat DPBaseCornerRadius(NSView *container);

@@ -2,7 +2,7 @@
 #import <Carbon/Carbon.h>
 
 static const NSEventModifierFlags DPShortcutModifiers = NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagShift | NSEventModifierFlagCommand;
-static NSUInteger DPRecording;
+static NSHashTable<NSView *> *DPRecorders;
 
 static NSUserDefaults *DPShortcutDefaults(void) {
     static NSUserDefaults *defaults;
@@ -12,17 +12,22 @@ static NSUserDefaults *DPShortcutDefaults(void) {
 }
 
 static NSString *DPShortcutText(NSDictionary *shortcut) {
-    if (![shortcut[@"key"] length]) return nil;
+    NSString *key = shortcut[@"key"];
+    if (![key isKindOfClass:NSString.class] || !key.length) return nil;
     NSEventModifierFlags flags = [shortcut[@"modifiers"] unsignedIntegerValue];
     return [NSString stringWithFormat:@"%@%@%@%@%@", flags & NSEventModifierFlagControl ? @"⌃" : @"", flags & NSEventModifierFlagOption ? @"⌥" : @"",
-                                      flags & NSEventModifierFlagShift ? @"⇧" : @"", flags & NSEventModifierFlagCommand ? @"⌘" : @"", shortcut[@"key"]];
+                                      flags & NSEventModifierFlagShift ? @"⇧" : @"", flags & NSEventModifierFlagCommand ? @"⌘" : @"", key];
 }
 
 static NSString *DPKeyName(NSEvent *event) {
-    NSDictionary *named = @{ @(kVK_Return) : @"↩", @(kVK_Tab) : @"⇥", @(kVK_Space) : @"Space", @(kVK_Delete) : @"⌫", @(kVK_ForwardDelete) : @"⌦",
-                             @(kVK_LeftArrow) : @"←", @(kVK_RightArrow) : @"→", @(kVK_UpArrow) : @"↑", @(kVK_DownArrow) : @"↓",
-                             @(kVK_F1) : @"F1", @(kVK_F2) : @"F2", @(kVK_F3) : @"F3", @(kVK_F4) : @"F4", @(kVK_F5) : @"F5", @(kVK_F6) : @"F6",
-                             @(kVK_F7) : @"F7", @(kVK_F8) : @"F8", @(kVK_F9) : @"F9", @(kVK_F10) : @"F10", @(kVK_F11) : @"F11", @(kVK_F12) : @"F12" };
+    static NSDictionary *named;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        named = @{ @(kVK_Return) : @"↩", @(kVK_Tab) : @"⇥", @(kVK_Space) : @"Space", @(kVK_Delete) : @"⌫", @(kVK_ForwardDelete) : @"⌦",
+                   @(kVK_LeftArrow) : @"←", @(kVK_RightArrow) : @"→", @(kVK_UpArrow) : @"↑", @(kVK_DownArrow) : @"↓",
+                   @(kVK_F1) : @"F1", @(kVK_F2) : @"F2", @(kVK_F3) : @"F3", @(kVK_F4) : @"F4", @(kVK_F5) : @"F5", @(kVK_F6) : @"F6",
+                   @(kVK_F7) : @"F7", @(kVK_F8) : @"F8", @(kVK_F9) : @"F9", @(kVK_F10) : @"F10", @(kVK_F11) : @"F11", @(kVK_F12) : @"F12" };
+    });
     NSString *name = named[@(event.keyCode)];
     if (name) return name;
     NSString *typed = event.charactersIgnoringModifiers.uppercaseString;
@@ -34,18 +39,44 @@ static NSDictionary *DPPatchShortcut(DPPatch *patch) {
     return [saved isKindOfClass:NSDictionary.class] ? saved : patch->defaultShortcut ? patch->defaultShortcut() : nil;
 }
 
+BOOL DPShortcutRecording(void) {
+    // A window that loses key keeps its first responder, so only a field in the key window takes keys from Dia.
+    for (NSView *field in DPRecorders)
+        if (field.window.isKeyWindow) return YES;
+    return NO;
+}
+
+BOOL DPEventIsKey(NSEvent *event, NSString *key) {
+    if (key.length != 1) return NO;
+    NSString *typed = event.charactersIgnoringModifiers;
+    if (typed.length == 1 && [typed characterAtIndex:0] < 128) return [typed caseInsensitiveCompare:key] == NSOrderedSame;
+    // US keyboard by key code, 0 to 50; the space is a key with no character.
+    static const char us[] = "asdfhgzxcv bqweryt123465=97-80]ou[ip lj'k;\\,/nm.  `";
+    unichar c = [key characterAtIndex:0];
+    if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+    const char *at = c > ' ' && c < 127 ? strchr(us, c) : NULL;
+    return at && event.keyCode == at - us;
+}
+
 BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
+    if (DPShortcutRecording()) return NO;
     NSDictionary *shortcut = DPPatchShortcut(patch);
-    return !DPRecording && shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode &&
-           [shortcut[@"modifiers"] unsignedIntegerValue] == (event.modifierFlags & DPShortcutModifiers);
+    if (!shortcut.count || [shortcut[@"modifiers"] unsignedIntegerValue] != (event.modifierFlags & DPShortcutModifiers)) return NO;
+    NSString *label = shortcut[@"key"];
+    BOOL letter = [label isKindOfClass:NSString.class] && label.length == 1 && [label characterAtIndex:0] < 128 && isalpha([label characterAtIndex:0]);
+    return letter ? DPEventIsKey(event, label) : shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode;
 }
 
 static NSDictionary *DPMenuShortcut(NSMenuItem *item) {
     NSString *equivalent = item.keyEquivalent;
     if (equivalent.length != 1) return nil;
     unichar c = [equivalent characterAtIndex:0];
-    NSDictionary *named = @{ @('\r') : @"↩", @('\t') : @"⇥", @(' ') : @"Space", @('\b') : @"⌫", @(0x7f) : @"⌫", @(NSDeleteFunctionKey) : @"⌦",
-                             @(NSLeftArrowFunctionKey) : @"←", @(NSRightArrowFunctionKey) : @"→", @(NSUpArrowFunctionKey) : @"↑", @(NSDownArrowFunctionKey) : @"↓" };
+    static NSDictionary *named;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        named = @{ @('\r') : @"↩", @('\t') : @"⇥", @(' ') : @"Space", @('\b') : @"⌫", @(0x7f) : @"⌫", @(NSDeleteFunctionKey) : @"⌦",
+                   @(NSLeftArrowFunctionKey) : @"←", @(NSRightArrowFunctionKey) : @"→", @(NSUpArrowFunctionKey) : @"↑", @(NSDownArrowFunctionKey) : @"↓" };
+    });
     NSString *name = named[@(c)] ?: (c >= NSF1FunctionKey && c <= NSF12FunctionKey ? [NSString stringWithFormat:@"F%d", c - NSF1FunctionKey + 1] : equivalent.uppercaseString);
     NSEventModifierFlags flags = item.keyEquivalentModifierMask & DPShortcutModifiers;
     if (![equivalent isEqualToString:equivalent.lowercaseString]) flags |= NSEventModifierFlagShift;
@@ -53,7 +84,8 @@ static NSDictionary *DPMenuShortcut(NSMenuItem *item) {
 }
 
 static BOOL DPSameShortcut(NSDictionary *a, NSDictionary *b) {
-    return [a[@"key"] length] && [a[@"key"] isEqual:b[@"key"]] && [a[@"modifiers"] isEqual:b[@"modifiers"]];
+    NSString *key = a[@"key"];
+    return [key isKindOfClass:NSString.class] && key.length && [key isEqual:b[@"key"]] && [a[@"modifiers"] isEqual:b[@"modifiers"]];
 }
 
 static void DPMenuClashes(NSMenu *menu, NSDictionary *shortcut, NSString *shared, NSMutableArray<NSString *> *names) {
@@ -78,6 +110,7 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 @property (nonatomic, strong) NSButton *clear;
 @property (nonatomic, strong) id monitor;
 @property (nonatomic) BOOL hovered;
+@property (nonatomic, getter=isEnabled) BOOL enabled;
 @end
 
 @implementation DPShortcutButton
@@ -86,6 +119,7 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _patch = patch;
     _clash = clash;
+    _enabled = YES;
     self.wantsLayer = YES;
     self.layer.cornerRadius = 6;
     self.layer.cornerCurve = kCACornerCurveContinuous;
@@ -106,23 +140,38 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
     ]];
     [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
                                                          owner:self userInfo:nil]];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:DPPatchesDidChangeNotification object:nil];
     [self refresh];
     return self;
 }
 
+- (void)setEnabled:(BOOL)enabled {
+    if (_enabled == enabled) return;
+    _enabled = enabled;
+    if (!enabled) {
+        if (self.window.firstResponder == self) [self.window makeFirstResponder:nil];
+        [self stopRecording];
+    }
+    self.alphaValue = enabled ? 1 : 0.5;
+    [self refresh];
+}
+
 - (void)refresh {
     NSString *text = DPShortcutText(DPPatchShortcut(_patch));
-    _label.stringValue = text ?: @"Add new…";
-    _label.textColor = text ? NSColor.labelColor : NSColor.secondaryLabelColor;
-    _clear.hidden = !text || !_hovered;
-    // Worded like Dia's Shortcuts settings.
+    BOOL recording = _monitor != nil;
+    _label.stringValue = recording ? @"Type shortcut…" : text ?: @"Add new…";
+    _label.textColor = text && !recording ? NSColor.labelColor : NSColor.secondaryLabelColor;
+    _clear.enabled = _enabled;
+    _clear.hidden = !_enabled || !text || !_hovered;
     NSArray<NSString *> *clashes = DPShortcutClashes(_patch);
-    NSFont *font = [NSFont systemFontOfSize:11];
-    NSMutableAttributedString *warning = [[NSMutableAttributedString alloc] initWithString:@"This shortcut conflicts with another shortcut:\n"
-                                                                                attributes:@{ NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.secondaryLabelColor }];
-    [warning appendAttributedString:[[NSAttributedString alloc] initWithString:[clashes componentsJoinedByString:@", "]
-                                                                    attributes:@{ NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.systemRedColor }]];
-    _clash.attributedStringValue = warning;
+    if (clashes.count) {
+        NSFont *font = [NSFont systemFontOfSize:11];
+        NSMutableAttributedString *warning = [[NSMutableAttributedString alloc] initWithString:@"This shortcut conflicts with another shortcut:\n"
+                                                                                    attributes:@{ NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.secondaryLabelColor }];
+        [warning appendAttributedString:[[NSAttributedString alloc] initWithString:[clashes componentsJoinedByString:@", "]
+                                                                        attributes:@{ NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.systemRedColor }]];
+        _clash.attributedStringValue = warning;
+    }
     _clash.hidden = !clashes.count;
     ((NSStackView *)_clash.superview).edgeInsets = NSEdgeInsetsMake(0, 0, clashes.count ? 8 : 0, 0);
     self.needsDisplay = YES;
@@ -131,19 +180,37 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
 - (BOOL)wantsUpdateLayer { return YES; }
 - (void)updateLayer { self.layer.backgroundColor = NSColor.quaternarySystemFillColor.CGColor; }
 
-- (BOOL)acceptsFirstResponder { return YES; }
-- (BOOL)canBecomeKeyView { return YES; }
-- (void)mouseDown:(NSEvent *)event { [self.window makeFirstResponder:self]; }
+- (BOOL)acceptsFirstResponder { return _enabled; }
+- (BOOL)canBecomeKeyView { return _enabled; }
+- (void)mouseDown:(NSEvent *)event {
+    if (_enabled && [self.window makeFirstResponder:self]) [self startRecording];
+}
 - (void)mouseEntered:(NSEvent *)event { _hovered = YES; [self refresh]; }
 - (void)mouseExited:(NSEvent *)event { _hovered = NO; [self refresh]; }
 
 - (NSRect)focusRingMaskBounds { return self.bounds; }
 - (void)drawFocusRingMask { [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill]; }
 
-// Recording takes every key before Dia's menus and other shortcuts see it.
-- (BOOL)becomeFirstResponder {
-    if (![super becomeFirstResponder]) return NO;
-    DPRecording++;
+- (BOOL)moveFocus:(NSEvent *)event {
+    NSEventModifierFlags flags = event.modifierFlags & DPShortcutModifiers;
+    if (event.keyCode != kVK_Tab || (flags & ~NSEventModifierFlagShift)) return NO;
+    [self stopRecording];
+    if (flags) [self.window selectPreviousKeyView:nil];
+    else [self.window selectNextKeyView:nil];
+    return YES;
+}
+
+- (void)keyDown:(NSEvent *)event {
+    if (!_enabled) return [super keyDown:event];
+    BOOL activate = (event.keyCode == kVK_Space || event.keyCode == kVK_Return) && !(event.modifierFlags & DPShortcutModifiers);
+    if (activate) [self startRecording];
+    else if (![self moveFocus:event]) [super keyDown:event];
+}
+
+- (void)startRecording {
+    if (_monitor || !_enabled) return;
+    DPRecorders = DPRecorders ?: [NSHashTable weakObjectsHashTable];
+    [DPRecorders addObject:self];
     __weak typeof(self) weak = self;
     _monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         DPShortcutButton *field = weak;
@@ -151,44 +218,64 @@ static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
         [field record:event];
         return nil;
     }];
-    return YES;
+    [self refresh];
+}
+
+- (void)stopRecording {
+    if (!_monitor) return;
+    [NSEvent removeMonitor:_monitor];
+    _monitor = nil;
+    [DPRecorders removeObject:self];
+    [self refresh];
 }
 
 - (BOOL)resignFirstResponder {
-    if (_monitor) {
-        [NSEvent removeMonitor:_monitor];
-        _monitor = nil;
-        DPRecording--;
-    }
+    [self stopRecording];
     return [super resignFirstResponder];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (!self.window) [self stopRecording];
+}
+
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+    if (_monitor) [NSEvent removeMonitor:_monitor];
 }
 
 - (void)record:(NSEvent *)event {
     NSEventModifierFlags flags = event.modifierFlags & DPShortcutModifiers;
     if (event.keyCode == kVK_Escape && !flags) return (void)[self.window makeFirstResponder:nil];
-    if ((event.keyCode == kVK_Delete || event.keyCode == kVK_ForwardDelete) && !flags) return [self clearShortcut];
+    if ([self moveFocus:event]) return;
+    if ((event.keyCode == kVK_Delete || event.keyCode == kVK_ForwardDelete) && !flags) {
+        [self clearShortcut];
+        [self.window makeFirstResponder:nil];
+        return;
+    }
     NSString *name = DPKeyName(event);
     BOOL functionKey = name.length > 1 && [name hasPrefix:@"F"];
-    // Needs a modifier other than Shift, so plain typing isn't taken.
     if (!name || (!(flags & ~NSEventModifierFlagShift) && !functionKey)) return NSBeep();
     [DPShortcutDefaults() setObject:@{ @"keyCode" : @(event.keyCode), @"modifiers" : @(flags), @"key" : name } forKey:_patch->shortcut];
     [self.window makeFirstResponder:nil];
-    [self refresh];
+    [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
 }
 
 - (void)clearShortcut {
     [DPShortcutDefaults() setObject:@{} forKey:_patch->shortcut];
-    [self refresh];
+    [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
 }
 @end
 
 NSView *DPShortcutRow(DPPatch *patch) {
     NSTextField *clash = [NSTextField wrappingLabelWithString:@""];
-    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], [[DPShortcutButton alloc] initWithPatch:patch clash:clash] ]];
+    DPShortcutButton *button = [[DPShortcutButton alloc] initWithPatch:patch clash:clash];
+    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], button ]];
     row.distribution = NSStackViewDistributionEqualCentering;
     NSStackView *column = [NSStackView stackViewWithViews:@[ row, clash ]];
     column.orientation = NSUserInterfaceLayoutOrientationVertical;
     column.alignment = NSLayoutAttributeLeading;
     [row.widthAnchor constraintEqualToAnchor:column.widthAnchor].active = YES;
+    [button refresh];
     return column;
 }

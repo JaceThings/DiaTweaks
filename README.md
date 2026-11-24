@@ -46,16 +46,23 @@ Run `diatweaks` on its own for a menu, or:
 | `diatweaks list` | Shows every tweak and whether it's on |
 | `diatweaks enable hideToolbar` | Turns tweaks on; Dia changes straight away |
 | `diatweaks disable hideToolbar` | Turns tweaks off |
+| `diatweaks pause` | Turns every tweak off, keeping their settings, until `diatweaks resume` |
+| `diatweaks resume` | Turns the tweaks back on as they were |
 | `diatweaks status` | Shows Dia's version, safe mode and which tweaks are on |
 | `diatweaks update` | Installs the latest DiaTweaks release and patches Dia again |
 | `diatweaks update-dia` | Downloads a newer Dia and patches it |
 | `diatweaks restore` | Puts the original Dia back |
+| `diatweaks local` | Lists, builds and shares tweaks you keep in your own folder |
 
 Tweak names work as keys or titles, like `hideToolbar` or `"Hide Toolbar"`, and `enable` and `disable` take several at once. Add `-y` to skip the questions.
 
+### Local Tweaks
+
+Have a tweak of your own that isn't in DiaTweaks? Drop a `.m` file, a GitHub pull request `.patch`, or a prebuilt `.dylib` into `~/Library/Application Support/DiaPatches/local/` and it runs like any other tweak, with its own switch in Settings. It compiles against the headers inside the installed `DiaPatches.dylib`, so it keeps working across Dia and DiaTweaks updates, and no update or uninstall deletes it. **Settings → Patches → Local Tweaks** has **Add Tweak…**, **New Starter Tweak…** and **Open Folder**; `diatweaks local` does the same from a terminal. See [docs/local-tweaks.md](docs/local-tweaks.md).
+
 ## Updating
 
-Dia's own updater is switched off. **Settings → Home → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. Under **Automatic Updates**, pick for each of Dia and DiaTweaks: off, just show updates, download them, or download and install them when you quit (the default).
+Dia's own updater is switched off. **Settings → Home → Software Update** checks for a new Dia and a new DiaTweaks release, downloads either one, and relaunches Dia to install it, like macOS's Software Update. Under **Automatic Updates**, pick for each of Dia and DiaTweaks: off, just show updates, download them, or download and install them when you quit (the default). A DiaTweaks you built from source with `install.sh` is never downloaded or replaced automatically: **Update Now** or `diatweaks update` installs the latest release, and automatic updates apply from then on.
 
 - **Dia now:** `diatweaks update-dia`
 - **DiaTweaks now:** `diatweaks update`
@@ -76,7 +83,22 @@ rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTw
 <details>
 <summary><strong>Is it safe?</strong></summary>
 
-It's built on your Mac from this code, and it doesn't send anything about you anywhere. It goes online only to check for updates and to load the preview pictures in Settings. A few tweaks look at what's in Dia to work: Group Tabs by Domain reads your tabs' addresses, and Tidy Tabs gives your tab titles and addresses to Apple's on-device model, which runs on your Mac. The password tweaks pass messages between your password manager and its extension without reading them.
+The first install is built on your Mac from this code, and updates are prebuilt downloads from this repo's GitHub releases, built there from the same code. It doesn't send anything about you anywhere. It goes online only to check for updates and to load the preview pictures in Settings. A few tweaks look at what's in Dia to work: Group Tabs by Domain reads your tabs' addresses, and Tidy Tabs gives your tab titles and addresses to Apple's on-device model, which runs on your Mac. The password tweaks pass messages between your password manager and its extension without reading them.
+
+</details>
+
+<details>
+<summary><strong>What are the security tradeoffs?</strong></summary>
+
+Patching Dia changes what protects it:
+
+- The patched Dia has no hardened runtime and loads `DiaPatches.dylib` from your Application Support folder, so other software running as you can change what it does.
+- The "DiaPatches Local Signing" certificate stays in your login keychain, and other software running as you can sign with it.
+- DiaTweaks updates are prebuilt downloads from this repo's GitHub releases. They're checked against the digest GitHub lists and aren't signed separately. To stop them installing when Dia quits, switch DiaTweaks away from Download and install on quit under **Automatic Updates**.
+- The Passwords tweaks start the original Dia without windows to reach Apple Passwords and 1Password, which only trust it.
+- Split TLS ClientHello, while it's on, runs Dia's network code inside Dia instead of its sandboxed helper, so a bug in that code reaches everything Dia can reach. Switch it off and relaunch Dia to get the helper back.
+- Dia's own updater is off. DiaTweaks looks for a new Dia when Dia opens or you open Software Update, so if you rarely quit Dia, security fixes can arrive late.
+- **Restore** puts the original Dia back but keeps the certificate. To remove it, delete "DiaPatches Local Signing" in Keychain Access.
 
 </details>
 
@@ -112,6 +134,20 @@ No. It only does anything while Dia is open.
 <summary><strong>Does anything stop working?</strong></summary>
 
 Apple Passwords, its passkeys and 1Password only trust the original Dia, so in the patched one they stop working until you switch on the matching tweak in the **Passwords** section. Those run the original Dia without windows as a go-between, which is why they're off by default. [How it works →](https://github.com/JaceThings/DiaTweaks/wiki/Allow-iCloud-Passkeys)
+
+</details>
+
+<details>
+<summary><strong>Why does my passkey prompt only offer "Use a phone or tablet"?</strong></summary>
+
+Dia shows a QR code or asks for a USB security key because it can't reach the passkeys on your Mac. To load tweaks, DiaTweaks has to sign Dia again, and macOS only lets an app use passkeys on the Mac itself (Touch ID, Apple Passwords) if the company that made it signed it. To get the Touch ID prompt back for passkeys saved in Apple Passwords, switch on **Allow iCloud Passkeys** in **Dia → Settings → Patches**, or run `diatweaks enable passkeys`, then relaunch Dia. It's experimental and only works on websites. It can't help with a passkey a browser extension asks for itself, like a password manager unlocking itself. For those, use the extension's master password, or run `diatweaks restore` to go back to the original Dia. [How it works →](https://github.com/JaceThings/DiaTweaks/wiki/Allow-iCloud-Passkeys)
+
+</details>
+
+<details>
+<summary><strong>Why don't website notifications show a banner?</strong></summary>
+
+After DiaTweaks signs Dia locally, website notification banners have been reported missing on macOS 27.2.1 even with **Dia** switched on under **System Settings → Notifications** (with the page reporting an error while site sound still plays). We haven't reproduced it on macOS 27.0.1 yet, and we're still tracking down which check macOS 27.2.1 fails on. Until we have a fix, run `diatweaks restore` to go back to the original Dia: banners come back, and the tweaks turn off. [What we found →](https://github.com/JaceThings/DiaTweaks/wiki/Discoveries-Notifications)
 
 </details>
 

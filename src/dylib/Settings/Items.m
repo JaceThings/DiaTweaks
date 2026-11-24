@@ -1,31 +1,121 @@
 #import "Settings.h"
 
 void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option)) {
+    for (NSUInteger i = 0; i < DPPatchCount; i++) {
+        DPPatch *option = DPPatches[i];
+        if (DPRequired(option) != patch) continue;
+        body(option);
+        DPForEachOption(option, body);
+    }
+}
+
+NSArray<NSValue *> *DPFolderMembers(NSString *key) {
+    NSMutableArray<NSValue *> *members = [NSMutableArray new];
     for (NSUInteger i = 0; i < DPPatchCount; i++)
-        if (DPRequired(DPPatches[i]) == patch) body(DPPatches[i]);
+        if (DPPatches[i]->group && [DPPatches[i]->group isEqualToString:key]) [members addObject:[NSValue valueWithPointer:DPPatches[i]]];
+    return members;
+}
+
+BOOL DPShownOn(DPPatch *patch) { return patch && (DPPaused ? DPSavedOn(patch) : patch->on); }
+
+NSString *DPActiveSummary(DPPatch *patch) {
+    NSString *why = DPWhyDisabled(patch);
+    if (why || !DPShownOn(patch)) return why;
+    NSMutableArray<NSString *> *options = [NSMutableArray new];
+    DPForEachOption(patch, ^(DPPatch *option) {
+        if (DPShownOn(option)) [options addObject:option->title];
+    });
+    return [options componentsJoinedByString:@" · "];
 }
 
 NSString *DPWhyDisabled(DPPatch *patch) {
-    if (patch->inDia) return @"Dia does this itself in this version.";
     if (patch->unavailable) return @"Unavailable on this Dia version.";
-    DPPatch *required = DPRequired(patch), *cover = DPPatchNamed(patch->coveredBy);
-    if (required && !required->on) return [NSString stringWithFormat:@"Needs %@.", required->title];
-    return cover && cover->on ? [NSString stringWithFormat:@"%@ hides this too.", cover->title] : nil;
+    NSString *problem = DPLocalProblem(patch);
+    if (problem) return problem;
+    int hops = 0;
+    for (DPPatch *required = DPRequired(patch); required && hops++ < 32; required = DPRequired(required))
+        if (!DPShownOn(required)) return [NSString stringWithFormat:@"Needs %@.", required->title];
+    DPPatch *cover = DPPatchNamed(patch->coveredBy);
+    return DPShownOn(cover) ? [NSString stringWithFormat:@"%@ hides this too.", cover->title] : nil;
 }
 
-// An option on, like showing the hidden toolbar on hover, means it doesn't hide for good.
 NSString *DPWhyHiddenBy(DPPatch *disabler) {
-    if (!disabler || !disabler->on) return nil;
-    __block BOOL shownSometimes = NO;
-    DPForEachOption(disabler, ^(DPPatch *option) { shownSometimes |= option->on; });
-    return shownSometimes ? nil : [NSString stringWithFormat:@"Hidden while %@ is on", disabler->title];
+    if (!DPShownOn(disabler)) return nil;
+    for (NSUInteger i = 0; i < DPPatchCount; i++)
+        if (DPRequired(DPPatches[i]) == disabler && DPShownOn(DPPatches[i])) return nil;
+    return [NSString stringWithFormat:@"Hidden while %@ is on", disabler->title];
 }
 
-NSString *DPWhyHidden(DPPatch *patch) { return patch->on ? DPWhyHiddenBy(DPPatchNamed(patch->disabledBy)) : nil; }
+NSString *DPWhyHidden(DPPatch *patch) { return DPShownOn(patch) ? DPWhyHiddenBy(DPPatchNamed(patch->disabledBy)) : nil; }
 
 NSURL *DPWikiURL(DPPatch *patch) {
+    if (DPIsLocalPatch(patch)) return nil;
     NSString *page = [patch->title stringByReplacingOccurrencesOfString:@" " withString:@"-"];
     return [NSURL URLWithString:[@"https://github.com/JaceThings/DiaTweaks/wiki/" stringByAppendingString:page]];
+}
+
+NSArray<NSString *> *DPRelaunchingOnPause(void) {
+    if (DPSafeMode || DPPausedAtLaunch) return @[];
+    NSMutableArray<NSString *> *waiting = [NSMutableArray new];
+    for (NSUInteger i = 0; i < DPPatchCount; i++) {
+        DPPatch *patch = DPPatches[i];
+        // App Icon and Morning Brief Language are baked into Dia, so pausing them needs a rebuild too.
+        BOOL baked = [patch->key isEqualToString:@"appIcon"] || [patch->key isEqualToString:@"briefLanguage"];
+        if ((patch->relaunch || baked) && patch->on) [waiting addObject:patch->title];
+    }
+    return waiting;
+}
+
+static BOOL DPResumingHandoff;
+
+static BOOL DPNeedsRelaunchToResume(void) { return !DPPaused && DPPausedAtLaunch && !DPSafeMode; }
+
+void DPSyncPauseRow(NSTextField *label, NSButton *button) {
+    if (DPNeedsRelaunchToResume()) {
+        label.stringValue = @"Tweaks will resume when Dia relaunches.";
+        button.title = @"Relaunch";
+        return;
+    }
+    label.stringValue = DPPaused ? @"Tweaks are paused, so none of them are running. Your settings are kept."
+                                 : @"Pause every tweak and keep their settings.";
+    if (!DPPaused) button.title = @"Pause Tweaks";
+    else if (DPPausedAtLaunch && !DPSafeMode) button.title = @"Resume and Relaunch";
+    else button.title = @"Resume Tweaks";
+}
+
+static void DPRelaunchToResume(void) {
+    if (DPResumingHandoff) return;
+    DPResumingHandoff = YES;
+    DPPatch *icon = DPPatchNamed(@"appIcon");
+    BOOL catalog = [NSBundle.mainBundle.infoDictionary[@"CFBundleIconName"] isEqual:@"DiaChosenIcon"];
+    if (icon && DPSavedOn(icon))
+        return DPRunCLI(@[catalog ? @"set-icon" : @"build"], ^(NSString *output) {
+            DPResumingHandoff = NO;
+            DPHandOffAndQuit(@[@"apply"]);
+        });
+    DPResumingHandoff = NO;
+    DPHandOffAndQuit(@[@"apply"]);
+}
+
+void DPSetTweaksPaused(BOOL paused, NSWindow *window) {
+    if (DPNeedsRelaunchToResume()) return DPRelaunchToResume();
+    if (DPPaused == paused || DPResumingHandoff) return;
+    NSArray<NSString *> *waiting = paused ? DPRelaunchingOnPause() : @[];
+    DPSetPaused(paused);
+    if (!paused && DPPausedAtLaunch && !DPSafeMode) return DPRelaunchToResume();
+    DPApplySavedSettings();
+    if (!waiting.count || DPTesting) return;
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Relaunch Dia to finish pausing?";
+    alert.informativeText = [NSString stringWithFormat:@"%@ only %@ after a relaunch. Every other tweak is already off.",
+                             [waiting componentsJoinedByString:@", "], waiting.count == 1 ? @"stops" : @"stop"];
+    [alert addButtonWithTitle:@"Relaunch"];
+    [alert addButtonWithTitle:@"Later"];
+    void (^finish)(NSModalResponse) = ^(NSModalResponse response) {
+        if (response == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[@"apply"]);
+    };
+    if (window) [alert beginSheetModalForWindow:window completionHandler:finish];
+    else finish([alert runModal]);
 }
 
 @implementation DPPatchSwitch
@@ -42,7 +132,6 @@ NSURL *DPWikiURL(DPPatch *patch) {
     return self;
 }
 
-// Every switch here is the same small one, and asking NSSwitch its size is most of laying out the overview.
 - (NSSize)intrinsicContentSize {
     static NSSize size;
     if (!size.width) size = [super intrinsicContentSize];
@@ -64,9 +153,10 @@ NSURL *DPWikiURL(DPPatch *patch) {
 }
 
 - (void)sync {
-    self.state = self.patch->on;
-    self.enabled = !DPWhyDisabled(self.patch);
-    DPSetHint(self.hiddenIcon, DPWhyHidden(self.patch));
-    self.hiddenIcon.hidden = !DPHintOf(self.hiddenIcon);
+    self.state = DPPaused ? DPSavedOn(self.patch) : self.patch->on;
+    self.enabled = !DPWhyDisabled(self.patch) && !DPPaused;
+    NSString *hint = DPWhyHidden(self.patch);
+    DPSetHint(self.hiddenIcon, hint);
+    self.hiddenIcon.hidden = !hint;
 }
 @end

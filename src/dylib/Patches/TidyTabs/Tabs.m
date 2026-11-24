@@ -1,7 +1,7 @@
 #import "TidyTabs.h"
 #import "Commands/GroupTabs/GroupTabs.h"
+#import "Patches/CommandBar/Tabs.h"
 
-// From the layout, which knows off-screen rows too.
 static NSInteger DPTidyPinnedRows(NSWindow *window) {
     for (NSView *list in DPFindViews(DPDiaTabList)) {
         if (list.window != window || list.hiddenOrHasHiddenAncestor) continue;
@@ -14,21 +14,18 @@ static NSInteger DPTidyPinnedRows(NSWindow *window) {
             for (NSInteger item = 0; item < [collection numberOfItemsInSection:section]; item++) {
                 NSIndexPath *path = [NSIndexPath indexPathForItem:item inSection:section];
                 NSCollectionViewLayoutAttributes *attrs = [collection.collectionViewLayout layoutAttributesForItemAtIndexPath:path];
-                if (attrs && NSMaxY(attrs.frame) <= line + 0.5) above++;
+                // Folded pinned tabs sit below the line hidden/fading.
+                if (attrs && (attrs.hidden || attrs.alpha < 1 || NSMaxY(attrs.frame) <= line + 0.5)) above++;
             }
         return above;
     }
     return 0;
 }
 
-// Scripting lists favorites (isPinned), then pinned tabs, then the rest. A URL both above and below the divider is
-// left out: Chromium's tabs, which carry the sessions, can't tell them apart.
+// appleScriptTabs orders favorites, then pinned, then loose tabs.
 NSDictionary<NSString *, NSString *> *DPTidyLooseTabs(NSWindow *window) {
-    NSArray *tabs = nil;
-    for (id each in DPMsg(NSApp.delegate, @selector(appleScriptWindows))) {
-        tabs = [each respondsToSelector:@selector(appleScriptTabs)] ? DPMsg(each, @selector(appleScriptTabs)) : nil;
-        if ([tabs isKindOfClass:NSArray.class]) break;  // Front to back, so the first is the front window.
-    }
+    id scripted = DPScriptWindow(window);
+    NSArray *tabs = [scripted respondsToSelector:@selector(appleScriptTabs)] ? DPMsg(scripted, @selector(appleScriptTabs)) : nil;
     NSInteger pinnedRows = DPTidyPinnedRows(window);
     NSMutableDictionary<NSString *, NSString *> *loose = [NSMutableDictionary dictionary];
     NSMutableSet<NSString *> *kept = [NSMutableSet set];
@@ -44,10 +41,11 @@ NSDictionary<NSString *, NSString *> *DPTidyLooseTabs(NSWindow *window) {
     return loose;
 }
 
-// Query and fragment are mostly tracking and session noise.
 NSString *DPTidyAddress(NSString *url, NSString *host) {
     NSString *path = [NSURL URLWithString:url].path ?: @"";
     while ([path hasSuffix:@"/"]) path = [path substringToIndex:path.length - 1];
     NSString *address = [host stringByAppendingString:path];
-    return address.length > 70 ? [address substringToIndex:70] : address;
+    if (address.length <= 70) return address;
+    NSRange boundary = [address rangeOfComposedCharacterSequenceAtIndex:70];
+    return [address substringToIndex:boundary.location];
 }

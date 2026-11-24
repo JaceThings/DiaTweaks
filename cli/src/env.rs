@@ -2,7 +2,6 @@ use std::{env, ffi::OsString, path::PathBuf};
 
 use anyhow::{Context, Result};
 
-/// DIATWEAKS_DOMAIN lets tests use their own settings domain.
 pub struct Env {
     pub support: PathBuf,
     pub app: PathBuf,
@@ -35,6 +34,14 @@ impl Env {
 
     pub fn staged(&self) -> PathBuf {
         self.support.join("staged/Dia.app")
+    }
+
+    pub fn local(&self) -> PathBuf {
+        self.support.join("local")
+    }
+
+    pub fn local_state(&self) -> PathBuf {
+        self.support.join("local-state.json")
     }
 }
 

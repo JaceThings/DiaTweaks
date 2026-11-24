@@ -1,7 +1,7 @@
 #import "GroupTabs.h"
 #import <objc/message.h>
 
-static const NSInteger DPContentVisible = 2;  // content::Visibility: hidden, occluded, visible.
+static const NSInteger DPContentVisible = 2;  // content::Visibility::VISIBLE
 
 static long long DPVisibleSession(id browser) {
     long long found = 0;
@@ -18,16 +18,15 @@ static long long DPVisibleSession(id browser) {
 
 static id DPScriptWindow(NSWindow *window) {
     if (!window) return nil;
-    for (id scripted in DPMsg(NSApp.delegate, @selector(appleScriptWindows)))
-        if ([[scripted valueForKey:@"windowId"] isEqual:window.identifier]) return scripted;
+    for (id scripted in DPAppleScriptWindows())
+        if ([DPValueForKey(scripted, @"windowId") isEqual:window.identifier]) return scripted;
     return nil;
 }
 
-// 0 when the tab in front can't be told from the others.
 long long DPActiveSession(id browser) {
     long long sid = DPVisibleSession(browser);
     if (sid > 0) return sid;
-    id active = [DPScriptWindow(DPBrowserWindow(browser)) valueForKey:@"activeTab"];
+    id active = DPValueForKey(DPScriptWindow(DPBrowserWindow(browser)), @"activeTab");
     NSString *url = [active respondsToSelector:@selector(URL)] ? DPText(DPMsg(active, @selector(URL))) : nil;
     if (!url.length) return 0;
     long long found = 0;

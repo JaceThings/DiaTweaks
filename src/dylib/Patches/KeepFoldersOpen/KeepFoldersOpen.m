@@ -1,8 +1,5 @@
 #import "StdPatch/StdPatch.h"
-
-// Dia collapses a folder when its last tab or live item goes away, and leaves it shut when new ones arrive. A folder
-// that collapses without a click on its header gets one click to open it again. With tabs at the top a folder is a
-// TabGroupView, not a TabGroupCellView.
+#import "Commands/GroupTabs/GroupTabs.h"
 
 extern DPPatch DPKeepFoldersOpen;
 
@@ -20,14 +17,12 @@ static NSView *DPTopHeader(NSView *folder) {
     return [header isKindOfClass:NSView.class] ? header : nil;
 }
 
-// A collapsed sidebar folder turns its chevron to point right. nil until the chevron exists.
 static NSNumber *DPFolderExpanded(NSView *folder) {
     if (DPIsKind(folder, DPDiaTabGroupView)) {
         BOOL *flag = DPIvar(folder, "shouldDisplayExpandedContainer");
         return flag ? @(*flag) : nil;
     }
-    Ivar ivar = class_getInstanceVariable(object_getClass(folder), "$__lazy_storage_$_chevronIconView");
-    id chevron = ivar ? object_getIvar(folder, ivar) : nil;
+    id chevron = DPObjectIvar(folder, "$__lazy_storage_$_chevronIconView");
     CALayer *layer = [chevron isKindOfClass:NSView.class] ? ((NSView *)chevron).layer : nil;
     if (!layer) return nil;
     return @(fabs(atan2(layer.transform.m12, layer.transform.m11)) < 0.1);
@@ -51,24 +46,35 @@ static void DPClickHeader(NSView *folder) {
 static void DPReopenFolders(void) {
     NSArray<NSView *> *folders = DPCollapsedFolders.allObjects;
     [DPCollapsedFolders removeAllObjects];
-    // Several at once is a collapse-all, not a folder that emptied.
+    // Multiple collapses at once mean collapse-all, not an emptied folder.
     if (!DPKeepFoldersOpen.on || folders.count != 1 || !folders[0].window || [DPFolderExpanded(folders[0]) boolValue]) return;
     DPSet(folders[0], &DPReopenedKey, @(CACurrentMediaTime()));
     DPClickHeader(folders[0]);
 }
 
+static void DPClearFolder(NSView *folder) {
+    DPSet(folder, &DPExpandedKey, nil);
+    DPSet(folder, &DPModelKey, nil);
+    DPSet(folder, &DPClickedKey, nil);
+    DPSet(folder, &DPReopenedKey, nil);
+}
+
 static void DPCheckFolder(NSView *folder) {
+    if (!DPKeepFoldersOpen.on) {
+        if (DPGet(folder, &DPExpandedKey) || DPGet(folder, &DPModelKey)) DPClearFolder(folder);
+        return;
+    }
     NSNumber *expanded = DPFolderExpanded(folder);
     if (!expanded || !folder.window) return;
     id model = DPObjectIvar(folder, "viewModel");
-    // A top folder view that now shows another folder starts over.
-    if (model && DPGet(folder, &DPModelKey) != model) DPSet(folder, &DPExpandedKey, nil);
-    DPSet(folder, &DPModelKey, model);
+    NSValue *modelID = model ? [NSValue valueWithPointer:(__bridge const void *)model] : nil;
+    if (modelID && ![DPGet(folder, &DPModelKey) isEqual:modelID]) DPSet(folder, &DPExpandedKey, nil);
+    DPSet(folder, &DPModelKey, modelID);
     BOOL collapsed = [DPGet(folder, &DPExpandedKey) boolValue] && !expanded.boolValue;
     DPSet(folder, &DPExpandedKey, expanded);
     CFTimeInterval now = CACurrentMediaTime();
-    if (!collapsed || !DPKeepFoldersOpen.on || now - [DPGet(folder, &DPClickedKey) doubleValue] < 1) return;
-    // Don't fight Dia if it shuts the folder again straight away.
+    if (!collapsed || now - [DPGet(folder, &DPClickedKey) doubleValue] < 1) return;
+    if (now - DPFoldedAt < 2) return;
     if (now - [DPGet(folder, &DPReopenedKey) doubleValue] < 1) return;
     if (!DPCollapsedFolders.count)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10), dispatch_get_main_queue(), ^{ DPReopenFolders(); });
@@ -81,22 +87,40 @@ static void DPFolder_layout(NSView *self, SEL _cmd) {
 }
 
 static void DPFolder_mouse(NSView *self, SEL _cmd, NSEvent *event) {
-    if (!DPReopening) DPSet(self, &DPClickedKey, @(CACurrentMediaTime()));
+    if (DPKeepFoldersOpen.on && !DPReopening) DPSet(self, &DPClickedKey, @(CACurrentMediaTime()));
     DPCallOriginal(DPFolder_mouse, self, event);
 }
 
-// A click on a top folder's header counts for the folder around it.
 static void DPHeader_mouse(NSView *self, SEL _cmd, NSEvent *event) {
-    NSView *folder = self.superview;
-    while (folder && !DPIsKind(folder, DPDiaTabGroupView)) folder = folder.superview;
-    if (folder && !DPReopening) DPSet(folder, &DPClickedKey, @(CACurrentMediaTime()));
+    if (DPKeepFoldersOpen.on && !DPReopening) {
+        NSView *folder = self.superview;
+        while (folder && !DPIsKind(folder, DPDiaTabGroupView)) folder = folder.superview;
+        if (folder) DPSet(folder, &DPClickedKey, @(CACurrentMediaTime()));
+    }
     DPCallOriginal(DPHeader_mouse, self, event);
 }
 
-// Dia reuses the cell for another folder, so it forgets this one's chevron.
 static void DPFolder_prepareForReuse(NSView *self, SEL _cmd) {
     DPCallOriginal(DPFolder_prepareForReuse, self);
     DPSet(self, &DPExpandedKey, nil);
+    DPSet(self, &DPModelKey, nil);
+}
+
+static void DPApplyKeepFoldersOpen(DPPatch *patch) {
+    if (!patch->on) [DPCollapsedFolders removeAllObjects];
+    const char *names[] = { DPDiaTabGroupCell, DPDiaTabGroupView, NULL };
+    for (const char **name = names; *name; name++) {
+        Class cls = objc_getClass(*name);
+        if (!cls) continue;
+        for (NSWindow *window in NSApp.windows)
+            DPFindView(window.contentView, ^BOOL(NSView *view) {
+                if ([view isKindOfClass:cls]) {
+                    if (patch->on) DPCheckFolder(view);
+                    else DPClearFolder(view);
+                }
+                return NO;
+            });
+    }
 }
 
 static void DPInstallKeepFoldersOpen(void) {
@@ -120,4 +144,5 @@ DP_PATCH(DPKeepFoldersOpen) {
     .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaTabGroupCell, DPDiaTabGroupView, DPDiaTabGroupHeader),
     .install = DPInstallKeepFoldersOpen,
+    .apply = DPApplyKeepFoldersOpen,
 };

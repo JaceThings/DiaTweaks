@@ -1,10 +1,9 @@
 #import "Patches/Peek/Peek.h"
 
-// Card, stroke and springs measured from Dia's split-view drop cards.
 extern DPPatch DPPeekDragLinks;
 
 static const CGSize DPZoneCard = {120, 84};
-static const CGFloat DPZoneGap = 24, DPZoneReach = 20, DPZoneRoom = 90;  // Above the link, past the card, around it for motion.
+static const CGFloat DPZoneGap = 24, DPZoneReach = 20, DPZoneRoom = 90;
 
 @interface DPPeekZone : NSView <NSDraggingDestination>
 @property (nonatomic, strong) CALayer *card, *tint, *icon;
@@ -12,7 +11,7 @@ static const CGFloat DPZoneGap = 24, DPZoneReach = 20, DPZoneRoom = 90;  // Abov
 @property (nonatomic, strong) CATextLayer *label;
 @property (nonatomic, strong) NSImage *idleIcon, *hoverIcon;
 @property (nonatomic, strong) NSColor *idle, *accent, *line;
-@property (nonatomic) NSPoint link;  // Where the drag began, on screen.
+@property (nonatomic) NSPoint link;
 @property (nonatomic) BOOL hovered;
 @end
 
@@ -29,17 +28,17 @@ static void DPZoneSpring(CALayer *layer, NSString *keyPath, id to, CFTimeInterva
     CASpringAnimation *spring = DPPeekSpring(keyPath, response, damping);
     spring.fromValue = [(layer.presentationLayer ?: layer) valueForKeyPath:keyPath];
     spring.toValue = to;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    [layer setValue:to forKeyPath:keyPath];
-    [layer addAnimation:spring forKey:keyPath];
-    [CATransaction commit];
+    DPWithoutAnimation(^{
+        [layer setValue:to forKeyPath:keyPath];
+        [layer addAnimation:spring forKey:keyPath];
+    });
 }
 
 @implementation DPPeekZone
 
-- (instancetype)initWithFrame:(NSRect)frame {
+- (instancetype)initWithFrame:(NSRect)frame appearance:(NSAppearance *)appearance {
     self = [super initWithFrame:frame];
+    self.appearance = appearance;
     self.layer = [CALayer layer];
     self.wantsLayer = YES;
     [self registerForDraggedTypes:@[ NSPasteboardTypeURL ]];
@@ -96,17 +95,15 @@ static void DPZoneSpring(CALayer *layer, NSString *keyPath, id to, CFTimeInterva
 
 - (void)appear:(BOOL)shown {
     if (shown) {
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        self.card.opacity = 0;
-        [self.card setValue:@0.65 forKeyPath:@"transform.scale"];
-        [CATransaction commit];
+        DPWithoutAnimation(^{
+            self.card.opacity = 0;
+            [self.card setValue:@0.65 forKeyPath:@"transform.scale"];
+        });
     }
     DPZoneSpring(self.card, @"transform.scale", shown ? @1 : @0.65, 0.21, 0.66);
     DPZoneSpring(self.card, @"opacity", shown ? @1 : @0, shown ? 0.21 : 0.15, shown ? 0.66 : 1);
 }
 
-// Retargeted additively, so a card already moving keeps its momentum.
 - (void)pull:(CGPoint)offset {
     CGPoint from = self.card.position, to = CGPointMake(self.rest.x + offset.x, self.rest.y + offset.y);
     if (hypot(to.x - from.x, to.y - from.y) < 0.25) return;
@@ -114,11 +111,10 @@ static void DPZoneSpring(CALayer *layer, NSString *keyPath, id to, CFTimeInterva
     spring.additive = YES;
     spring.fromValue = [NSValue valueWithPoint:NSMakePoint(from.x - to.x, from.y - to.y)];
     spring.toValue = [NSValue valueWithPoint:NSZeroPoint];
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.card.position = to;
-    [self.card addAnimation:spring forKey:nil];
-    [CATransaction commit];
+    DPWithoutAnimation(^{
+        self.card.position = to;
+        [self.card addAnimation:spring forKey:nil];
+    });
 }
 
 - (void)setHovered:(BOOL)hovered {
@@ -134,17 +130,17 @@ static void DPZoneSpring(CALayer *layer, NSString *keyPath, id to, CFTimeInterva
     [CATransaction commit];
 }
 
-// Dia's split targets follow the pointer on a rubber band: 0.8 of the way when close, less the farther it is.
 - (NSDragOperation)track:(id<NSDraggingInfo>)info {
     NSPoint p = [self convertPoint:info.draggingLocation fromView:nil];
-    CGFloat dx = p.x - self.rest.x, dy = p.y - self.rest.y, d = hypot(dx, dy);
-    NSRect reach = NSInsetRect(NSMakeRect(self.rest.x - DPZoneCard.width / 2, self.rest.y - DPZoneCard.height / 2, DPZoneCard.width, DPZoneCard.height), -DPZoneReach, -DPZoneReach);
+    CGPoint rest = self.rest;
+    CGFloat dx = p.x - rest.x, dy = p.y - rest.y, d = hypot(dx, dy);
+    NSRect reach = NSInsetRect(NSMakeRect(rest.x - DPZoneCard.width / 2, rest.y - DPZoneCard.height / 2, DPZoneCard.width, DPZoneCard.height), -DPZoneReach, -DPZoneReach);
     BOOL over = NSPointInRect(p, reach);
     CGFloat pull = over ? 0.8 / (1 + d / (1.05 * DPZoneCard.width)) : 0;
     [self pull:CGPointMake(dx * pull, dy * pull)];
     self.hovered = over;
     NSDragOperation mask = info.draggingSourceOperationMask;
-    return !over ? NSDragOperationNone : mask & NSDragOperationGeneric ?: mask & NSDragOperationCopy ?: mask & NSDragOperationLink;  // Generic shows no badge.
+    return !over ? NSDragOperationNone : mask & NSDragOperationGeneric ?: mask & NSDragOperationCopy ?: mask & NSDragOperationLink;
 }
 
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info { return [self track:info]; }
@@ -165,7 +161,7 @@ static void DPZoneSpring(CALayer *layer, NSString *keyPath, id to, CFTimeInterva
 
 @end
 
-static void DPHideZone(void) {
+void DPPeekHideDragZone(void) {
     NSPanel *panel = DPZonePanel;
     if (!panel) return;
     DPZonePanel = nil;
@@ -179,7 +175,8 @@ static void DPHideZone(void) {
 }
 
 static void DPShowZone(NSWindow *window, NSPoint pointer) {
-    DPHideZone();
+    if (!window) return;
+    DPPeekHideDragZone();
     CGFloat above = pointer.y + DPZoneGap + DPZoneCard.height / 2, below = pointer.y - DPZoneGap - DPZoneCard.height / 2;
     CGFloat y = above + DPZoneCard.height / 2 < NSMaxY([window convertRectToScreen:window.contentLayoutRect]) ? above : below;
     NSSize size = NSMakeSize(DPZoneCard.width + 2 * DPZoneRoom, DPZoneCard.height + 2 * DPZoneRoom);
@@ -192,15 +189,15 @@ static void DPShowZone(NSWindow *window, NSPoint pointer) {
     panel.hasShadow = NO;
     panel.releasedWhenClosed = NO;
     panel.appearance = window.effectiveAppearance;
-    DPPeekZone *zone = [[DPPeekZone alloc] initWithFrame:(NSRect){NSZeroPoint, size}];
+    DPPeekZone *zone = [[DPPeekZone alloc] initWithFrame:(NSRect){NSZeroPoint, size} appearance:window.effectiveAppearance];
     zone.link = pointer;
     panel.contentView = zone;
     [window addChildWindow:panel ordered:NSWindowAbove];
     [zone appear:YES];
     DPZonePanel = panel;
-    // A drop elsewhere ends the session only after the drag image slides home, so leave on release.
+    // A drop elsewhere ends the session only after the drag image slides home, so hide on release.
     DPZoneRelease = [NSTimer timerWithTimeInterval:1.0 / 60 repeats:YES block:^(NSTimer *timer) {
-        if (!(NSEvent.pressedMouseButtons & 1)) DPHideZone();
+        if (!(NSEvent.pressedMouseButtons & 1)) DPPeekHideDragZone();
     }];
     [NSRunLoop.mainRunLoop addTimer:DPZoneRelease forMode:NSRunLoopCommonModes];
 }
@@ -208,19 +205,23 @@ static void DPShowZone(NSWindow *window, NSPoint pointer) {
 static NSDraggingSession *DPPage_beginDrag(NSView *self, SEL _cmd, NSArray<NSDraggingItem *> *items, NSEvent *event, id source) {
     NSDraggingSession *session = DPCallOriginal(DPPage_beginDrag, self, items, event, source);
     NSURL *url = DPPeek.on && DPPeekDragLinks.on ? [NSURL URLFromPasteboard:session.draggingPasteboard] : nil;
-    if (![@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString]) return session;
+    if (!DPPeekIsWeb(url)) return session;
     DPShowZone(self.window, [self.window convertPointToScreen:event.locationInWindow]);
     return session;
 }
 
 static void DPPage_dragEnded(NSView *self, SEL _cmd, NSDraggingSession *session, NSPoint point, NSDragOperation operation) {
     DPCallOriginal(DPPage_dragEnded, self, session, point, operation);
-    DPHideZone();
+    DPPeekHideDragZone();
 }
 
 static void DPInstallPeekDragLinks(void) {
     DPHook("WebContentsViewCocoa", @selector(beginDraggingSessionWithItems:event:source:), (IMP)DPPage_beginDrag);
     DPHook("WebContentsViewCocoa", @selector(draggingSession:endedAtPoint:operation:), (IMP)DPPage_dragEnded);
+}
+
+static void DPApplyPeekDragLinks(DPPatch *patch) {
+    if (!patch->on) DPPeekHideDragZone();
 }
 
 DP_PATCH(DPPeekDragLinks) {
@@ -232,5 +233,6 @@ DP_PATCH(DPPeekDragLinks) {
     .tint = @"systemMintColor",
     .classes = DPClasses("WebContentsViewCocoa"),
     .install = DPInstallPeekDragLinks,
+    .apply = DPApplyPeekDragLinks,
     .requires = @"peek",
 };

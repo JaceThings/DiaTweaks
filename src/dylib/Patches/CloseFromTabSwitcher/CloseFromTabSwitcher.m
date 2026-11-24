@@ -1,10 +1,7 @@
 #import "StdPatch/StdPatch.h"
 
-// The switcher never drops a closed tab while open, so after closing one it reopens and steps back into place.
-
 extern DPPatch DPCloseFromTabSwitcher;
 
-// Tab IDs are UUIDs, and the items only come through as their description.
 static NSArray<NSString *> *DPSwitcherTabs(NSWindowController *switcher, NSString **focused) {
     id state = DPSwiftValue(DPSwiftValue(DPSwiftValue(switcher, @"viewModel"), @"stateSubject"), @"currentValue");
     if (focused) *focused = [DPSwiftValue(state, @"focusedItemID") description];
@@ -12,9 +9,14 @@ static NSArray<NSString *> *DPSwitcherTabs(NSWindowController *switcher, NSStrin
 }
 
 static id DPScriptTab(NSString *tabID) {
-    for (id window in [(id)NSApp.delegate valueForKey:@"appleScriptWindows"])
-        for (id tab in [window valueForKey:@"appleScriptTabs"])
-            if ([[tab valueForKey:@"tabId"] isEqual:tabID]) return tab;
+    id windows = DPValueForKey(NSApp.delegate, @"appleScriptWindows");
+    if (![windows isKindOfClass:NSArray.class]) return nil;
+    for (id window in windows) {
+        id tabs = DPValueForKey(window, @"appleScriptTabs");
+        if (![tabs isKindOfClass:NSArray.class]) continue;
+        for (id tab in tabs)
+            if ([DPValueForKey(tab, @"tabId") isEqual:tabID]) return tab;
+    }
     return nil;
 }
 
@@ -27,67 +29,68 @@ static NSMenuItem *DPCycleItem(NSMenu *menu) {
     return nil;
 }
 
-// Once open, the switcher moves on ⌃⇥ itself rather than through the menu.
 static void DPStep(void) {
     [NSApp postEvent:[NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:NSEventModifierFlagControl timestamp:NSProcessInfo.processInfo.systemUptime
                                   windowNumber:NSApp.keyWindow.windowNumber context:nil characters:@"\t" charactersIgnoringModifiers:@"\t" isARepeat:NO keyCode:48]
              atStart:NO];
 }
 
-// Steps only once the last step has shown, so a slow switcher isn't overshot.
-static void DPFocus(NSString *tabID, NSString *lastSeen, int tries) {
+static NSUInteger DPFocusGeneration;
+
+static void DPFocus(NSString *tabID, NSString *lastSeen, int tries, NSUInteger gen) {
+    if (!DPCloseFromTabSwitcher.on || gen != DPFocusGeneration || !(NSEvent.modifierFlags & NSEventModifierFlagControl)) return;
     NSString *focused = nil;
     NSWindowController *switcher = DPOpenTabSwitcher();
     if (switcher) DPSwitcherTabs(switcher, &focused);
     if (!tries || [focused isEqual:tabID]) return;
     if (focused && ![focused isEqual:lastSeen]) DPStep();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        DPFocus(tabID, focused ?: lastSeen, tries - 1);
+        DPFocus(tabID, focused ?: lastSeen, tries - 1, gen);
     });
 }
 
-// Closing finishes later, and a switcher opened before then would still list the tab.
-static void DPReopenOnceClosed(NSString *closed, NSString *focus, int tries) {
-    if (!tries || !(NSEvent.modifierFlags & NSEventModifierFlagControl)) return;
+static void DPReopenOnceClosed(NSString *closed, NSString *focus, int tries, NSUInteger gen) {
+    if (!DPCloseFromTabSwitcher.on || gen != DPFocusGeneration || !tries || !(NSEvent.modifierFlags & NSEventModifierFlagControl)) return;
     if (DPScriptTab(closed)) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPReopenOnceClosed(closed, focus, tries - 1); });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPReopenOnceClosed(closed, focus, tries - 1, gen); });
         return;
     }
     NSMenuItem *cycle = DPCycleItem(NSApp.mainMenu);
     if (cycle) [NSApp sendAction:cycle.action to:cycle.target from:cycle];
-    DPFocus(focus, nil, 100);
+    DPFocus(focus, nil, 100, gen);
 }
 
 static BOOL DPCloseFocusedTab(NSWindowController *switcher) {
     NSString *focused = nil;
     NSMutableArray<NSString *> *tabs = [DPSwitcherTabs(switcher, &focused) mutableCopy];
-    NSUInteger index = [tabs indexOfObject:focused];
-    id tab = DPScriptTab(focused);
-    if (index == NSNotFound || !tab) return NO;
+    NSUInteger index = focused ? [tabs indexOfObject:focused] : NSNotFound;
+    id tab = focused ? DPScriptTab(focused) : nil;
+    if (index == NSNotFound || !tab || ![tab respondsToSelector:@selector(close:)]) return NO;
+    NSUInteger gen = ++DPFocusGeneration;
     [tab performSelector:@selector(close:) withObject:nil];
     [tabs removeObjectAtIndex:index];
     [switcher close];
-    if (tabs.count > 1) DPReopenOnceClosed(focused, tabs[MIN(index, tabs.count - 1)], 50);
+    if (tabs.count > 1) DPReopenOnceClosed(focused, tabs[MIN(index, tabs.count - 1)], 50, gen);
     return YES;
 }
 
 // The switcher picks the highlighted tab as soon as another modifier goes down, so it never sees ⌘.
 static BOOL DPTakeEvent(NSEvent *event) {
-    if (!DPCloseFromTabSwitcher.on || !(event.type == NSEventTypeKeyDown || event.type == NSEventTypeFlagsChanged)) return NO;
-    if (!(event.modifierFlags & NSEventModifierFlagControl)) return NO;
+    if (!(event.type == NSEventTypeKeyDown || event.type == NSEventTypeFlagsChanged) || !(event.modifierFlags & NSEventModifierFlagControl)) return NO;
     NSWindowController *switcher = DPOpenTabSwitcher();
     if (!switcher) return NO;
     if (event.type == NSEventTypeFlagsChanged) return event.keyCode == 54 || event.keyCode == 55;
-    // ⇧ may still be down from cycling backward, and ⌘⇧W would close the window.
     NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagOption);
-    return (mods == NSEventModifierFlagCommand || !mods) && [event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"] && DPCloseFocusedTab(switcher);
+    NSString *typed = event.charactersIgnoringModifiers.lowercaseString;
+    BOOL isW = (typed.length && [typed characterAtIndex:0] > 0x7f) ? event.keyCode == 13 : [typed isEqualToString:@"w"];
+    return (mods == NSEventModifierFlagCommand || !mods) && isW && DPCloseFocusedTab(switcher);
 }
 
-// Every event comes through here, before the switcher's own key handling can take it.
 static NSEvent *DPApplication_nextEvent(NSApplication *self, SEL _cmd, NSEventMask mask, NSDate *until, NSRunLoopMode mode, BOOL dequeue) {
+    if (!DPCloseFromTabSwitcher.on || !dequeue) return DPCallOriginal(DPApplication_nextEvent, self, mask, until, mode, dequeue);
     NSEvent *event;
     do event = DPCallOriginal(DPApplication_nextEvent, self, mask, until, mode, dequeue);
-    while (dequeue && event && DPTakeEvent(event));
+    while (event && DPTakeEvent(event));
     return event;
 }
 

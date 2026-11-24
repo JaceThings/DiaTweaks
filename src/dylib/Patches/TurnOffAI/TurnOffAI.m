@@ -1,31 +1,31 @@
 #import "TurnOffAI.h"
+#import "Patches/HideConnectAppPrompts/HideConnectAppPrompts.h"
 #import "Updates/Updates.h"
 
 #define DPDiaCapabilitiesToolbar "_TtC23AssistantCapabilitiesUI32AssistantCapabilitiesToolbarView"
-#define DPDiaCapabilitiesItem    "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
 #define DPDiaTabCardActions      "_TtC5TabUI21TabPopoverActionsView"
-#define DPDiaSettingsHeader      "_TtC11Preferences25SettingsSectionHeaderView"
 #define DPDiaPlaceholderText     "_TtC5ARCUI23TextViewWithPlaceholder"
 #define DPDiaChatSidebar         "_TtC6Window30AssistantSidebarViewController"
 
 BOOL DPIsAITitle(NSString *title) {
     if (![title isKindOfClass:NSString.class] || [title hasPrefix:@"Chat with Support"]) return NO;
-    NSString *lower = title.lowercaseString;
-    return [@[ @"Chat…", @"New Chat", @"Focus Chat", @"Send Chat Prompt Now", @"Open Daily Brief", @"Personalize Dia", @"Chat events", @"Daily report" ]
-               containsObject:title]
-        || [lower hasPrefix:@"chat with "] || [lower hasPrefix:@"ask dia"];
+    static NSSet<NSString *> *titles;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        titles = [NSSet setWithArray:@[ @"Chat…", @"New Chat", @"Focus Chat", @"Send Chat Prompt Now", @"Open Daily Brief", @"Personalize Dia", @"Chat events", @"Daily report" ]];
+    });
+    if ([titles containsObject:title]) return YES;
+    NSStringCompareOptions prefix = NSCaseInsensitiveSearch | NSAnchoredSearch;
+    return [title rangeOfString:@"chat with " options:prefix].location != NSNotFound
+        || [title rangeOfString:@"ask dia" options:prefix].location != NSNotFound;
 }
-
-#pragma mark Views
 
 static BOOL DPIsAIView(NSView *view) {
-    return DPHasLabel(view, @"Chat with this tab") || DPIsKind(view, DPDiaLibraryButton) || DPIsKind(view, DPDiaLibraryCell)
+    return DPIsChatButton(view) || DPIsKind(view, DPDiaLibraryButton) || DPIsKind(view, DPDiaLibraryCell)
         || DPIsKind(view, DPDiaSkillsSuggestions) || DPIsKind(view, DPDiaPersonalizeButton) || DPIsKind(view, DPDiaChatUsage)
-        || DPIsKind(view, DPDiaCapabilitiesItem);
+        || DPIsKind(view, DPDiaCapabilityButton) || DPIsKind(view, DPDiaTrialButton) || DPIsSingleAppUpsellBar(view);
 }
 
-// The command bar and a tab's card are outside the hide hosts. The command bar's toolbar itself stays, so the buttons
-// right of it don't slide left.
 static void DPHost_layout(NSView *self, SEL _cmd) {
     [DPHideHosts addObject:self];
     DPEnforceHides(self);
@@ -34,21 +34,16 @@ static void DPHost_layout(NSView *self, SEL _cmd) {
 
 static NSHashTable<NSView *> *DPMorningBriefs;
 
-// Settings' Morning Brief section: a heading and its switch in a stack of their own, hidden whole so no gap is left.
 static void DPSettingsHeader_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSettingsHeader_layout, self);
     NSTextField *title = (NSTextField *)DPFindView(self, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextField.class]; });
     if (![title.stringValue isEqual:@"Morning Brief"] || !self.superview) return;
     [DPMorningBriefs addObject:self.superview];
-    self.superview.hidden = DPTurnOffAI.on;
+    if (DPTurnOffAI.on) self.superview.hidden = YES;
 }
-
-#pragma mark Chat sidebar
 
 static NSHashTable<NSViewController *> *DPChatSidebars;
 
-// Chat beside the page, open when AI is turned off or opened some way still left, is closed with Dia's own Hide Chat
-// button, which also gives the page its width back.
 static void DPCloseChat(NSViewController *sidebar) {
     if (!DPTurnOffAI.on) return;
     NSView *hide = DPFindView(sidebar.view, ^BOOL(NSView *view) { return DPHasLabel(view, @"Hide chat"); });
@@ -58,14 +53,11 @@ static void DPCloseChat(NSViewController *sidebar) {
 static void DPChatSidebar_viewWillLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPChatSidebar_viewWillLayout, self);
     [DPChatSidebars addObject:self];
-    dispatch_async(dispatch_get_main_queue(), ^{ DPCloseChat(self); });
+    if (DPTurnOffAI.on) dispatch_async(dispatch_get_main_queue(), ^{ DPCloseChat(self); });
 }
-
-#pragma mark Placeholder
 
 static NSHashTable<NSTextView *> *DPPlaceholderViews;
 
-// "Ask anything…" in the command bar. Dia sets it from Swift, so it's changed where AppKit reads it to draw.
 static NSAttributedString *DPPlaceholder_get(NSTextView *self, SEL _cmd) {
     NSAttributedString *dia = DPCallOriginal(DPPlaceholder_get, self);
     [DPPlaceholderViews addObject:self];
@@ -75,12 +67,9 @@ static NSAttributedString *DPPlaceholder_get(NSTextView *self, SEL _cmd) {
     return ours;
 }
 
-#pragma mark Menus
-
 static NSHashTable<NSMenuItem *> *DPAIItems;
 static char DPDiaHiddenKey;
 
-// Dia shows and hides some of these itself, so what it asked for is kept and only added to.
 static void DPItem_setHidden(NSMenuItem *self, SEL _cmd, BOOL hidden) {
     BOOL ai = [DPAIItems containsObject:self];
     if (ai) DPSet(self, &DPDiaHiddenKey, @(hidden));
@@ -90,11 +79,12 @@ static void DPItem_setHidden(NSMenuItem *self, SEL _cmd, BOOL hidden) {
 static void DPTrack(NSMenuItem *item) {
     if (!DPIsAITitle(item.title)) return;
     if (![DPAIItems containsObject:item]) {
-        BOOL diaHidden = item.hidden;
+        DPSet(item, &DPDiaHiddenKey, @(item.hidden));
         [DPAIItems addObject:item];
-        DPSet(item, &DPDiaHiddenKey, @(diaHidden));
     }
-    item.hidden = [DPGet(item, &DPDiaHiddenKey) boolValue];
+    BOOL diaHidden = [DPGet(item, &DPDiaHiddenKey) boolValue];
+    BOOL wantHidden = diaHidden || DPTurnOffAI.on;
+    if (item.hidden != wantHidden) item.hidden = diaHidden;
 }
 
 static void DPTrackMenu(NSMenu *menu) {
@@ -116,34 +106,32 @@ static void DPMenu_insertItem(NSMenu *self, SEL _cmd, NSMenuItem *item, NSIntege
 
 static const NSEventModifierFlags DPModifiers = NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagShift;
 
-// Dia runs its shortcuts, ones set in its Shortcuts settings included, ahead of the menus, so a hidden item's still works.
+// Dia dispatches shortcuts ahead of menus, so hidden AI items must be blocked here.
 static BOOL DPIsAIShortcut(NSEvent *event) {
     NSEventModifierFlags mods = event.modifierFlags & DPModifiers;
     NSString *key = event.charactersIgnoringModifiers.lowercaseString;
-    for (NSMenuItem *item in DPAIItems)
-        if (item.keyEquivalent.length && [item.keyEquivalent.lowercaseString isEqual:key] && (item.keyEquivalentModifierMask & DPModifiers) == mods) return YES;
-    // ⌃⌘Return in the command bar sends what's typed to chat.
-    BOOL inBar = [NSStringFromClass([event.window.firstResponder class]) hasPrefix:@"_TtCC15BoostCommandBar"];
-    return inBar && (event.keyCode == 36 || event.keyCode == 76) && mods == (NSEventModifierFlagCommand | NSEventModifierFlagControl);
+    for (NSMenuItem *item in DPAIItems) {
+        if (!item.keyEquivalent.length || (item.keyEquivalentModifierMask & DPModifiers) != mods) continue;
+        if ([item.keyEquivalent.lowercaseString isEqual:key]) return YES;
+    }
+    if ((event.keyCode != 36 && event.keyCode != 76) || mods != (NSEventModifierFlagCommand | NSEventModifierFlagControl)) return NO;
+    return [NSStringFromClass([event.window.firstResponder class]) hasPrefix:@"_TtCC15BoostCommandBar"];
 }
 
-#pragma mark Servers
+static BOOL gCutOff;
 
-static BOOL gCutOff;  // Chromium reads its host rules only as Dia starts.
-
-// Dia sends chat and fetches AI apps and skills from inside Chromium, so names that resolve nowhere stop them at once,
-// as if offline.
 static void DPCutOffAIServers(void) {
     gCutOff = DPTurnOffAI.on;
-    if (!gCutOff) return;
     NSMutableArray<NSString *> *rules = [NSMutableArray array];
     for (NSString *host in @[ @"ai-service", @"aiproxy", @"webresultproxy", @"websearch", @"artifactcdn", @"tools-cache" ])
         [rules addObject:[NSString stringWithFormat:@"MAP %@.diabrowser.engineering ~NOTFOUND", host]];
-    DPAddLaunchFlag([@"--host-resolver-rules=" stringByAppendingString:[rules componentsJoinedByString:@", "]]);
+    NSString *flag = [@"--host-resolver-rules=" stringByAppendingString:[rules componentsJoinedByString:@", "]];
+    if (gCutOff) DPAddLaunchFlag(flag);
+    else DPDropLaunchFlag(flag);
 }
 
 static void DPOfferRelaunch(DPPatch *patch) {
-    if (patch->on == gCutOff || patch->on != DPSavedOn(patch)) return;  // the self-test flips patches without saving
+    if (DPTesting || patch->on == gCutOff || patch->on != DPSavedOn(patch)) return;
     NSAlert *alert = [NSAlert new];
     alert.messageText = patch->on ? @"Relaunch Dia to cut off its AI servers" : @"Relaunch Dia to reconnect its AI servers";
     alert.informativeText = patch->on ? @"Until then, AI is hidden, but Dia can still reach its AI servers." : @"Until then, chat can’t reach them.";
@@ -151,8 +139,6 @@ static void DPOfferRelaunch(DPPatch *patch) {
     [alert addButtonWithTitle:@"Later"];
     if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
 }
-
-#pragma mark Patch
 
 static void DPInstallTurnOffAI(void) {
     DPCutOffAIServers();
@@ -170,7 +156,7 @@ static void DPInstallTurnOffAI(void) {
     DPHook(DPDiaChatSidebar, @selector(viewWillLayout), (IMP)DPChatSidebar_viewWillLayout);
     DPInstallAIRows();
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-        return DPTurnOffAI.on && DPIsAIShortcut(event) ? nil : event;
+        return DPTurnOffAI.on && !DPShortcutRecording() && DPIsAIShortcut(event) ? nil : event;
     }];
     DPOnLaunch(^{ DPTrackMenu(NSApp.mainMenu); });
 }
@@ -182,6 +168,7 @@ static void DPApplyTurnOffAI(DPPatch *patch) {
     for (NSView *section in DPMorningBriefs.allObjects) section.hidden = patch->on;
     for (NSViewController *sidebar in DPChatSidebars.allObjects) DPCloseChat(sidebar);
     DPApplyAIRows();
+    if (patch->on) DPDismissConnectAppPrompts();
     DPOfferRelaunch(patch);
 }
 
@@ -190,10 +177,11 @@ DP_PATCH(DPTurnOffAI) {
     .order = 95,
     .section = @"AI",
     .title = @"Turn Off AI",
-    .detail = @"Turn off every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Morning Brief, and Settings' Apps and Skills. After a relaunch, Dia can't reach its AI servers either. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
+    .detail = @"Turn off every AI feature in Dia: chat and its buttons, menus and shortcuts, Skills, Ask Dia, Morning Brief, and Settings’ Apps and Skills. After a relaunch, Dia can’t reach its AI servers either. To send questions to search, set Address Bar to Prefer Search Engine in Advanced.",
     .symbol = @"bubble.left.and.exclamationmark.bubble.right.fill bubble.left.fill",
     .tint = @"systemPurpleColor",
     .hides = DPIsAIView,
+    .relaunch = YES,
     .install = DPInstallTurnOffAI,
     .apply = DPApplyTurnOffAI,
 };

@@ -9,7 +9,6 @@ use cliclack::{Theme, ThemeState};
 
 use crate::signals::{self, Cancelled};
 
-/// Output errors are ignored: a closed pipe or terminal must not abort a step halfway.
 pub struct Ui {
     pub interactive: bool,
     pub yes: bool,
@@ -38,44 +37,50 @@ impl Ui {
     }
 
     pub fn info(&self, message: impl Display) {
-        match self.framed.get() {
-            true => drop(cliclack::log::info(message)),
-            false => say(message),
+        if self.framed.get() {
+            let _ = cliclack::log::info(message);
+        } else {
+            say(message);
         }
     }
 
     pub fn remark(&self, message: impl Display) {
-        match self.framed.get() {
-            true => drop(cliclack::log::remark(message)),
-            false => say(message),
+        if self.framed.get() {
+            let _ = cliclack::log::remark(message);
+        } else {
+            say(message);
         }
     }
 
     pub fn success(&self, message: impl Display) {
-        match self.framed.get() {
-            true => drop(cliclack::log::success(message)),
-            false => say(message),
+        if self.framed.get() {
+            let _ = cliclack::log::success(message);
+        } else {
+            say(message);
         }
     }
 
     pub fn warn(&self, message: impl Display) {
-        match self.framed.get() {
-            true => drop(cliclack::log::warning(message)),
-            false => complain(format_args!("warning: {message}")),
+        if self.framed.get() {
+            let _ = cliclack::log::warning(message);
+        } else {
+            complain(format_args!("warning: {message}"));
         }
     }
 
     pub fn error(&self, err: &Error) {
-        match self.framed.get() {
-            true => drop(cliclack::log::error(format!("{err:#}"))),
-            false => complain(format_args!("diatweaks: {err:#}")),
+        if self.framed.get() {
+            let _ = cliclack::log::error(format!("{err:#}"));
+        } else {
+            complain(format_args!("diatweaks: {err:#}"));
         }
     }
 
     pub fn note(&self, title: impl Display, body: impl Display) {
-        match self.framed.get() {
-            true => drop(cliclack::note(title, body)),
-            false => say(body),
+        if self.framed.get() {
+            let _ = cliclack::note(title, body);
+        } else {
+            say(body);
         }
     }
 
@@ -88,16 +93,18 @@ impl Ui {
     }
 
     pub fn cancelled(&self, cancelled: &Cancelled) {
-        match self.framed.get() {
-            true => drop(cliclack::outro_cancel(cancelled)),
-            false => complain(cancelled),
+        if self.framed.get() {
+            let _ = cliclack::outro_cancel(cancelled);
+        } else {
+            complain(cancelled);
         }
     }
 
     pub fn failed(&self, err: &Error) {
-        match self.framed.get() {
-            true => drop(cliclack::outro_cancel(format!("{err:#}"))),
-            false => complain(format_args!("diatweaks: {err:#}")),
+        if self.framed.get() {
+            let _ = cliclack::outro_cancel(format!("{err:#}"));
+        } else {
+            complain(format_args!("diatweaks: {err:#}"));
         }
     }
 
@@ -111,7 +118,6 @@ impl Ui {
         Spinner { bar, label }
     }
 
-    /// Without a terminal it proceeds: running the command was the request.
     pub fn proceed(&self, question: impl Display) -> Result<bool> {
         if self.yes || !self.interactive {
             return Ok(true);
@@ -134,8 +140,6 @@ impl Ui {
     }
 }
 
-/// cliclack closes a cancelled prompt with "└  Operation cancelled.", which would end the frame
-/// before the menu goes on or diatweaks says what cancelling left behind.
 struct Frame;
 
 impl Theme for Frame {
@@ -150,19 +154,17 @@ impl Theme for Frame {
 }
 
 pub fn prompt<T>(result: io::Result<T>) -> Result<T> {
-    let cancelled = match &result {
-        Ok(_) => false,
-        Err(err) => matches!(
-            err.kind(),
-            io::ErrorKind::Interrupted | io::ErrorKind::UnexpectedEof
-        ),
-    };
+    let cancelled = matches!(
+        &result,
+        Err(err) if matches!(err.kind(), io::ErrorKind::Interrupted | io::ErrorKind::UnexpectedEof)
+    );
     if cancelled || signals::interrupted() {
         return Err(Cancelled::nothing_changed().into());
     }
     Ok(result?)
 }
 
+// Output errors are ignored so a closed pipe never aborts a step mid-way.
 pub fn say(message: impl Display) {
     let _ = writeln!(io::stdout().lock(), "{message}");
 }
@@ -196,9 +198,10 @@ impl Spinner {
 
     pub fn fail(&self, err: Error) -> Error {
         if let Some(bar) = &self.bar {
-            match err.is::<Cancelled>() {
-                true => bar.cancel(&self.label),
-                false => bar.error(&self.label),
+            if err.is::<Cancelled>() {
+                bar.cancel(&self.label);
+            } else {
+                bar.error(&self.label);
             }
         }
         err

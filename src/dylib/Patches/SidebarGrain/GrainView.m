@@ -28,23 +28,22 @@
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    static NSArray<NSNotificationName> *windowNames, *appNames;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        windowNames = @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
+                        NSWindowDidBecomeMainNotification, NSWindowDidResignMainNotification];
+        appNames = @[NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification];
+    });
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    for (NSString *name in @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
-         NSWindowDidBecomeMainNotification, NSWindowDidResignMainNotification,
-         NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification])
-        [center removeObserver:self name:name object:nil];
-    if (self.window && self.tracksWindowActivity) {
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidBecomeKeyNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidResignKeyNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidBecomeMainNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSWindowDidResignMainNotification object:self.window];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
-        [center addObserver:self selector:@selector(refreshActivity:) name:NSApplicationDidResignActiveNotification object:NSApp];
-        [self refreshActivity:nil];
-    }
+    for (NSNotificationName name in windowNames) [center removeObserver:self name:name object:nil];
+    for (NSNotificationName name in appNames) [center removeObserver:self name:name object:nil];
+    if (!self.window || !self.tracksWindowActivity) return;
+    for (NSNotificationName name in windowNames) [center addObserver:self selector:@selector(refreshActivity:) name:name object:self.window];
+    for (NSNotificationName name in appNames) [center addObserver:self selector:@selector(refreshActivity:) name:name object:NSApp];
+    [self refreshActivity:nil];
 }
 
-// Takes the settings of the profile this view's sidebar or strip is showing.
 - (void)reloadSettings {
     _space = DPGrainSpaceOf(self.superview);
     [self setGrainAmount:DPGrainShown(_space) ? DPGrainAmount(_space) : 0 softness:DPGrainSoftness(_space) scale:DPGrainScale(_space)];
@@ -64,15 +63,13 @@
     [self refreshActivity:nil];
 }
 
-// Fine's black and white specks go over the page rather than into it, so they take less opacity for the same contrast.
-// A sharp tile mixed with a soft one has less contrast than either, as they only partly agree, so the mix is boosted.
 - (void)setGrainAmount:(double)amount softness:(double)softness scale:(double)scale {
     NSString *material = DPGrainMaterial(_space);
     if (![DPGrainMaterialKeys() containsObject:material]) material = @"sand";
     CGFloat soft = MAX(0, MIN(100, softness)) / 100, zoom = MAX(50, MIN(300, scale)) / 100;
     BOOL fine = [material isEqual:@"fine"];
     CGFloat opacity = MAX(0, MIN(100, amount)) / 100 * (fine ? 0.3 : 0.8 / sqrt(1 - 1.5 * soft * (1 - soft)));
-    if (self.tracksWindowActivity && self.window && !self.window._hasActiveAppearance) opacity = 0;
+    if (self.tracksWindowActivity && self.window && [self.window respondsToSelector:@selector(_hasActiveAppearance)] && !self.window._hasActiveAppearance) opacity = 0;
     BOOL dark = DPGrainDarkAppearance(self.effectiveAppearance);
     if (_darkAppearance == dark && _grainOpacity == opacity && _softness == soft && _scale == zoom && [_material isEqual:material]) return;
     _darkAppearance = dark;
@@ -80,8 +77,8 @@
     _scale = zoom;
     _grainOpacity = opacity;
     _material = material;
-    self.layer.compositingFilter = fine ? nil :
-        dark ? @"screenBlendMode" : @"multiplyBlendMode";
+    if (fine) self.layer.compositingFilter = nil;
+    else self.layer.compositingFilter = dark ? @"screenBlendMode" : @"multiplyBlendMode";
     self.needsDisplay = YES;
 }
 

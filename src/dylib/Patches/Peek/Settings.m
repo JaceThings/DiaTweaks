@@ -14,11 +14,14 @@ static NSUserDefaults *DPSettings(void) {
 static double DPPeekTuned(NSString *key) {
     id value = [DPSettings() objectForKey:key];
     if (value) return [value doubleValue];
-    return [@{ DPPeekDarknessKey : @0.45, DPPeekSpeedKey : @0.9, DPPeekGenieKey : @YES, DPPeekToolbarKey : @YES }[key] doubleValue];
+    static NSDictionary<NSString *, NSNumber *> *defaults;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ defaults = @{ DPPeekDarknessKey : @0.45, DPPeekSpeedKey : @0.9, DPPeekGenieKey : @YES, DPPeekToolbarKey : @YES }; });
+    return [defaults[key] doubleValue];
 }
 
 double DPPeekDarkness(void) { return DPPeekTuned(DPPeekDarknessKey); }
-double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }  // iOS's response at 100%.
+double DPPeekResponse(void) { return 0.24 / MAX(0.1, DPPeekTuned(DPPeekSpeedKey)); }
 BOOL DPPeekGenie(void) { return DPPeekTuned(DPPeekGenieKey) != 0; }
 BOOL DPPeekShowsToolbar(void) { return DPPeekTuned(DPPeekToolbarKey) != 0; }
 
@@ -29,6 +32,14 @@ BOOL DPPeekShowsToolbar(void) { return DPPeekTuned(DPPeekToolbarKey) != 0; }
 @property NSTextField *field;
 @end
 
+static double DPPeekArrowStep(SEL command) {
+    if (command == @selector(moveUp:)) return 1;
+    if (command == @selector(moveDown:)) return -1;
+    if (command == @selector(moveUpAndModifySelection:)) return 10;
+    if (command == @selector(moveDownAndModifySelection:)) return -10;
+    return 0;
+}
+
 @implementation DPPeekTuneRow
 - (void)tune:(NSControl *)control {
     double shown = [control isKindOfClass:NSSwitch.class] ? ((NSSwitch *)control).state
@@ -36,14 +47,14 @@ BOOL DPPeekShowsToolbar(void) { return DPPeekTuned(DPPeekToolbarKey) != 0; }
     self.slider.doubleValue = shown;
     self.field.doubleValue = shown;
     [DPSettings() setDouble:shown / self.scale forKey:self.key];
-    for (NSWindow *window in NSApp.windows)
-        DPPeekCardIn(window).dim.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
+    CGColorRef dim = [NSColor colorWithWhite:0 alpha:DPPeekDarkness()].CGColor;
+    for (DPPeekCard *peek in DPPeekAllCards(nil)) peek.dim.layer.backgroundColor = dim;
 }
 
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
-    NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
+    double step = DPPeekArrowStep(command);
     if (!step) return NO;
-    self.field.doubleValue = textView.string.doubleValue + step.doubleValue;
+    self.field.doubleValue = textView.string.doubleValue + step;
     [self tune:self.field];
     [textView selectAll:nil];
     return YES;
@@ -82,10 +93,9 @@ static NSView *DPPeekSlider(NSString *title, NSString *key, double min, double m
     return row;
 }
 
-// Titled and described like the options Settings lists for a patch.
 static NSView *DPPeekSwitch(NSString *title, NSString *detail, NSString *key) {
     NSSwitch *toggle = [NSSwitch new];
-    toggle.controlSize = NSControlSizeSmall;  // As Settings' own switches.
+    toggle.controlSize = NSControlSizeSmall;
     toggle.state = DPPeekTuned(key) ? NSControlStateValueOn : NSControlStateValueOff;
     toggle.action = @selector(tune:);
     NSStackView *lines = DPColumn(@[DPLabel(title, 13, NSFontWeightRegular, NSColor.labelColor),
@@ -105,7 +115,7 @@ NSArray<NSView *> *DPPeekSettingsRows(void) {
     NSView *toolbar = DPPeekSwitch(@"Show Address Toolbar",
         @"Show back, forward, reload and the address across the top of the card, like Little Dia. It hides and shows with Hide Toolbar.",
         DPPeekToolbarKey);
-    toolbar.identifier = DPLeadingOption;  // Above Drag Links and Pinned Tabs.
+    toolbar.identifier = DPLeadingOption;
     return @[
         toolbar,
         DPPeekSwitch(@"Genie Effect", @"Grow the card out of the link you clicked, and shrink it back into it as it closes.", DPPeekGenieKey),

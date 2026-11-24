@@ -143,6 +143,14 @@ int main(void) {
         [late layout];
         Check(![Part(late, 0) isHidden] && ![Part(late, 2) isHidden], @"a detached tab is restored at its next layout");
 
+        visibleShapes = @[late];
+        Toggle(YES);
+        Check([Part(late, 0) isHidden] && [Part(late, 2) isHidden], @"tab styled before window minimizes");
+        visibleShapes = @[];
+        Toggle(NO);
+        Check(![Part(late, 0) isHidden] && ![Part(late, 2) isHidden], @"minimized window tab is restored immediately on toggle off");
+        Check(!DPHasTabOverride(Part(late, 0)) && !DPGet(late, &DPTabStyledKey), @"minimized window tab clears all markers on toggle off");
+
         visibleShapes = @[shape];
         Class glassClass = NSClassFromString(@"NSGlassEffectView");
         if (glassClass) {
