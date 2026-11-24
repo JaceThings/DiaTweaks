@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+mkdir -p build/task-checks
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/tasks/tasks.m src/dylib/Patches/Tasks/Store.m src/dylib/Patches/Tasks/StoreEditing.m src/dylib/Patches/Tasks/Retention.m src/dylib/Patches/Tasks/AddButton.m src/dylib/Patches/Tasks/ComposerField.m src/dylib/Patches/Tasks/TaskTable.m src/dylib/Patches/Tasks/Removal.m src/dylib/Patches/Tasks/TaskView.m \
+    src/dylib/Patches/Tasks/TaskCell.m src/dylib/Patches/Tasks/Actions.m src/dylib/Patches/SidebarLibrary/HoverState.m \
+    -framework AppKit -framework QuartzCore -o build/task-checks/tasks
+build/task-checks/tasks

@@ -127,6 +127,12 @@ body:
         - Not sure
     validations:
       required: true
+        - Easels
+        - Recent downloads preview
+        - Sidebar Library
+        - Tasks
+        - Thanos removal effect
+
   - type: textarea
     id: what
     attributes:
