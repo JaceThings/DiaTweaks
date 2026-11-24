@@ -11,9 +11,11 @@ permissions:
 jobs:
   make:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - run: make
+      - run: make check
       # The wiki goes live after the code it documents merges, so a missing page warns instead of failing.
       - run: scripts/check-tweak-docs
         continue-on-error: true

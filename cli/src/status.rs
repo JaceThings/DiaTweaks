@@ -1,23 +1,22 @@
 use anyhow::Result;
 
 use crate::{
-    dia::{self, Diapatch},
+    dia::{self, Diapatch, SafeMode},
     env::Env,
     manifest::Manifest,
     prefs::Prefs,
+    tweaks::on_off,
     ui::{self, Spinner, Ui},
 };
 
-pub const COMMIT: &str = env!("DIATWEAKS_COMMIT");
+const COMMIT: &str = env!("DIATWEAKS_COMMIT");
 
-/// `diatweaks status`: plain lines for reading or grepping.
 pub fn print(env: &Env, ui: &Ui) -> Result<()> {
     let lines = report(env, &ui.spinner(""))?;
     ui::say(lines.join("\n"));
     Ok(())
 }
 
-/// The Status screen of the menu.
 pub fn show(env: &Env, ui: &Ui) -> Result<()> {
     let spinner = ui.spinner("Checking Dia");
     let lines = spinner.check(report(env, &spinner))?;
@@ -27,7 +26,7 @@ pub fn show(env: &Env, ui: &Ui) -> Result<()> {
 }
 
 fn report(env: &Env, spinner: &Spinner) -> Result<Vec<String>> {
-    let manifest = Manifest::load(&env.manifest())?;
+    let manifest = Manifest::load_with_local(&env.manifest(), &env.local_state())?;
     let status = Diapatch::find(env)?.status(spinner)?;
     let none = || "none".to_string();
 
@@ -44,47 +43,36 @@ fn report(env: &Env, spinner: &Spinner) -> Result<Vec<String>> {
         None => "couldn't check (are you online?)".into(),
     };
     let safe_mode = match dia::safe_mode(&env.support) {
-        0 => "off",
-        1 => "on: tweaks are off because Dia quit unexpectedly right after opening",
-        _ => "on: DiaTweaks is off because Dia kept quitting right after opening",
+        SafeMode::Off => "off",
+        SafeMode::TweaksOff => "on: tweaks are off because Dia quit unexpectedly right after opening",
+        SafeMode::Parked => "on: DiaTweaks is off because Dia kept quitting right after opening, even after it was tried again; it stays off until the next DiaTweaks update",
+        SafeMode::Disabled => "on: DiaTweaks is off because Dia kept quitting right after opening; it comes back with tweaks off after one launch where Dia stays open for three minutes or quits normally",
     };
+    let paused = dia::is_paused(&env.support);
     let mut lines = vec![
         format!("Dia        {installed}"),
         format!("Official   {}", status.official.unwrap_or_else(none)),
         format!("Staged     {staged}"),
         format!("Latest     {latest}"),
         format!("Safe mode  {safe_mode}"),
-        format!("DiaTweaks  {}", short(COMMIT)),
-        "Tweaks".into(),
+        format!("DiaTweaks  {}", COMMIT.get(..7).unwrap_or(COMMIT)),
     ];
+    if paused {
+        lines.push("Paused     yes: every tweak is off and keeps its settings; run `diatweaks resume` to turn them back on".into());
+    }
+    lines.push(if paused {
+        "Tweaks (paused: these settings come back with `diatweaks resume`)".into()
+    } else {
+        "Tweaks".into()
+    });
 
     let state = manifest.state(&Prefs::new(&env.domain));
-    for (index, patch) in manifest.patches.iter().enumerate() {
-        let mut line = format!(
+    for (index, &on) in state.iter().enumerate() {
+        lines.push(format!(
             "  {:<4} {}",
-            if state[index] { "on" } else { "off" },
-            patch.title
-        );
-        let unmet = manifest
-            .requirement(index)
-            .filter(|&required| state[index] && !state[required]);
-        if let Some(required) = unmet {
-            line.push_str(&format!(
-                " (does nothing while {} is off)",
-                manifest.title(required)
-            ));
-        }
-        if let Some(disabler) = manifest.hidden_by(index, &state) {
-            line.push_str(&format!(
-                " (no difference while {} is on)",
-                manifest.title(disabler)
-            ));
-        }
-        lines.push(line);
+            on_off(on),
+            manifest.label(index, &state)
+        ));
     }
     Ok(lines)
-}
-
-pub fn short(commit: &str) -> &str {
-    commit.get(..7).unwrap_or(commit)
 }

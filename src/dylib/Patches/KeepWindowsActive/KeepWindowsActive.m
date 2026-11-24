@@ -2,6 +2,7 @@
 
 @interface NSWindow (DPPrivate)
 - (BOOL)_hasActiveAppearance;
+- (BOOL)hasKeyAppearance;
 - (void)_setShadowParameters;
 @end
 
@@ -23,13 +24,12 @@ static BOOL DPWindow_hasActiveAppearance(NSWindow *self, SEL _cmd) {
     return DPKeptActive(self) || DPCallOriginal(DPWindow_hasActiveAppearance, self);
 }
 
-// Dia's window buttons follow this. Claiming it also shows focus rings in windows without keyboard focus.
 static BOOL DPWindow_hasKeyAppearance(NSWindow *self, SEL _cmd) {
     return DPKeptActive(self) || DPCallOriginal(DPWindow_hasKeyAppearance, self);
 }
 
 static void DPRefreshKeyState(NSView *view) {
-    [view _windowChangedKeyState];
+    if ([view respondsToSelector:@selector(_windowChangedKeyState)]) [view _windowChangedKeyState];
     view.needsDisplay = YES;
     for (NSView *subview in view.subviews) DPRefreshKeyState(subview);
 }
@@ -37,17 +37,33 @@ static void DPRefreshKeyState(NSView *view) {
 static void DPApplyKeepWindowsActive(DPPatch *patch) {
     for (NSWindow *window in NSApp.windows) {
         if (!DPIsBrowserWindow(window)) continue;
-        [window _setShadowParameters];
+        if ([window respondsToSelector:@selector(_setShadowParameters)]) [window _setShadowParameters];
         DPRefreshKeyState(window.contentView.superview);
     }
 }
 
-static NSString *DPVerifyKeepWindowsActive(DPPatch *patch) {
-    for (NSWindow *window in NSApp.windows) {
-        if (!DPIsBrowserWindow(window) || !window.visible) continue;
-        if (patch->on && !window._hasActiveAppearance) return @"a window looks inactive";
-        if (!patch->on && window._hasActiveAppearance && !window.isKeyWindow && !window.isMainWindow) return @"a background window looks active";
+static BOOL DPAppKitAnswer(NSWindow *window, SEL sel) {
+    return ((BOOL (*)(id, SEL))DPDiaIMP(NSWindow.class, sel))(window, sel);
+}
+
+// The pool frees the unshown probe window before other checks enumerate NSApp.windows.
+static NSString *DPProbeProblem(BOOL on) {
+    @autoreleasepool {
+        NSWindow *probe = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100) styleMask:NSWindowStyleMaskTitled
+                                                        backing:NSBackingStoreBuffered defer:YES];
+        probe.releasedWhenClosed = NO;
+        BOOL active = probe._hasActiveAppearance, key = probe.hasKeyAppearance;
+        if (on) return active && key ? nil : @"a window looks inactive";
+        return active == DPAppKitAnswer(probe, @selector(_hasActiveAppearance)) && key == DPAppKitAnswer(probe, @selector(hasKeyAppearance))
+            ? nil : @"a background window looks active";
     }
+}
+
+static NSString *DPVerifyKeepWindowsActive(DPPatch *patch) {
+    NSString *problem = DPProbeProblem(patch->on);
+    if (problem || !patch->on) return problem;
+    for (NSWindow *window in NSApp.windows)
+        if (DPIsBrowserWindow(window) && window.visible && !window._hasActiveAppearance) return @"a window looks inactive";
     return nil;
 }
 

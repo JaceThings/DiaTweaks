@@ -1,7 +1,9 @@
+use std::fmt::Write;
+
 use anyhow::Result;
 
 use crate::{
-    dia,
+    dia::{self, SafeMode},
     env::Env,
     lock,
     manifest::Manifest,
@@ -11,30 +13,35 @@ use crate::{
 };
 
 pub fn list(env: &Env) -> Result<()> {
-    let manifest = Manifest::load(&env.manifest())?;
+    let manifest = Manifest::load_with_local(&env.manifest(), &env.local_state())?;
     let state = manifest.state(&Prefs::new(&env.domain));
+    if dia::is_paused(&env.support) {
+        ui::say("Tweaks are paused: every one is off until `diatweaks resume`. The settings below are kept.");
+    }
     let width = manifest
         .patches
         .iter()
         .map(|patch| patch.key.len())
         .max()
         .unwrap_or(0);
-    for (patch, on) in manifest.patches.iter().zip(state) {
-        ui::say(format_args!(
+    for (index, (patch, &on)) in manifest.patches.iter().zip(&state).enumerate() {
+        ui::say(format!(
             "{:<4} {:<width$}  {}",
             on_off(on),
             patch.key,
-            patch.title
+            manifest.label(index, &state)
         ));
     }
     Ok(())
 }
 
-/// `diatweaks enable` and `disable`.
 pub fn set(env: &Env, ui: &Ui, names: &[String], on: bool) -> Result<()> {
-    let manifest = Manifest::load(&env.manifest())?;
+    let manifest = Manifest::load_with_local(&env.manifest(), &env.local_state())?;
     let targets = manifest.resolve(names)?;
     let current = manifest.state(&Prefs::new(&env.domain));
+    if let Some(note) = pause_note(dia::is_paused(&env.support)) {
+        ui.warn(note);
+    }
     let mut wanted = current.clone();
     for &index in &targets {
         if current[index] == on {
@@ -62,13 +69,113 @@ pub fn set(env: &Env, ui: &Ui, names: &[String], on: bool) -> Result<()> {
     for note in notes(&manifest, &current, &wanted) {
         ui.warn(note);
     }
-    ui.done(where_it_shows(env));
+    finish_changes(env, ui, &manifest, &changes, &wanted, false);
     Ok(())
 }
 
-/// The Tweaks screen of the menu.
+/// Settings greys every tweak out while paused, so the CLI says the same before saving.
+fn pause_note(paused: bool) -> Option<&'static str> {
+    paused.then_some(
+        "Tweaks are paused, so nothing changes until you run `diatweaks resume`. The settings are still saved.",
+    )
+}
+
+fn is_live_dia(env: &Env) -> bool {
+    !dia::is_paused(&env.support) && dia::is_live(env)
+}
+
+fn needs_relaunch(
+    manifest: &Manifest,
+    index: usize,
+    wanted_on: bool,
+    icon_linked: bool,
+    brief_patched: bool,
+) -> bool {
+    let patch = &manifest.patches[index];
+    patch.relaunch
+        || (patch.key == "appIcon" && wanted_on != icon_linked)
+        || (patch.key == "briefLanguage" && wanted_on != brief_patched)
+}
+
+fn finish_changes(
+    env: &Env,
+    ui: &Ui,
+    manifest: &Manifest,
+    changes: &[usize],
+    wanted: &[bool],
+    saved_prefix: bool,
+) {
+    let icon_linked = dia::has_linked_icon_catalog(&env.app);
+    let brief_patched = dia::has_brief_language(&env.app);
+    let live = is_live_dia(env);
+    let relaunching: Vec<&str> = if live {
+        changes
+            .iter()
+            .filter(|&&index| {
+                needs_relaunch(manifest, index, wanted[index], icon_linked, brief_patched)
+            })
+            .map(|&index| manifest.title(index))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if !live && !dia::is_paused(&env.support) && dia::tweaks_active(env) {
+        if let Some(index) = changed_key(manifest, changes, "appIcon") {
+            if wanted[index] && !icon_linked {
+                ui.warn(
+                    "App Icon needs a rebuild to link Dia's asset catalog. Run `diatweaks update` to apply it.",
+                );
+            } else if !wanted[index] && icon_linked {
+                ui.warn(
+                    "Dia's default icon is restored; run `diatweaks update` to restore its sealed asset catalog.",
+                );
+            }
+        }
+        if changed_key(manifest, changes, "briefLanguage")
+            .is_some_and(|index| wanted[index] != brief_patched)
+        {
+            ui.warn(
+                "Morning Brief Language needs a rebuild to update Dia's prompt. Run `diatweaks update` to apply it.",
+            );
+        }
+    }
+    let tail = if !relaunching.is_empty() {
+        ui.warn(format_args!(
+            "Relaunch Dia to apply: {}.",
+            relaunching.join(", ")
+        ));
+        if relaunching.len() == changes.len() {
+            "Relaunch Dia to see the changes.".into()
+        } else {
+            "Dia shows the rest now.".into()
+        }
+    } else {
+        where_it_applies(env)
+    };
+    if saved_prefix {
+        ui.done(format_args!("Saved. {tail}"));
+    } else {
+        ui.done(tail);
+    }
+}
+
+fn changed_key(manifest: &Manifest, changes: &[usize], key: &str) -> Option<usize> {
+    changes
+        .iter()
+        .copied()
+        .find(|&index| manifest.patches[index].key == key)
+}
+
+fn where_it_applies(env: &Env) -> String {
+    if dia::is_paused(&env.support) {
+        "Tweaks are paused, so nothing changes until you run `diatweaks resume`.".into()
+    } else {
+        where_it_shows(env)
+    }
+}
+
 pub fn menu(env: &Env, ui: &Ui) -> Result<()> {
-    let manifest = Manifest::load(&env.manifest())?;
+    let manifest = Manifest::load_with_local(&env.manifest(), &env.local_state())?;
     let current = manifest.state(&Prefs::new(&env.domain));
     let mut prompt = cliclack::multiselect("Turn tweaks on or off (space toggles, enter saves)")
         .required(false)
@@ -105,26 +212,28 @@ pub fn menu(env: &Env, ui: &Ui) -> Result<()> {
     if !ui.choose("Save these changes?", true)? {
         return Err(Cancelled::nothing_changed().into());
     }
-    save(env, &manifest, &current, &wanted)?;
-    ui.done(format_args!("Saved. {}", where_it_shows(env)));
+    let changes = save(env, &manifest, &current, &wanted)?;
+    finish_changes(env, ui, &manifest, &changes, &wanted, true);
     Ok(())
 }
 
 fn hint(manifest: &Manifest, current: &[bool], index: usize) -> String {
     let mut hint = manifest.patches[index].detail.clone();
     if let Some(required) = manifest.requirement(index) {
-        hint.push_str(&format!(" Needs {}.", manifest.title(required)));
+        let _ = write!(hint, " Needs {}.", manifest.title(required));
     }
-    if let Some(disabler) = manifest.hidden_by(index, current) {
-        hint.push_str(&format!(
+    if let Some(cover) = manifest.covered_by(index, current) {
+        let _ = write!(hint, " {} hides this too.", manifest.title(cover));
+    } else if let Some(disabler) = manifest.hidden_by(index, current) {
+        let _ = write!(
+            hint,
             " No difference while {} is on.",
             manifest.title(disabler)
-        ));
+        );
     }
     hint
 }
 
-/// Turning on a patch that needs another one offers to turn that on too.
 fn add_requirements(
     ui: &Ui,
     manifest: &Manifest,
@@ -155,7 +264,6 @@ fn add_requirements(
     Ok(())
 }
 
-/// What won't show the way the user might expect, for the patches this run touches.
 fn notes(manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Vec<String> {
     let changed = |index: usize| current[index] != wanted[index];
     let mut notes = Vec::new();
@@ -169,21 +277,27 @@ fn notes(manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Vec<String> 
                 ));
             }
         }
-        if let Some(disabler) = manifest.hidden_by(index, wanted) {
-            if changed(index) {
-                notes.push(format!(
-                    "{} makes no difference while {} is on.",
-                    manifest.title(index),
-                    manifest.title(disabler)
-                ));
-            }
+        if !wanted[index] || !changed(index) {
+            continue;
+        }
+        if let Some(cover) = manifest.covered_by(index, wanted) {
+            notes.push(format!(
+                "{} hides {} too.",
+                manifest.title(cover),
+                manifest.title(index)
+            ));
+        } else if let Some(disabler) = manifest.hidden_by(index, wanted) {
+            notes.push(format!(
+                "{} makes no difference while {} is on.",
+                manifest.title(index),
+                manifest.title(disabler)
+            ));
         }
     }
     notes
 }
 
-/// Saves the patches whose wanted state differs from what this run started from, and leaves the
-/// rest alone in case something else changed them meanwhile. Returns what it changed.
+// Write only changed keys so concurrent edits to other tweaks survive.
 fn save(env: &Env, manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Result<Vec<usize>> {
     let changes: Vec<usize> = (0..wanted.len())
         .filter(|&index| current[index] != wanted[index])
@@ -197,12 +311,18 @@ fn save(env: &Env, manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Re
         prefs.set(&manifest.patches[index].key, wanted[index]);
     }
     prefs.save()?;
+    if changed_key(manifest, &changes, "appIcon").is_some() {
+        dia::sync_icon(env);
+    }
     Ok(changes)
 }
 
-fn where_it_shows(env: &Env) -> String {
-    if dia::safe_mode(&env.support) > 0 {
-        return "Tweaks are paused because Dia quit unexpectedly right after opening. Turn them back on in Dia → Settings → Patches.".into();
+pub fn where_it_shows(env: &Env) -> String {
+    match dia::safe_mode(&env.support) {
+        SafeMode::Off => {}
+        SafeMode::TweaksOff => return "Tweaks are off because Dia quit unexpectedly right after opening. Turn them back on in Dia → Settings → Patches.".into(),
+        SafeMode::Parked => return "DiaTweaks is off because Dia kept quitting right after opening, even after it was tried again. It stays off until the next DiaTweaks update.".into(),
+        SafeMode::Disabled => return "DiaTweaks is off because Dia kept quitting right after opening. After one launch where Dia stays open for three minutes or quits normally, the next launch brings Settings back with tweaks still off. Turn them back on in Dia → Settings → Patches.".into(),
     }
     if !dia::is_patched(&env.app) {
         return "Dia isn't patched right now, so they won't show. Run `diatweaks update` to patch it again.".into();
@@ -213,10 +333,143 @@ fn where_it_shows(env: &Env) -> String {
     "Dia uses them the next time it opens.".into()
 }
 
-fn on_off(on: bool) -> &'static str {
+pub fn on_off(on: bool) -> &'static str {
     if on {
         "on"
     } else {
         "off"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::load_json;
+
+    #[test]
+    fn add_requirements_walks_a_two_level_chain() {
+        let manifest = load_json(
+            r#"{
+                "version": 1,
+                "patches": [
+                    {"key": "a", "title": "A", "detail": "A", "defaultOn": false, "requires": null, "disabledBy": null},
+                    {"key": "b", "title": "B", "detail": "B", "defaultOn": false, "requires": "a", "disabledBy": null},
+                    {"key": "c", "title": "C", "detail": "C", "defaultOn": false, "requires": "b", "disabledBy": null}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let current = [false, false, false];
+
+        let mut wanted = [false, false, true];
+        add_requirements(&Ui::new(true), &manifest, &current, &mut wanted).unwrap();
+        assert_eq!(wanted, [true, true, true]);
+
+        let mut wanted = [false, false, true];
+        add_requirements(&Ui::new(false), &manifest, &current, &mut wanted).unwrap();
+        assert_eq!(wanted, [false, false, true]);
+    }
+
+    #[test]
+    fn notes_does_not_warn_when_disabling_hidden_tweak() {
+        let manifest = load_json(
+            r#"{
+                "version": 1,
+                "patches": [
+                    {"key": "turnOffAI", "title": "Turn Off AI", "detail": "A", "defaultOn": false, "requires": null, "disabledBy": null, "relaunch": true},
+                    {"key": "briefLanguage", "title": "Morning Brief Language", "detail": "B", "defaultOn": false, "requires": null, "disabledBy": "turnOffAI"}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(notes(&manifest, &[true, true], &[true, false]).is_empty());
+        let warnings = notes(&manifest, &[true, false], &[true, true]);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("Morning Brief Language"));
+    }
+
+    #[test]
+    fn pause_note_only_warns_while_paused() {
+        assert!(pause_note(false).is_none());
+        let note = pause_note(true).expect("paused tweaks warn");
+        assert!(note.contains("diatweaks resume"));
+        assert!(note.contains("still saved"));
+    }
+
+    #[test]
+    fn list_and_status_share_the_same_annotations() {
+        let manifest = load_json(
+            r#"{
+                "version": 1,
+                "patches": [
+                    {"key": "turnOffAI", "title": "Turn Off AI", "detail": "A", "defaultOn": false, "requires": null, "disabledBy": null},
+                    {"key": "hideToolbar", "title": "Hide Toolbar", "detail": "H", "defaultOn": false, "requires": null, "disabledBy": null},
+                    {"key": "showAddressField", "title": "Show Address Field", "detail": "S", "defaultOn": false, "requires": "hideToolbar", "disabledBy": null},
+                    {"key": "hideChatButton", "title": "Hide Chat Button", "detail": "C", "defaultOn": false, "requires": null, "disabledBy": "hideToolbar", "coveredBy": "turnOffAI"}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let state = [true, false, true, true];
+        assert_eq!(
+            manifest.annotations(2, &state),
+            vec!["does nothing while Hide Toolbar is off"]
+        );
+        assert_eq!(
+            manifest.annotations(3, &state),
+            vec!["Turn Off AI hides this too"]
+        );
+        assert!(manifest.annotations(0, &state).is_empty());
+        assert_eq!(
+            manifest.label(2, &state),
+            "Show Address Field (does nothing while Hide Toolbar is off)"
+        );
+
+        let state = [false, true, false, true];
+        assert_eq!(
+            manifest.annotations(3, &state),
+            vec!["no difference while Hide Toolbar is on"]
+        );
+    }
+
+    #[test]
+    fn needs_relaunch_tracks_relaunch_app_icon_and_brief_language() {
+        let manifest = load_json(
+            r#"{
+                "version": 1,
+                "patches": [
+                    {"key": "turnOffAI", "title": "Turn Off AI", "detail": "A", "defaultOn": false, "requires": null, "disabledBy": null, "relaunch": true},
+                    {"key": "appIcon", "title": "App Icon", "detail": "I", "defaultOn": false, "requires": null, "disabledBy": null},
+                    {"key": "hideToolbar", "title": "Hide Toolbar", "detail": "H", "defaultOn": false, "requires": null, "disabledBy": null},
+                    {"key": "briefLanguage", "title": "Morning Brief Language", "detail": "B", "defaultOn": false, "requires": null, "disabledBy": "turnOffAI"},
+                    {"key": "hideChatButton", "title": "Hide Chat Button", "detail": "C", "defaultOn": false, "requires": null, "disabledBy": "hideToolbar", "coveredBy": "turnOffAI"}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(needs_relaunch(&manifest, 0, true, false, false));
+        assert!(needs_relaunch(&manifest, 0, false, true, true));
+        assert!(needs_relaunch(&manifest, 1, true, false, false));
+        assert!(!needs_relaunch(&manifest, 1, true, true, false));
+        assert!(needs_relaunch(&manifest, 1, false, true, false));
+        assert!(!needs_relaunch(&manifest, 1, false, false, false));
+        assert!(!needs_relaunch(&manifest, 2, true, false, false));
+        assert!(needs_relaunch(&manifest, 3, true, false, false));
+        assert!(!needs_relaunch(&manifest, 3, true, false, true));
+        assert!(needs_relaunch(&manifest, 3, false, false, true));
+        assert!(!needs_relaunch(&manifest, 3, false, false, false));
+
+        let covered_notes = notes(
+            &manifest,
+            &[true, false, true, false, false],
+            &[true, false, true, false, true],
+        );
+        assert_eq!(
+            covered_notes,
+            vec!["Turn Off AI hides Hide Chat Button too."]
+        );
     }
 }

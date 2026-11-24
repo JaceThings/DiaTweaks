@@ -1,25 +1,18 @@
 #import "HideToolbar.h"
 #import <objc/message.h>
 
-// While the page loads, Dia turns the toolbar's reload button into a stop button and fills the address field, both out
-// of sight while the toolbar is hidden. This shows a line at the top of the pane instead. Which panes are loading
-// comes from their own reload buttons. How far along comes from the tabs' ArcWebContents, which Chromium updates and
-// which don't say which pane they're in, so with several visible pages loading at once the focused one wins.
+typedef NS_ENUM(NSInteger, DPWebContentsVisibility) { DPWebContentsVisible = 2 };
 
-typedef NS_ENUM(NSInteger, DPWebContentsVisibility) { DPWebContentsVisible = 2 };  // ArcWebContentsVisibility.h
-
-static NSHashTable *DPLoadingContents;  // Tabs Chromium says are loading.
+static NSHashTable *DPLoadingContents;
 static NSTimer *DPProgressTimer;
 static char DPProgressKey;
 
 static BOOL DPPaneLoading(NSView *pane) {
-    NSView *bar = DPSubview(pane, DPDiaToolbar);
-    NSView *reload = bar ? DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaReloadIcon); }) : nil;
+    NSView *reload = DPFindView(DPSubview(pane, DPDiaToolbar), ^BOOL(NSView *view) { return DPIsKind(view, DPDiaReloadIcon); });
     BOOL *loading = DPIvar(reload, "isLoading");
     return loading && *loading;
 }
 
-// The visible page that's loading, preferring the one with focus.
 static id DPVisibleLoadingContents(void) {
     id best = nil;
     for (id contents in DPLoadingContents.allObjects) {
@@ -29,26 +22,28 @@ static id DPVisibleLoadingContents(void) {
     return best;
 }
 
-// The line stands in for the toolbar only while none of it shows.
 static BOOL DPToolbarOutOfSight(NSView *pane) {
     DPToolbarHover *hover = [DPToolbarHover forPane:pane];
     return DPHideToolbar.on && DPHideToolbar.progress == 1 && hover.bar && !hover.bar.hiddenOrHasHiddenAncestor &&
            hover.progress == 0 && hover.inPlaceProgress == 0;
 }
 
+static BOOL DPLoadingProgressOn(void) { return DPHideToolbar.on && DPShowLoadingProgress.on; }
+
 static void DPRefreshProgress(void) {
-    id contents = DPVisibleLoadingContents();
-    CGFloat progress = contents ? [DPGet(contents, &DPProgressKey) doubleValue] : 1;  // 1: done, but the pane hasn't caught up.
+    BOOL on = DPLoadingProgressOn();
+    id contents = on ? DPVisibleLoadingContents() : nil;
+    CGFloat progress = contents ? [DPGet(contents, &DPProgressKey) doubleValue] : 1;
     BOOL loading = NO;
     for (NSView *pane in DPPanes) {
-        BOOL inSight = pane.window && !pane.hiddenOrHasHiddenAncestor, paneLoading = inSight && DPPaneLoading(pane);
-        if (!DPShowLoadingProgress.on || !inSight || !DPToolbarOutOfSight(pane)) DPRemoveProgressLine(pane);
-        else if (paneLoading) DPShowProgressLine(pane, MAX(0.1, progress));  // A sliver at once, as Dia's starts.
+        BOOL inSight = on && pane.window && !pane.hiddenOrHasHiddenAncestor, paneLoading = inSight && DPPaneLoading(pane);
+        if (!inSight || !DPToolbarOutOfSight(pane)) DPRemoveProgressLine(pane);
+        else if (paneLoading) DPShowProgressLine(pane, MAX(0.1, progress));
         else DPFinishProgressLine(pane);
         loading = loading || paneLoading;
     }
-    // Reload buttons and reveals change after Chromium's updates, so keep looking while a page in sight loads.
-    BOOL watch = DPShowLoadingProgress.on && (loading || contents);
+    // The reload button changes after Chromium's own updates, so poll.
+    BOOL watch = on && (loading || contents);
     if (watch && !DPProgressTimer) {
         DPProgressTimer = [NSTimer timerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) { DPRefreshProgress(); }];
         [NSRunLoop.mainRunLoop addTimer:DPProgressTimer forMode:NSRunLoopCommonModes];
@@ -62,19 +57,22 @@ static void DPContents_setIsLoading(id self, SEL _cmd, BOOL loading) {
     DPCallOriginal(DPContents_setIsLoading, self, loading);
     if (loading) [DPLoadingContents addObject:self];
     else [DPLoadingContents removeObject:self];
-    if (DPShowLoadingProgress.on) DPRefreshProgress();
+    if (DPLoadingProgressOn()) DPRefreshProgress();
 }
 
 static void DPContents_setLoadProgress(id self, SEL _cmd, double progress) {
     DPCallOriginal(DPContents_setLoadProgress, self, progress);
     DPSet(self, &DPProgressKey, @(progress));
-    if (DPShowLoadingProgress.on) DPRefreshProgress();
+    if (DPLoadingProgressOn()) DPRefreshProgress();
 }
 
 static void DPInstallLoadingProgress(void) {
     DPLoadingContents = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaWebContents, @selector(setIsLoading:), (IMP)DPContents_setIsLoading);
     DPHook(DPDiaWebContents, @selector(setLoadProgress:), (IMP)DPContents_setLoadProgress);
+    [NSNotificationCenter.defaultCenter addObserverForName:DPPatchesDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *_) {
+        DPRefreshProgress();
+    }];
     DPInstallProgressColors();
 }
 
@@ -94,11 +92,11 @@ DP_PATCH(DPShowLoadingProgress) {
     .defaultOn = YES,
     .order = 43,
     .title = @"Show Loading Progress",
-    .detail = @"Show Dia's loading glow along the top of the page while it loads, where the hidden toolbar would show it.",
+    .detail = @"Show Dia’s loading glow along the top of the page while it loads, where the hidden toolbar would show it.",
     .symbol = @"rectangle.topthird.inset.filled",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
-    .section = @"While It's Hidden",
+    .section = @"While It’s Hidden",
     .classes = DPClasses(DPDiaWebContents, DPDiaReloadIcon),
     .choice = @"loadingProgressColor",
     .defaultChoice = @"dia",

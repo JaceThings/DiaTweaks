@@ -1,14 +1,30 @@
 #import "StdPatch/StdPatch.h"
-
-// Dia shows the address field's background and its buttons while the field is hovered. The field's hover tracker sets
-// that state from the pointer, and a delayed tracker hands it on to the field after the pointer settles. While on, this
-// marks the field hovered, hands that to the field itself, and keeps the pointer's comings and goings from undoing it.
+#import <dlfcn.h>
 
 extern DPPatch DPShowAddressField;
 
-typedef void (*DPHoverHandler)(bool hovered, void *context __attribute__((swift_context))) __attribute__((swiftcall));
+// DelayedHoverTracker.onUpdate is Swift `(Bool, Bool) -> Void` (`isHoverActive`, `isIncidentalHover`).
+typedef void (*DPHoverHandler)(bool hovered, bool incidental, void *context __attribute__((swift_context))) __attribute__((swiftcall));
 
-static id DPDelayedTracker(NSView *field) { return (__bridge id)*(void **)DPIvar(field, "hoverTracker"); }
+static void DPCallHoverHandler(void *fn, void *context, bool hovered, bool incidental) {
+    static void *(*retainFn)(void *);
+    static void (*releaseFn)(void *);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        retainFn = dlsym(RTLD_DEFAULT, "swift_retain");
+        releaseFn = dlsym(RTLD_DEFAULT, "swift_release");
+    });
+    if (context && retainFn) retainFn(context);
+    ((DPHoverHandler)fn)(hovered, incidental, context);
+    if (context && releaseFn) releaseFn(context);
+}
+
+static char DPForcedKey;
+
+static id DPDelayedTracker(NSView *field) {
+    void **slot = DPIvar(field, "hoverTracker");
+    return slot ? (__bridge id)*slot : nil;
+}
 
 static NSTrackingArea *DPHoverArea(NSView *field) {
     for (NSTrackingArea *area in field.trackingAreas)
@@ -18,21 +34,28 @@ static NSTrackingArea *DPHoverArea(NSView *field) {
 
 static BOOL DPShowsHover(NSView *field) {
     id delayed = DPDelayedTracker(field);
-    return delayed && *(BOOL *)DPIvar(delayed, "isHoverActive");
+    BOOL *active = DPIvar(delayed, "isHoverActive");
+    return active && *active;
 }
 
 static void DPSetHover(NSView *field, BOOL hovered) {
     id delayed = DPDelayedTracker(field), tracker = DPHoverArea(field).owner;
-    if (!delayed || !tracker) return;
-    *(BOOL *)DPIvar(tracker, "isHovered") = hovered;
-    *(BOOL *)DPIvar(delayed, "isHoverActive") = hovered;
-    *(BOOL *)DPIvar(delayed, "isIncidentalHover") = NO;
+    BOOL *isHovered = DPIvar(tracker, "isHovered"), *isActive = DPIvar(delayed, "isHoverActive"), *incidental = DPIvar(delayed, "isIncidentalHover");
     void **handler = DPIvar(delayed, "onUpdate");
-    if (handler[0]) ((DPHoverHandler)handler[0])(hovered, handler[1]);
+    if (!isHovered || !isActive || !incidental || !handler) return;
+    *isHovered = hovered;
+    *isActive = hovered;
+    *incidental = NO;
+    if (handler[0]) DPCallHoverHandler(handler[0], handler[1], hovered, false);
 }
 
+static Class DPAddressFieldClass;
+
 static BOOL DPKeepsHover(id tracker) {
-    return DPShowAddressField.on && DPIsKind(objc_loadWeak((__autoreleasing id *)DPIvar(tracker, "view")), DPDiaAddressField);
+    if (!DPShowAddressField.on) return NO;
+    void *slot = DPIvar(tracker, "view");
+    id view = slot ? objc_loadWeak((__autoreleasing id *)slot) : nil;
+    return DPAddressFieldClass && [view isKindOfClass:DPAddressFieldClass];
 }
 
 static void DPTracker_mouseEntered(id self, SEL _cmd, NSEvent *event) {
@@ -45,19 +68,41 @@ static void DPTracker_mouseExited(id self, SEL _cmd, NSEvent *event) {
     if (!DPKeepsHover(self)) DPCallOriginal(DPTracker_mouseExited, self, event);
 }
 
-// Each tab has its own field, and Dia lays one out before showing it.
-static void DPField_layout(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPField_layout, self);
-    if (DPShowAddressField.on && !DPShowsHover(self)) DPSetHover(self, YES);
+// Hide Toolbar lifts the invisible bar above the pane, where a bounds check still catches a pointer outside the pane.
+static BOOL DPPointerOver(NSView *field) {
+    NSWindow *window = field.window;
+    NSView *content = window.contentView;
+    if (!window.isKeyWindow || !content || field.hiddenOrHasHiddenAncestor) return NO;
+    for (NSView *view = field; view; view = view.superview) if (view.alphaValue <= 0.01) return NO;
+    NSPoint point = content.superview ? [content.superview convertPoint:window.mouseLocationOutsideOfEventStream fromView:nil]
+                                      : window.mouseLocationOutsideOfEventStream;
+    return [[content hitTest:point] isDescendantOf:field];
 }
 
-static BOOL DPPointerOver(NSView *field) {
-    return NSPointInRect([field convertPoint:field.window.mouseLocationOutsideOfEventStream fromView:nil], field.bounds);
+static void DPField_layout(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPField_layout, self);
+    if (DPShowAddressField.on) {
+        if (!DPShowsHover(self)) {
+            DPSet(self, &DPForcedKey, @YES);
+            DPSetHover(self, YES);
+        }
+    } else if (DPGet(self, &DPForcedKey)) {
+        DPSet(self, &DPForcedKey, nil);
+        DPSetHover(self, DPPointerOver(self));
+    }
 }
 
 static void DPApplyShowAddressField(DPPatch *patch) {
-    // Off, each field goes back to whether the pointer is over it.
-    for (NSView *field in DPFindViews(DPDiaAddressField)) DPSetHover(field, patch->on || DPPointerOver(field));
+    Class cls = objc_getClass(DPDiaAddressField);
+    if (!cls) return;
+    for (NSWindow *window in NSApp.windows)
+        DPFindView(window.contentView, ^BOOL(NSView *view) {
+            if ([view isKindOfClass:cls]) {
+                DPSet(view, &DPForcedKey, patch->on ? @YES : nil);
+                DPSetHover(view, patch->on || DPPointerOver(view));
+            }
+            return NO;
+        });
 }
 
 static NSString *DPVerifyShowAddressField(DPPatch *patch) {
@@ -70,6 +115,7 @@ static NSString *DPVerifyShowAddressField(DPPatch *patch) {
 }
 
 static void DPInstallShowAddressField(void) {
+    DPAddressFieldClass = objc_getClass(DPDiaAddressField);
     DPHook(DPDiaHoverTracker, @selector(mouseEntered:), (IMP)DPTracker_mouseEntered);
     DPHook(DPDiaHoverTracker, @selector(mouseMoved:), (IMP)DPTracker_mouseMoved);
     DPHook(DPDiaHoverTracker, @selector(mouseExited:), (IMP)DPTracker_mouseExited);

@@ -2,23 +2,41 @@
 
 NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
 
+@interface DPPaneEntry : NSObject
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, strong) NSView *page;
+@property (nonatomic, strong) NSScrollView *scroll;
+@end
+
+@implementation DPPaneEntry
+@end
+
 @implementation DPPaneView {
-    NSScrollView *_overviewScroll, *_pageScroll;
-    NSView *_page;
+    NSScrollView *_contentScroll;
+    NSMutableArray<DPPaneEntry *> *_stack;
 }
 
-- (instancetype)initWithFrame:(NSRect)frame {
-    if (!(self = [super initWithFrame:frame])) return nil;
+- (instancetype)initWithTitle:(NSString *)title content:(NSView<DPPaneContent> *)content {
+    if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     self.wantsLayer = YES;
-    _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
-    _searchItem.searchField.delegate = self;
-    [_searchItem.searchField.widthAnchor constraintEqualToConstant:218].active = YES;
-    _overview = [DPOverviewView new];
+    _title = [title copy];
+    _content = content;
+    _stack = [NSMutableArray new];
+    if ([content respondsToSelector:@selector(syncWithQuery:)]) {
+        _searchItem = [[NSSearchToolbarItem alloc] initWithItemIdentifier:DPSearchItemIdentifier];
+        _searchItem.searchField.delegate = self;
+        [_searchItem.searchField.widthAnchor constraintEqualToConstant:218].active = YES;
+    }
     __weak DPPaneView *weakSelf = self;
-    _overview.open = ^(NSString *title, NSView *page) { [weakSelf openPage:page title:title]; };
-    _overviewScroll = [self scrollFor:_overview];
+    content.open = ^(NSString *title, NSView *page) { [weakSelf pushPage:page title:title]; };
+    _contentScroll = [self scrollFor:content];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(patchesDidChange:) name:DPPatchesDidChangeNotification object:nil];
     return self;
+}
+
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+    _searchItem.searchField.delegate = nil;
 }
 
 - (NSScrollView *)scrollFor:(NSView *)content {
@@ -35,7 +53,6 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     NSLayoutConstraint *fill = [content.widthAnchor constraintEqualToAnchor:document.widthAnchor constant:-48];
     fill.priority = NSLayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
-        // Dia's toolbar sits over the top of the pane.
         [scroll.topAnchor constraintEqualToAnchor:self.topAnchor constant:52],
         [scroll.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
         [scroll.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
@@ -52,43 +69,67 @@ NSToolbarItemIdentifier const DPSearchItemIdentifier = @"DiaPatchesSearch";
     return scroll;
 }
 
-- (void)showPage:(NSView *)page {
-    [_pageScroll removeFromSuperview];
-    _page = page;
-    _pageScroll = page ? [self scrollFor:page] : nil;
-    _overviewScroll.hidden = page != nil;
+- (void)pushPage:(NSView *)page title:(NSString *)title {
+    DPPaneEntry *entry = [DPPaneEntry new];
+    entry.title = title;
+    entry.page = page;
+    entry.scroll = [self scrollFor:page];
+    // A folder page opens tweaks the same way the list does, one level deeper.
+    if ([page respondsToSelector:@selector(setOpen:)]) {
+        __weak DPPaneView *weakSelf = self;
+        [(id)page setOpen:^(NSString *next, NSView *view) { [weakSelf pushPage:view title:next]; }];
+    }
+    _stack.lastObject.scroll.hidden = YES;
+    _contentScroll.hidden = YES;
+    [_stack addObject:entry];
+    if (self.titleChanged) self.titleChanged(title, YES);
 }
 
-- (void)openPage:(NSView *)page title:(NSString *)title {
-    [self showPage:page];
-    self.titleChanged(title, YES);
+- (void)popToRoot {
+    if (!_stack.count) return;
+    for (DPPaneEntry *entry in _stack) [entry.scroll removeFromSuperview];
+    [_stack removeAllObjects];
+    _contentScroll.hidden = NO;
+    if (self.titleChanged) self.titleChanged(self.title, NO);
 }
 
-- (BOOL)showsPage { return _page != nil; }
+- (BOOL)showsPage { return _stack.count > 0; }
 
 - (void)goBack {
-    if (!_page) return;
-    [self showPage:nil];
-    self.titleChanged(@"Patches", NO);
+    if (!_stack.count) return;
+    [_stack.lastObject.scroll removeFromSuperview];
+    [_stack removeLastObject];
+    DPPaneEntry *top = _stack.lastObject;
+    if (top) {
+        top.scroll.hidden = NO;
+        if (self.titleChanged) self.titleChanged(top.title, YES);
+        return;
+    }
+    _contentScroll.hidden = NO;
+    if (self.titleChanged) self.titleChanged(self.title, NO);
 }
 
 - (void)reset {
-    [self showPage:nil];
+    [self popToRoot];
     self.searchItem.searchField.stringValue = @"";
-    [self.overview syncWithQuery:@""];
+    [self search];
+}
+
+- (void)search {
+    if (self.searchItem) [self.content syncWithQuery:self.searchItem.searchField.stringValue];
 }
 
 - (void)controlTextDidChange:(NSNotification *)notification {
-    NSString *query = self.searchItem.searchField.stringValue;
-    if (query.length) [self goBack];
-    [self.overview syncWithQuery:query];
+    if (self.searchItem.searchField.stringValue.length) [self popToRoot];
+    [self search];
 }
 
 - (void)patchesDidChange:(NSNotification *)notification {
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.allowsImplicitAnimation = YES;
-        [self.overview syncWithQuery:self.searchItem.searchField.stringValue];
-        if ([self->_page isKindOfClass:DPPageView.class]) [(DPPageView *)self->_page sync];
+        [self search];
+        for (DPPaneEntry *entry in self->_stack)
+            if ([entry.page respondsToSelector:@selector(sync)]) [(id)entry.page sync];
         [self layoutSubtreeIfNeeded];
     }];
 }

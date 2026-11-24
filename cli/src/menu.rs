@@ -1,8 +1,9 @@
 use anyhow::Result;
 
 use crate::{
+    dia,
     env::Env,
-    restore,
+    pause, restore,
     signals::{self, Cancelled},
     status, tweaks,
     ui::{self, Ui},
@@ -12,6 +13,7 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
     Tweaks,
+    Pause,
     UpdateDia,
     UpdateDiaTweaks,
     Status,
@@ -19,16 +21,21 @@ enum Action {
     Quit,
 }
 
-/// `diatweaks` in a terminal. Esc in a screen goes back here; Esc here, or a signal anywhere, ends
-/// the session.
 pub fn run(env: &Env, ui: &Ui) -> Result<()> {
     ui.intro();
     ui.enter_menu(true);
     let mut action = Action::Tweaks;
     loop {
+        let paused = dia::is_paused(&env.support);
+        let (pause_label, pause_hint) = if paused {
+            ("Resume tweaks", "turn tweaks back on")
+        } else {
+            ("Pause tweaks", "turn every tweak off, keeping settings")
+        };
         action = ui::prompt(
             cliclack::select("What do you want to do?")
                 .item(Action::Tweaks, "Tweaks", "turn tweaks on or off")
+                .item(Action::Pause, pause_label, pause_hint)
                 .item(Action::UpdateDia, "Update Dia", "")
                 .item(Action::UpdateDiaTweaks, "Update DiaTweaks", "")
                 .item(Action::Status, "Status", "")
@@ -43,6 +50,7 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
         )?;
         let result = match action {
             Action::Tweaks => tweaks::menu(env, ui),
+            Action::Pause => pause::set(env, ui, !paused),
             Action::UpdateDia => update_dia::run(env, ui),
             Action::UpdateDiaTweaks => update::run(env, ui),
             Action::Status => status::show(env, ui),
@@ -50,7 +58,7 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
             Action::Quit => break,
         };
         match result {
-            // The menu would carry on with the replaced binary or a Dia without DiaTweaks.
+            // Exit the menu after replacing the binary or unpatching Dia.
             Ok(()) if matches!(action, Action::UpdateDiaTweaks | Action::Restore) => break,
             Ok(()) => {}
             Err(err) => match err.downcast_ref::<Cancelled>() {

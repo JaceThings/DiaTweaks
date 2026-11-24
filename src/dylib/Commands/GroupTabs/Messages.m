@@ -1,4 +1,3 @@
-// Reads values out of Dia's objects, which arrive as numbers, strings or objects depending on the call.
 #import "GroupTabs.h"
 #import <objc/message.h>
 
@@ -26,6 +25,15 @@ BOOL DPMsgBool(id object, SEL sel) {
     BOOL (*msg)(id, SEL) = (void *)objc_msgSend;
     return object ? msg(object, sel) : NO;
 }
+
+static NSArray *DPScriptArray(id owner, SEL sel) {
+    NSArray *array = [owner respondsToSelector:sel] ? DPMsg(owner, sel) : nil;
+    return [array isKindOfClass:NSArray.class] ? array : nil;
+}
+
+NSArray *DPAppleScriptWindows(void) { return DPScriptArray(NSApp.delegate, @selector(appleScriptWindows)); }
+
+NSArray *DPAppleScriptTabs(id window) { return DPScriptArray(window, @selector(appleScriptTabs)); }
 
 NSString *DPText(id value) {
     if ([value isKindOfClass:NSString.class]) return value;

@@ -1,7 +1,12 @@
-// Turns patches off when Dia keeps dying right after launch.
 #import "StdPatch/StdPatch.h"
 
-// 0: normal. 1: Dia died twice right after launching, so no patch or command hooks. 2: it kept dying, so nothing at all.
 extern NSInteger DPSafeMode;
+extern BOOL DPPaused;
+extern BOOL DPPausedAtLaunch;
+BOOL DPIsChildProcess(void);
 void DPBeginLaunch(void);
 void DPLeaveSafeMode(void);
+BOOL DPPauseSaved(void);
+void DPSetPaused(BOOL paused);
+BOOL DPLocalSafeModeOff(void);
+void DPSetLocalSafeModeOff(BOOL off);

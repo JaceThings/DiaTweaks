@@ -26,13 +26,14 @@ static char DPHintKey;
         [label.topAnchor constraintEqualToAnchor:content.topAnchor constant:8],
         [label.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-8],
     ]];
-    content.frame = (NSRect){NSZeroPoint, content.fittingSize};  // Sized up front, or the popover opens as a sliver.
-    self.popover = [NSPopover new];
-    self.popover.contentViewController = [NSViewController new];
-    self.popover.contentViewController.view = content;
-    self.popover.contentViewController.preferredContentSize = content.frame.size;
-    self.popover.behavior = NSPopoverBehaviorTransient;  // A click anywhere closes it, and still goes where it was aimed.
-    [self.popover showRelativeToRect:view.bounds ofView:view preferredEdge:view.isFlipped ? NSRectEdgeMinY : NSRectEdgeMaxY];
+    content.frame = (NSRect){NSZeroPoint, content.fittingSize};
+    NSViewController *controller = [NSViewController new];
+    controller.view = content;
+    controller.preferredContentSize = content.frame.size;
+    NSPopover *popover = self.popover = [NSPopover new];
+    popover.contentViewController = controller;
+    popover.behavior = NSPopoverBehaviorTransient;
+    [popover showRelativeToRect:view.bounds ofView:view preferredEdge:view.isFlipped ? NSRectEdgeMinY : NSRectEdgeMaxY];
 }
 
 - (void)hide {
@@ -60,7 +61,7 @@ void DPSetHint(NSView *view, NSString *text) {
     if ([hint.text isEqual:text]) return;
     [hint hide];
     if (!text) {
-        if (hint) [view removeTrackingArea:hint.area];  // It doesn't keep its owner alive.
+        if (hint) [view removeTrackingArea:hint.area];  // The area doesn't retain its owner.
         return DPSet(view, &DPHintKey, nil);
     }
     if (!hint) {

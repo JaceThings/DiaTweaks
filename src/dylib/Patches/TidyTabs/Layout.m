@@ -1,20 +1,26 @@
 #import "TidyTabs.h"
 
+static const CGFloat DPTidyRowHeight = 24;
 static NSHashTable<NSView *> *DPTidyLists;
-static char DPScrollFrameKey;
+static char DPScrollFrameKey, DPActiveKey;
 
 NSScrollView *DPTidyListScroll(NSView *list) {
     for (NSView *sub in list.subviews) if ([sub isKindOfClass:NSScrollView.class]) return (NSScrollView *)sub;
     return nil;
 }
 
-// Without pinned tabs in the list, the tab list gives up its top `inset` points to the row; Dia's own frame is kept so the next layout starts from it.
 static void DPTabList_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPTabList_layout, self);
     [DPTidyLists addObject:self];
-    DPTidyHover *hover = DPTidyTabs.on ? [DPTidyHover attachToList:self] : [DPTidyHover forList:self];
-    CGFloat progress = DPTidyTabs.on ? hover.progress : 0;
-    // Dia's divider has room for the broom, so no row opens.
+    BOOL on = DPTidyTabs.on;
+    if (on) {
+        DPSet(self, &DPActiveKey, @YES);
+    } else {
+        [[DPTidyHover forList:self] detach];
+        if (!DPGet(self, &DPActiveKey)) return;
+        DPSet(self, &DPActiveKey, nil);
+    }
+    CGFloat progress = on ? [DPTidyHover attachToList:self].progress : 0;
     NSView *separator = DPTidySeparatorIn(self);
     if (separator) DPPlaceSeparatorBrush(separator);
     CGFloat inset = separator ? 0 : round(DPTidyRowHeight * progress);
@@ -24,22 +30,24 @@ static void DPTabList_layout(NSView *self, SEL _cmd) {
     inset = MIN(inset, NSHeight(laidOut));
     frame.size.height -= inset;
     if (self.isFlipped) frame.origin.y += inset;
-    DPOverride(scroll, &DPScrollFrameKey, @(laidOut), @(frame));
+    if (inset > 0) DPOverride(scroll, &DPScrollFrameKey, @(laidOut), @(frame));
+    else if (DPGet(scroll, &DPScrollFrameKey)) DPSet(scroll, &DPScrollFrameKey, nil);
     if (!NSEqualRects(scroll.frame, frame)) scroll.frame = frame;
 
     DPTidyRowView *row = DPTidyRowIn(self, inset > 0);
     if (!row) return;
+    if (!on) return [row removeFromSuperview];
     CGFloat y = self.isFlipped ? NSMinY(laidOut) : NSMaxY(laidOut) - inset;
     row.frame = NSMakeRect(NSMinX(laidOut), y, NSWidth(laidOut), inset);
     row.alphaValue = progress;
     row.hidden = inset < 1;
 }
 
-// In window coordinates: a strip over the gap between the favorites and the tabs, grown by the row while it's open.
+NSArray<NSView *> *DPTidyTrackedLists(void) { return DPTidyLists.allObjects ?: @[]; }
+
 NSRect DPTidyHoverZone(NSView *list) {
     NSScrollView *scroll = DPTidyListScroll(list);
-    if (!scroll) return NSZeroRect;
-    if (DPTidySeparatorIn(list)) return NSZeroRect;  // Dia's divider shows the broom with Close All.
+    if (!scroll || DPTidySeparatorIn(list)) return NSZeroRect;
     NSRect laidOut = [DPDiaValue(scroll, &DPScrollFrameKey, @(scroll.frame)) rectValue];
     DPTidyRowView *row = DPTidyRowIn(list, NO);
     CGFloat open = row && !row.hidden ? NSHeight(row.frame) : 0;

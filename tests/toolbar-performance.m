@@ -4,7 +4,11 @@
 - (void)reset;
 @end
 
-DPPatch DPHideToolbar, DPRevealToolbarOnHover;
+DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPShowToolbarWithTopTabs;
+BOOL DPBesideSidebar(NSView *view) { return NO; }
+BOOL DPLittleDiaIsOver(NSWindow *window) { return NO; }
+void DPRepaintTabs(NSWindow *window) {}
+BOOL DPToolbarHasPermissionRequest(DPToolbarHover *hover) { return NO; }
 static NSUInteger frameWrites, alphaWrites;
 @interface CountingView : NSView
 @end
@@ -18,7 +22,6 @@ static NSUInteger frameWrites, alphaWrites;
 - (BOOL)isFlipped { return YES; }
 @end
 
-// Cover both coordinate systems and a bookmarks bar while changing visibility and resizing.
 static void checkGeometry(BOOL flipped, BOOL bookmarks) {
     CGFloat top = flipped ? 0 : 750, pageY = flipped ? 50 : 0;
     NSView *pane = [[(flipped ? FlippedPane.class : NSView.class) alloc] initWithFrame:NSMakeRect(0, 0, 1000, 800)];

@@ -8,12 +8,13 @@ static NSValue *requested;
 void DPApplySquareCorners(NSView *view) { restyles++; }
 NSView *DPChatCard(NSView *view) { return chatVisible ? chatCard : nil; }
 NSValue *DPRequestedFrame(NSView *view) { return requested; }
+void DPRelayoutContainers(void) {}
 #import "Patches/EdgeToEdge/Restyle.m"
 
 @interface CountingContainer : NSView
 @end
 @implementation CountingContainer
-- (void)layout {}  // Dia's own work is outside this fixture.
+- (void)layout {}
 - (void)updateLayer {}
 - (void)setFrame:(NSRect)frame { frameWrites++; [super setFrame:frame]; }
 @end

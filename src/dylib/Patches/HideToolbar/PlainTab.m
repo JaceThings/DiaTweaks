@@ -1,9 +1,7 @@
 #import "HideToolbar.h"
 
-// Dia fills the selected tab with the site's color so it runs into the toolbar under it. With the toolbar hidden it runs
-// into nothing, so the tab takes the page color instead, and the site's color again as the toolbar fades in.
-static char DPFillKey, DPAppearanceKey;
-static NSHashTable<NSView *> *DPTabFills;  // Every tab fill Dia has painted.
+static char DPFillKey, DPAppearanceKey, DPPlainAppliedKey;
+static NSHashTable<NSView *> *DPTabFills;
 
 static BOOL DPIsTabFill(NSView *view) {
     if (!DPIsKind(view.superview.superview, DPDiaTabShape)) return NO;
@@ -12,7 +10,6 @@ static BOOL DPIsTabFill(NSView *view) {
     return NO;
 }
 
-// How much shows of the window's most visible toolbar.
 static CGFloat DPToolbarShowing(NSWindow *window) {
     CGFloat showing = 0;
     for (NSView *pane in DPPanes) {
@@ -24,10 +21,8 @@ static CGFloat DPToolbarShowing(NSWindow *window) {
 
 static BOOL DPPlain(NSView *fill) { return DPPlainSelectedTab.on && DPHideToolbar.on && DPToolbarShowing(fill.window) < 0.01; }
 
-// The selected tab also gets an appearance that suits the site's color, so its title stays readable on it. A plain tab
-// goes back to the tab strip's; Dia's comes back with the color. A tab that isn't selected has none.
 static void DPPlainAppearance(NSView *fill, BOOL plain) {
-    NSView *tab = fill.superview.superview.superview.superview;  // tab, background, shape, flipped, fill
+    NSView *tab = fill.superview.superview.superview.superview;
     if (!DPIsKind(tab, DPDiaTabView)) return;
     for (NSView *part in tab.subviews) {
         NSAppearance *dia = DPGet(part, &DPAppearanceKey);
@@ -35,23 +30,29 @@ static void DPPlainAppearance(NSView *fill, BOOL plain) {
             DPSet(part, &DPAppearanceKey, part.appearance);
             part.appearance = nil;
         } else if (!plain && dia) {
-            if (!part.appearance && !fill.hiddenOrHasHiddenAncestor) part.appearance = dia;
+            if (!part.appearance && !fill.hiddenOrHasHiddenAncestor && fill.layer.backgroundColor) part.appearance = dia;
             DPSet(part, &DPAppearanceKey, nil);
         }
     }
 }
 
-// Dia sets the site's color here each time, so whatever's on the layer after it is Dia's.
 static void DPFill_updateLayer(NSView *self, SEL _cmd) {
     DPCallOriginal(DPFill_updateLayer, self);
-    if (!self.layer.backgroundColor || !DPIsTabFill(self)) return;
+    if (!DPIsTabFill(self)) return;
+    if (!self.layer.backgroundColor) {
+        if (DPGet(self, &DPPlainAppliedKey)) {
+            DPPlainAppearance(self, NO);
+            DPSet(self, &DPPlainAppliedKey, nil);
+        }
+        return;
+    }
     [DPTabFills addObject:self];
     NSColor *dia = [NSColor colorWithCGColor:self.layer.backgroundColor];
     DPSet(self, &DPFillKey, dia);
     CGFloat plain = DPPlainSelectedTab.on && DPHideToolbar.on ? 1 - DPToolbarShowing(self.window) : 0;
-    DPPlainAppearance(self, plain > 0.5);
+    if (plain > 0.5 || DPGet(self, &DPPlainAppliedKey)) DPPlainAppearance(self, plain > 0.5);
+    DPSet(self, &DPPlainAppliedKey, plain > 0 ? @YES : nil);
     if (plain <= 0) return;
-    // The tab strip's appearance: Dia gives a tab on a dark color a dark appearance of its own.
     NSView *strip = self;
     while (strip && !DPIsKind(strip, DPDiaTabStrip)) strip = strip.superview;
     __block NSColor *page;
@@ -61,23 +62,44 @@ static void DPFill_updateLayer(NSView *self, SEL _cmd) {
 }
 
 void DPRepaintTabs(NSWindow *window) {
+    BOOL active = DPPlainSelectedTab.on && DPHideToolbar.on;
     for (NSView *fill in DPTabFills)
-        if (fill.window == window) fill.needsDisplay = YES;
+        if (fill.window == window && (active || DPGet(fill, &DPPlainAppliedKey))) fill.needsDisplay = YES;
 }
 
 static void DPInstallPlainSelectedTab(void) {
     DPTabFills = [NSHashTable weakObjectsHashTable];
-    DPHook(DPDiaColorFill, @selector(updateLayer), (IMP)DPFill_updateLayer);
+    DPHook(DPDiaColorView, @selector(updateLayer), (IMP)DPFill_updateLayer);
+}
+
+static void DPCollectTabFills(NSView *view, Class cls, NSMutableArray<NSView *> *out) {
+    if ([view isKindOfClass:cls] && DPIsTabFill(view)) [out addObject:view];
+    for (NSView *sub in view.subviews) DPCollectTabFills(sub, cls, out);
 }
 
 static void DPApplyPlainSelectedTab(DPPatch *patch) {
-    for (NSView *fill in DPFindViews(DPDiaColorFill))
-        if (DPIsTabFill(fill)) fill.needsDisplay = YES;
+    NSMutableSet<NSView *> *fills = [NSMutableSet setWithArray:DPTabFills.allObjects ?: @[]];
+    Class cls = objc_getClass(DPDiaColorView);
+    if (cls) {
+        NSMutableArray<NSView *> *all = [NSMutableArray new];
+        for (NSWindow *window in NSApp.windows) DPCollectTabFills(window.contentView, cls, all);
+        [fills addObjectsFromArray:all];
+    }
+    for (NSView *fill in fills) {
+        if (!patch->on && DPGet(fill, &DPPlainAppliedKey)) {
+            DPPlainAppearance(fill, NO);
+            DPSet(fill, &DPPlainAppliedKey, nil);
+            NSColor *dia = DPGet(fill, &DPFillKey);
+            if (dia && fill.layer.backgroundColor) {
+                DPWithoutAnimation(^{ fill.layer.backgroundColor = dia.CGColor; });
+            }
+        }
+        fill.needsDisplay = YES;
+    }
 }
 
-// Found from Dia's views, so a hook that never ran shows up: no tab fill has Dia's color recorded.
 static NSString *DPVerifyPlainSelectedTab(DPPatch *patch) {
-    for (NSView *fill in DPFindViews(DPDiaColorFill)) {
+    for (NSView *fill in DPFindViews(DPDiaColorView)) {
         if (!DPIsTabFill(fill) || fill.hiddenOrHasHiddenAncestor || !fill.layer.backgroundColor) continue;
         NSColor *dia = DPGet(fill, &DPFillKey);
         if (!dia) return @"selected tab's fill isn't watched";
@@ -90,12 +112,12 @@ DP_PATCH(DPPlainSelectedTab) {
     .key = @"plainSelectedTab",
     .order = 46,
     .title = @"Hide Site Color in Tab Bar",
-    .detail = @"While the toolbar is hidden, show the selected tab in the page color instead of the site's.",
+    .detail = @"While the toolbar is hidden, show the selected tab in the page color instead of the site’s.",
     .symbol = @"paintbrush.fill",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
-    .section = @"While It's Hidden",
-    .classes = DPClasses(DPDiaColorFill, DPDiaTabShape, DPDiaTabStrip),
+    .section = @"While It’s Hidden",
+    .classes = DPClasses(DPDiaColorView, DPDiaTabShape, DPDiaTabStrip),
     .install = DPInstallPlainSelectedTab,
     .apply = DPApplyPlainSelectedTab,
     .verify = DPVerifyPlainSelectedTab,

@@ -2,23 +2,14 @@
 #import "Commands/GroupTabs/GroupTabs.h"
 #import <objc/message.h>
 
-static const NSUInteger DPTidyMaxTabs = 50;  // Keeps the prompt inside the on-device model's context.
-static BOOL DPTidyBusy;
+static const NSUInteger DPTidyMaxTabs = 50;
 
-void DPTidyAskModel(NSArray *tabs, void (^done)(NSArray *groups, NSString *error));  // Model.swift
+void DPTidyAskModel(NSArray *tabs, void (^done)(NSArray *groups, NSString *error));
 
-// Nothing to show for a tidy that didn't happen, like one with no tabs that belong together; the broom just stops.
 static void DPTidyFail(NSString *message) {
     NSLog(@"DiaPatches: Tidy Tabs: %@", message);
 }
 
-static void DPTidySetBusy(BOOL busy) {
-    DPTidyBusy = busy;
-    DPTidyBrushesBusy(busy);
-}
-
-// Turns the model's groups of tab numbers into Group Tabs' ops: valid, distinct tabs, two or more to a group. They
-// have no title, so Dia's own AI names each group as it appears.
 static NSArray<NSDictionary *> *DPTidyOps(NSArray *groups, NSArray<NSDictionary *> *tabs) {
     NSMutableArray *ops = [NSMutableArray array];
     NSMutableSet<NSNumber *> *used = [NSMutableSet set];
@@ -47,8 +38,9 @@ static void DPTidyGroup(id browser, id delegate, NSArray<NSDictionary *> *tabs) 
         NSLog(@"DiaPatches: Tidy Tabs made %lu groups from %lu tabs", (unsigned long)ops.count, (unsigned long)tabs.count);
         if (!ops.count) { DPTidySetBusy(NO); return DPTidyFail(@"No tabs clearly belonged together."); }
         NSArray *ids = [ops valueForKeyPath:@"@unionOfArrays.ids"];
+        NSSet *idSet = [NSSet setWithArray:ids];
         NSMutableDictionary *urls = [NSMutableDictionary dictionary];
-        for (NSDictionary *tab in tabs) if ([ids containsObject:tab[@"session"]]) urls[tab[@"session"]] = tab[@"url"];
+        for (NSDictionary *tab in tabs) if ([idSet containsObject:tab[@"session"]]) urls[tab[@"session"]] = tab[@"url"];
         NSDictionary *places = DPTabPlaces(urls);
         DPRunOps(delegate, browser, ops, 0, ^{
             DPTidySetBusy(NO);
@@ -57,13 +49,13 @@ static void DPTidyGroup(id browser, id delegate, NSArray<NSDictionary *> *tabs) 
     });
 }
 
-// The front window's tabs below the divider that aren't in a group yet, with their titles, go to the model.
 void DPTidyTabsNow(NSWindow *window) {
-    if (DPTidyBusy) return;
-    id browser = DPCommandBrowser();
+    if (DPTidyIsBusy()) return;
+    window = window ?: NSApp.keyWindow;
+    id browser = DPBrowserOfWindow(window);
     id delegate = browser ? DPGroupingDelegate(browser) : nil;
     if (![delegate respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)]) return DPTidyFail(@"Dia’s tabs aren’t ready yet.");
-    NSDictionary<NSString *, NSString *> *loose = DPTidyLooseTabs(window ?: NSApp.keyWindow);
+    NSDictionary<NSString *, NSString *> *loose = DPTidyLooseTabs(window);
     NSMutableArray<NSDictionary *> *candidates = [NSMutableArray array];
     for (id contents in DPTrackedContents(browser)) {
         long long sid = DPSessionOf(contents);
@@ -72,6 +64,7 @@ void DPTidyTabsNow(NSWindow *window) {
         if (sid <= 0 || !host || !loose[url]) continue;
         [candidates addObject:@{@"session": @(sid), @"url": url, @"address": DPTidyAddress(url, host), @"title": loose[url]}];
     }
+    if (candidates.count < 2) return DPTidyFail(@"There are no loose tabs to tidy.");
     DPTidySetBusy(YES);
     void (*ask)(id, SEL, id, void (^)(NSArray *)) = (void *)objc_msgSend;
     ask(delegate, @selector(browser:getAllTabGroupsWithCompletion:), browser, ^(NSArray *groups) {

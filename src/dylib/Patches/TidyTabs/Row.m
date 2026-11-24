@@ -1,8 +1,7 @@
 #import "TidyTabs.h"
 
-static const CGFloat DPLineInset = 11, DPLineGap = 6;  // Dia's divider runs 11pt in from each side.
+static const CGFloat DPLineInset = 11;
 
-// The row opened above the tabs when there's no divider of Dia's to sit in: a line like Dia's, and the broom.
 @implementation DPTidyRowView {
     DPTidyBrush *_brush;
     CALayer *_line;
@@ -23,7 +22,7 @@ static const CGFloat DPLineInset = 11, DPLineGap = 6;  // Dia's divider runs 11p
 
 - (void)updateLayer {
     [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
-        self->_line.backgroundColor = [NSColor.labelColor colorWithAlphaComponent:0.1].CGColor;
+        DPWithoutAnimation(^{ self->_line.backgroundColor = [NSColor.labelColor colorWithAlphaComponent:0.1].CGColor; });
     }];
 }
 
@@ -32,10 +31,7 @@ static const CGFloat DPLineInset = 11, DPLineGap = 6;  // Dia's divider runs 11p
     NSRect bounds = self.bounds;
     CGFloat mid = round(NSMidY(bounds));
     _brush.frame = NSMakeRect(NSMaxX(bounds) - DPLineInset - DPTidyBrushSize + 4, mid - DPTidyBrushSize / 2, DPTidyBrushSize, DPTidyBrushSize);
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    _line.frame = NSMakeRect(DPLineInset, mid, MAX(0, NSMinX(_brush.frame) - DPLineGap - DPLineInset), 1);
-    [CATransaction commit];
+    DPWithoutAnimation(^{ self->_line.frame = NSMakeRect(DPLineInset, mid, MAX(0, NSMinX(self->_brush.frame) - DPTidyLineGap - DPLineInset), 1); });
     DPTidyWave(self.layer, _line, _line.backgroundColor, DPTidyIsBusy());
 }
 

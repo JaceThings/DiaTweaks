@@ -1,15 +1,14 @@
 #import "HideToolbar.h"
 #import <Metal/Metal.h>
 
-// The loading line's colors: Dia's own, the accent color, or a pair of system colors. Dia works out its glow's colors in
-// Swift, out of reach, so they're read as it hands them to its shader, per address field.
+extern DPPatch DPPeek;
 static char DPDiaColorsKey;
-static __weak id DPDrawing;  // Dia's loading indicator while it draws.
-static NSData *DPLastDiaColors;  // For a pane whose field hasn't drawn yet, such as at the start of its first load.
+// TLS so Chromium/Skia background Metal encoders never race on or misattribute the main thread's indicator draw.
+static _Thread_local void *DPDrawing;
+static NSData *DPLastDiaColors;
 
 static NSArray<NSString *> *DPPresetNames(void) { return @[@"Blue", @"Purple", @"Pink", @"Orange", @"Green", @"Graphite", @"Jace"]; }
 
-// A color from hex values for light and dark, as ja.mt's own tokens are.
 static NSColor *DPHex(uint32_t light, uint32_t dark) {
     return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
         BOOL isDark = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] == NSAppearanceNameDarkAqua;
@@ -19,16 +18,19 @@ static NSColor *DPHex(uint32_t light, uint32_t dark) {
 }
 
 static NSArray<NSColor *> *DPPreset(NSString *name) {
-    NSDictionary<NSString *, NSArray<NSColor *> *> *presets = @{
-        @"Blue" : @[NSColor.systemBlueColor, NSColor.systemTealColor],
-        @"Purple" : @[NSColor.systemPurpleColor, NSColor.systemIndigoColor],
-        @"Pink" : @[NSColor.systemPinkColor, NSColor.systemPurpleColor],
-        @"Orange" : @[NSColor.systemOrangeColor, NSColor.systemRedColor],
-        @"Green" : @[NSColor.systemGreenColor, NSColor.systemMintColor],
-        @"Graphite" : @[NSColor.systemGrayColor, NSColor.labelColor],
-        // For DiaTweaks' maker: ja.mt's --primary and --heading.
-        @"Jace" : @[DPHex(0x73574a, 0x9a918a), DPHex(0x432818, 0xfef1df)],
-    };
+    static NSDictionary<NSString *, NSArray<NSColor *> *> *presets;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        presets = @{
+            @"Blue" : @[NSColor.systemBlueColor, NSColor.systemTealColor],
+            @"Purple" : @[NSColor.systemPurpleColor, NSColor.systemIndigoColor],
+            @"Pink" : @[NSColor.systemPinkColor, NSColor.systemPurpleColor],
+            @"Orange" : @[NSColor.systemOrangeColor, NSColor.systemRedColor],
+            @"Green" : @[NSColor.systemGreenColor, NSColor.systemMintColor],
+            @"Graphite" : @[NSColor.systemGrayColor, NSColor.labelColor],
+            @"Jace" : @[DPHex(0x73574a, 0x9a918a), DPHex(0x432818, 0xfef1df)],
+        };
+    });
     return presets[name];
 }
 
@@ -41,15 +43,13 @@ NSMenu *DPProgressColorChoices(void) {
     return menu;
 }
 
-simd_float3 DPRGB(NSColor *color) {
+static simd_float3 DPRGB(NSColor *color) {
     NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
     return (simd_float3){rgb.redComponent, rgb.greenComponent, rgb.blueComponent};
 }
 
-// The colors Dia last drew the pane's address field glow with, if it has since launch.
 static NSData *DPDiaColorsIn(NSView *pane) {
-    NSView *bar = DPSubview(pane, DPDiaToolbar);
-    NSView *indicator = bar ? DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaLoadingIndicator); }) : nil;
+    NSView *indicator = DPFindView(DPSubview(pane, DPDiaToolbar), ^BOOL(NSView *view) { return DPIsKind(view, DPDiaLoadingIndicator); });
     __block NSData *colors = DPGet(indicator, &DPDiaColorsKey);
     if (!colors && indicator) DPFindView(indicator, ^BOOL(NSView *view) { return (colors = DPGet(view, &DPDiaColorsKey)) != nil; });
     return colors ?: DPLastDiaColors;
@@ -63,7 +63,6 @@ void DPProgressColors(NSView *pane, NSString *choice, simd_float3 *primary, simd
         return;
     }
     NSArray<NSColor *> *preset = DPPreset(choice.capitalizedString);
-    // In the pane's own appearance, so light and dark pages each get their colors.
     [pane.effectiveAppearance performAsCurrentDrawingAppearance:^{
         NSColor *accent = NSColor.controlAccentColor;
         *primary = DPRGB(preset ? preset[0] : accent);
@@ -72,17 +71,20 @@ void DPProgressColors(NSView *pane, NSString *choice, simd_float3 *primary, simd
 }
 
 static void DPIndicator_drawInMTKView(id self, SEL _cmd, id view) {
-    DPDrawing = self;
+    if (!(DPHideToolbar.on && DPShowLoadingProgress.on) && !DPPeek.on) return DPCallOriginal(DPIndicator_drawInMTKView, self, view);
+    void *prev = DPDrawing;
+    DPDrawing = (__bridge void *)self;
     DPCallOriginal(DPIndicator_drawInMTKView, self, view);
-    DPDrawing = nil;
+    DPDrawing = prev;
 }
 
 static void DPEncoder_setFragmentBytes(id self, SEL _cmd, const void *bytes, NSUInteger length, NSUInteger index) {
     DPCallOriginal(DPEncoder_setFragmentBytes, self, bytes, length, index);
+    void *raw = DPDrawing;
+    if (!raw || length < 3 * sizeof(float)) return;
+    id drawing = (__bridge id)raw;
     NSUInteger slots[2];
-    id drawing = DPDrawing;
-    if (!drawing || length < 3 * sizeof(float) || !DPProgressColorSlots(slots)) return;
-    if (index != slots[0] && index != slots[1]) return;
+    if (!DPProgressColorSlots(slots) || (index != slots[0] && index != slots[1])) return;
     NSMutableData *colors = DPGet(drawing, &DPDiaColorsKey) ?: [NSMutableData dataWithLength:2 * sizeof(simd_float3)];
     memcpy((simd_float3 *)colors.mutableBytes + (index == slots[1]), bytes, 3 * sizeof(float));
     DPSet(drawing, &DPDiaColorsKey, colors);
@@ -91,7 +93,7 @@ static void DPEncoder_setFragmentBytes(id self, SEL _cmd, const void *bytes, NSU
 
 void DPInstallProgressColors(void) {
     DPHook(DPDiaLoadingIndicator, @selector(drawInMTKView:), (IMP)DPIndicator_drawInMTKView);
-    // Metal's encoders are the GPU driver's own class, found by making one.
+    // Encoders are the GPU driver's private class, found by making one.
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     MTLTextureDescriptor *target = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:1 height:1 mipmapped:NO];
     target.usage = MTLTextureUsageRenderTarget;

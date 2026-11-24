@@ -4,69 +4,16 @@ static const CGFloat DPHintHeight = 26, DPHintPadX = 10, DPHintPadY = 5, DPHintL
 
 @interface DPPeekButton : NSButton
 @property (nonatomic, weak) NSView *pill;
-@property (nonatomic, copy) NSString *hintText;
+@property (nonatomic, copy) NSString *hintText, *symbolName;
 @property (nonatomic, copy) NSArray<NSString *> *hintKeys;
 @property (nonatomic, strong) CAShapeLayer *circle;
 @property (nonatomic, strong) CALayer *iconLayer;
 @end
 
-// A view's layer scales from its corner.
 CATransform3D DPPeekScaled(NSView *view, CGFloat scale) {
     CGFloat cx = NSWidth(view.bounds) / 2, cy = NSHeight(view.bounds) / 2;
     return CATransform3DTranslate(CATransform3DScale(CATransform3DMakeTranslation(cx, cy, 0), scale, scale, 1), -cx, -cy, 0);
 }
-
-@implementation DPPeekButton
-- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
-
-- (void)layout {
-    [super layout];
-    self.circle.frame = self.bounds;
-    CGPathRef path = CGPathCreateWithEllipseInRect(self.bounds, NULL);
-    self.circle.path = path;
-    CGPathRelease(path);
-    self.iconLayer.frame = self.bounds;
-}
-
-- (void)setHighlighted:(BOOL)highlighted {
-    [super setHighlighted:highlighted];
-    self.circle.fillColor = [NSColor colorWithWhite:0.08 alpha:highlighted ? 0.7 : 0.9].CGColor;
-}
-
-- (void)updateTrackingAreas {
-    [super updateTrackingAreas];
-    for (NSTrackingArea *area in self.trackingAreas) [self removeTrackingArea:area];
-    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:self.bounds
-                                                       options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow
-                                                         owner:self userInfo:nil]];
-}
-
-- (void)grow:(BOOL)hovered {
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.12;
-        context.allowsImplicitAnimation = YES;
-        self.layer.transform = hovered ? DPPeekScaled(self, 1.12) : CATransform3DIdentity;
-    }];
-}
-
-- (void)showHint {
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.12;
-        self.pill.animator.alphaValue = 1;
-    }];
-}
-
-- (void)mouseEntered:(NSEvent *)event {
-    [self grow:YES];
-    [self performSelector:@selector(showHint) withObject:nil afterDelay:1.0];
-}
-
-- (void)mouseExited:(NSEvent *)event {
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showHint) object:nil];
-    [self grow:NO];
-    self.pill.alphaValue = 0;
-}
-@end
 
 static NSBitmapImageRep *DPPeekDraw(NSSize size, CGFloat scale, void (^draw)(void)) {
     NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:size.width * scale pixelsHigh:size.height * scale
@@ -109,6 +56,88 @@ static id DPPeekIcon(NSString *name, CGFloat side, CGFloat scale) {
     });
     return icons[key] = (__bridge id)bitmap.CGImage;
 }
+
+@implementation DPPeekButton
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+
+- (void)refreshIcon {
+    if (!self.symbolName || !self.iconLayer) return;
+    CGFloat scale = self.window.backingScaleFactor ?: (NSScreen.mainScreen.backingScaleFactor ?: 2);
+    if (self.iconLayer.contents && fabs(self.iconLayer.contentsScale - scale) < 0.01) return;
+    CGFloat side = NSWidth(self.bounds) ?: 28;
+    DPWithoutAnimation(^{
+        self.iconLayer.contents = DPPeekIcon(self.symbolName, side, scale);
+        self.iconLayer.contentsScale = scale;
+    });
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (self.window) [self refreshIcon];
+}
+
+- (void)viewDidChangeBackingProperties {
+    [super viewDidChangeBackingProperties];
+    [self refreshIcon];
+}
+
+- (void)layout {
+    [super layout];
+    CGPathRef path = CGPathCreateWithEllipseInRect(self.bounds, NULL);
+    DPWithoutAnimation(^{
+        self.circle.frame = self.bounds;
+        self.circle.path = path;
+        self.iconLayer.frame = self.bounds;
+    });
+    CGPathRelease(path);
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    DPWithoutAnimation(^{ self.circle.fillColor = [NSColor colorWithWhite:0.08 alpha:highlighted ? 0.7 : 0.9].CGColor; });
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in self.trackingAreas) [self removeTrackingArea:area];
+    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:self.bounds
+                                                       options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
+                                                         owner:self userInfo:nil]];
+}
+
+- (void)grow:(BOOL)hovered {
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.12;
+        context.allowsImplicitAnimation = YES;
+        self.layer.transform = hovered ? DPPeekScaled(self, 1.12) : CATransform3DIdentity;
+    }];
+}
+
+- (void)showHint {
+    if (self.isHiddenOrHasHiddenAncestor) return;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.12;
+        self.pill.animator.alphaValue = 1;
+    }];
+}
+
+- (void)resetHover {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showHint) object:nil];
+    DPWithoutAnimation(^{ self.layer.transform = CATransform3DIdentity; });
+    self.pill.alphaValue = 0;
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    [self grow:YES];
+    [self performSelector:@selector(showHint) withObject:nil afterDelay:1.0];
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showHint) object:nil];
+    [self grow:NO];
+    self.pill.alphaValue = 0;
+}
+@end
 
 static NSView *DPPeekKeycap(NSString *glyph) {
     static const CGFloat height = 17;
@@ -175,36 +204,49 @@ static NSView *DPPeekMakeHint(NSString *text, NSArray<NSString *> *keys, CGFloat
     return pill;
 }
 
+static char DPHintsWidthKey;
+
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight) {
+    CGFloat maxWidth = MAX(40, availableRight - DPHintRightGap - 2 * DPHintPadX);
+    NSNumber *last = DPGet(controls, &DPHintsWidthKey);
+    if (last && fabs(last.doubleValue - maxWidth) < 0.5) return;
+    DPSet(controls, &DPHintsWidthKey, @(maxWidth));
     for (DPPeekButton *button in [controls.subviews copy]) {
         if (![button isKindOfClass:DPPeekButton.class]) continue;
+        CGFloat shown = button.pill.alphaValue;
         [button.pill removeFromSuperview];
-        NSView *pill = DPPeekMakeHint(button.hintText, button.hintKeys, MAX(40, availableRight - DPHintRightGap - 2 * DPHintPadX));
+        NSView *pill = DPPeekMakeHint(button.hintText, button.hintKeys, maxWidth);
+        pill.alphaValue = shown;
         pill.frame = NSMakeRect(NSMaxX(button.frame) + DPHintRightGap, NSMidY(button.frame) - NSHeight(pill.frame) / 2, NSWidth(pill.frame), NSHeight(pill.frame));
         button.pill = pill;
         [controls addSubview:pill];
     }
 }
 
-// Not a stack view, which squeezed the circles out of shape.
+void DPPeekResetControlHints(NSView *controls) {
+    for (NSView *sub in controls.subviews)
+        if ([sub isKindOfClass:DPPeekButton.class]) [(DPPeekButton *)sub resetHover];
+}
+
 NSView *DPPeekControls(id target, SEL action) {
     static const CGFloat side = 28, gap = 8;
     CGFloat scale = NSScreen.mainScreen.backingScaleFactor ?: 2;
     NSArray<NSDictionary *> *specs = @[
-        @{@"symbol": @"xmark", @"a11y": @"Close Peek", @"hint": @"Close", @"keys": @[@"⌘", @"W"]},
-        @{@"symbol": @"arrow.up.left.and.arrow.down.right", @"a11y": @"Open as Tab", @"hint": @"Expand", @"keys": @[@"⌘", @"O"]},
-        @{@"symbol": @"rectangle.split.2x1", @"a11y": @"Create Split View", @"hint": @"Create Split View"},
+        @{@"tag": @(DPPeekClose), @"symbol": @"xmark", @"a11y": @"Close Peek", @"hint": @"Close", @"keys": @[@"⌘", @"W"]},
+        @{@"tag": @(DPPeekTab), @"symbol": @"arrow.up.left.and.arrow.down.right", @"a11y": @"Open as Tab", @"hint": @"Expand", @"keys": @[@"⌘", @"O"]},
+        @{@"tag": @(DPPeekSplit), @"symbol": @"rectangle.split.2x1", @"a11y": @"Create Split View", @"hint": @"Create Split View"},
     ];
     NSView *controls = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, side, specs.count * side + (specs.count - 1) * gap)];
     controls.clipsToBounds = NO;
     for (NSUInteger i = 0; i < specs.count; i++) {
         NSDictionary *spec = specs[i];
         DPPeekButton *button = [DPPeekButton buttonWithTitle:@"" target:target action:action];
-        button.tag = i;
+        button.tag = [spec[@"tag"] integerValue];
         button.bordered = NO;
         button.accessibilityLabel = spec[@"a11y"];
         button.hintText = spec[@"hint"];
         button.hintKeys = spec[@"keys"];
+        button.symbolName = spec[@"symbol"];
         button.wantsLayer = YES;
         button.frame = NSMakeRect(0, (specs.count - 1 - i) * (side + gap), side, side);
 

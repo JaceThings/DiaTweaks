@@ -1,12 +1,14 @@
 #import "TidyTabs.h"
 
 static void DPApplyTidyTabs(DPPatch *patch) {
-    if (!patch->on)
-        for (NSView *list in DPFindViews(DPDiaTabList)) [[DPTidyHover forList:list] detach];
+    if (!patch->on) {
+        for (NSView *list in DPTidyTrackedLists()) [[DPTidyHover forList:list] detach];
+        for (DPTidyBrush *brush in DPTidyBrushes().allObjects)
+            if (DPIsKind(brush.superview, DPDiaTabListSeparator)) DPPlaceSeparatorBrush(brush.superview);
+    }
     DPRelayoutTidyLists();
 }
 
-// Only the sidebar has a tab list; with tabs at the top there's nothing to check.
 static NSString *DPVerifyTidyTabs(DPPatch *patch) {
     for (NSView *list in DPFindViews(DPDiaTabList)) {
         if (list.hiddenOrHasHiddenAncestor) continue;
