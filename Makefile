@@ -214,8 +214,8 @@ build/tab-titles: tests/tab-titles.m src/dylib/Patches/TabTitles/Title.m src/dyl
 
 DIAPATCH_PARTS := $(filter-out src/diapatch/main.m,$(wildcard src/diapatch/*.m))
 
-build/diapatch-tests: tests/diapatch.m $(wildcard src/diapatch/*.[hm]) | build
-	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/diapatch -framework AppKit -framework CoreGraphics -framework Security -o $@ tests/diapatch.m $(DIAPATCH_PARTS)
+build/diapatch-tests: tests/diapatch.m $(wildcard src/diapatch/*.[hm]) $(TIDY_NAMES)/Names.m $(TIDY_NAMES)/DownloadBridge.h build/TidyDownloadModel.o | build
+	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/diapatch -framework AppKit -framework CoreGraphics -framework Security -L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ tests/diapatch.m $(DIAPATCH_PARTS) $(TIDY_NAMES)/Names.m build/TidyDownloadModel.o
 
 build/ai-history-search: tests/ai-history-search.m src/dylib/Patches/AIHistorySearch/AIHistorySearch.m $(wildcard src/dylib/StdPatch/*.h) | build
 	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/dylib -framework AppKit -o $@ tests/ai-history-search.m
