@@ -146,7 +146,7 @@ int main(void) {
         class_replaceMethod(preview, @selector(load), imp_implementationWithBlock(^(id self) {}), "v@:");
 
         DPLoadPatches();
-        expect(DPPatchCount == 105, @"the dylib lists 105 tweaks");
+        expect(DPPatchCount == 108, @"the dylib lists 108 tweaks");
         // Dia's classes aren't here, so every tweak would look unavailable; this test is about the layout.
         for (NSUInteger i = 0; i < DPPatchCount; i++) DPPatches[i]->unavailable = NO;
 
@@ -180,7 +180,7 @@ int main(void) {
         expectEqual(@(groups.count), @14, @"Overview has 13 sections and Paused");
         NSUInteger rows = 0;
         for (NSUInteger i = 1; i < groups.count; i++) rows += DPRowsIn(groups[i]).count;
-        expectEqual(@(rows), @61, @"Overview has 61 tweak and folder rows");
+        expectEqual(@(rows), @62, @"Overview has 62 tweak and folder rows");
         for (NSString *folder in @[ @"Pinned Tabs", @"Hide AI Prompts & Buttons", @"Password Managers" ])
             expect(DPRowTitled(overview, folder) != nil, [NSString stringWithFormat:@"Overview has a %@ folder row", folder]);
         expect(DPRowTitled(overview, @"Allow 1Password") == nil, @"Allow 1Password has no row of its own");

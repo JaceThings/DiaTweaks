@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+mkdir -p build
+clang -fobjc-arc -Isrc/dylib -framework AppKit -framework QuartzCore \
+    tests/sidebar-navigation.m src/dylib/Patches/SidebarNavigation/Layout.m \
+    src/dylib/Patches/SidebarNavigation/Placement.m src/dylib/Patches/SidebarNavigation/Horizontal.m \
+    src/dylib/Patches/SidebarNavigation/NativeSlot.m src/dylib/Patches/SidebarNavigation/NativeHooks.m \
+    src/dylib/Patches/SidebarNavigation/Toolbar.m src/dylib/StdPatch/Views.m src/dylib/StdPatch/Hook.m \
+    -o build/sidebar-navigation-checks
+exec build/sidebar-navigation-checks
