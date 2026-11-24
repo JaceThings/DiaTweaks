@@ -17,7 +17,7 @@ LOCAL_CORE := src/dylib/Local/Local.m src/dylib/Local/Build.m src/dylib/Local/Ex
 
 COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
 
-all: build/diapatch build/DiaPatches.dylib build/patches.json
+all: build/diapatch build/DiaPatches.dylib build/patches.json build/easel-opener.stamp
 
 build/commit: FORCE | build
 	@echo '$(COMMIT)' | cmp -s - $@ || echo '$(COMMIT)' > $@
@@ -34,7 +34,7 @@ $(HEADERS_BIN): $(DYLIB_HEADERS) scripts/pack-headers | build
 	scripts/pack-headers src/dylib $@
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(HEADERS_BIN) $(wildcard $(PASSKEYS)/*) | build
-	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -Wl,-sectcreate,__TEXT,__dp_headers,$(HEADERS_BIN) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
+	clang $(CFLAGS) -Isrc/dylib -dynamiclib -framework UniformTypeIdentifiers $(EXTENSION) -Wl,-sectcreate,__TEXT,__dp_headers,$(HEADERS_BIN) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
 
 # With DIAPATCH_MANIFEST set, the dylib writes the patch list and exits as it loads, so diapatch never runs.
@@ -473,3 +473,7 @@ clean:
 	rm -rf build
 
 .PHONY: all check clean test patch
+
+build/easel-opener.stamp: src/easel-opener/main.m src/easel-opener/Info.plist scripts/build-easel-opener | build
+	scripts/build-easel-opener
+	touch $@

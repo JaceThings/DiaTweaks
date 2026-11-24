@@ -1,0 +1,82 @@
+#!/bin/sh
+set -eu
+DIATWEAKS_DOMAIN="com.diapatches.fixture.easels.$$"
+export DIATWEAKS_DOMAIN
+trap 'defaults delete "$DIATWEAKS_DOMAIN" >/dev/null 2>&1 || true' EXIT
+cd "$(dirname "$0")/.."
+mkdir -p build/easel-checks
+base=src/dylib/Patches/Easels
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/tool-hover.m "$base/ToolButton.m" -framework AppKit -framework QuartzCore -o build/easel-checks/tool-hover
+build/easel-checks/tool-hover
+sources=tests/easels/hook-stub.m
+for source in "$base"/*.m; do
+    case "$source" in */PortableImportUI.m|*/PortableOpen.m|*/Easels.m|*/Open.m|*/CreateMenu.m|*/TabMenus.m|*/TabIdentity.m|*/DeletionNotice.m|*/AddressTitle.m|*/NativeAddress.m|*/Library*.m) ;; *) sources="$sources $source" ;; esac
+done
+sources="$sources src/dylib/Patches/SidebarLibrary/MotionClock.m"
+# The host, editor and Library fixtures share one production object set.
+# Reuse it within this run rather than compiling the whole editor three times.
+objects=
+mkdir -p build/easel-checks/objects
+for source in $sources; do
+    object="build/easel-checks/objects/$(basename "$source" .m).o"
+    clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib -c "$source" -o "$object"
+    objects="$objects $object"
+done
+core_objects="$objects"
+clang -fobjc-arc -c tests/easels/effects-stub.m -o build/easel-checks/effects-stub.o
+objects="$objects build/easel-checks/effects-stub.o"
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/foundation.m $objects \
+    -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/foundation
+build/easel-checks/foundation
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/geometry.m "$base/Geometry.m" "$base/ShapeTemplates.m" "$base/Recognition.m" "$base/Snapping.m" \
+    -framework AppKit -o build/easel-checks/geometry
+build/easel-checks/geometry
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/assets.m "$base/Title.m" "$base/Validation.m" "$base/Document.m" \
+    "$base/Store.m" "$base/StoreLoad.m" "$base/StoreWrite.m" "$base/StoreTrash.m" "$base/StoreList.m" "$base/Assets.m" "$base/DiscardedAssets.m" "$base/ImageCache.m" \
+    -framework AppKit -o build/easel-checks/assets
+build/easel-checks/assets
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/editor.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/editor
+build/easel-checks/editor
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Wno-incomplete-implementation -Isrc/dylib \
+    tests/easels/library.m $objects "$base/LibraryProvider.m" "$base/LibraryCard.m" \
+    "$base/LibraryContent.m" "$base/LibraryActions.m" "$base/PortableImportUI.m" src/dylib/Patches/SidebarLibrary/Sections.m \
+    -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/library
+build/easel-checks/library
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/tab-menus.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/tab-menus
+build/easel-checks/tab-menus
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/animation.m "$base/Animation.m" -framework AppKit -o build/easel-checks/animation
+build/easel-checks/animation
+for fixture in metadata import-cancellation selection transactions paste dwell shape-options native-address animation-lifecycle image-repaint deletion-effects performance; do
+    fixture_objects="$objects"
+    if [ "$fixture" = deletion-effects ]; then fixture_objects="$core_objects"; fi
+    extra=
+    if [ "$fixture" = native-address ]; then extra="$base/NativeAddress.m"; fi
+    clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+        "tests/easels/$fixture.m" $fixture_objects $extra -framework AppKit -framework QuartzCore -framework CoreVideo -o "build/easel-checks/$fixture"
+    "build/easel-checks/$fixture"
+done
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/portable.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/portable
+build/easel-checks/portable
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/metadata-theme.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/metadata-theme
+build/easel-checks/metadata-theme
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/sharing.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/sharing
+build/easel-checks/sharing
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/text-placement.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/text-placement
+build/easel-checks/text-placement
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/modifier-drag.m $objects -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/modifier-drag
+build/easel-checks/modifier-drag
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/easels/open-existing.m $objects "$base/Open.m" -framework AppKit -framework QuartzCore -framework CoreVideo -o build/easel-checks/open-existing
+build/easel-checks/open-existing

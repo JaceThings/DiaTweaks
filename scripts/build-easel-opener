@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+app="build/DiaTweaks Easel Opener.app"
+mkdir -p "$app/Contents/MacOS"
+cp src/easel-opener/Info.plist "$app/Contents/Info.plist"
+clang -fobjc-arc -O2 -mmacosx-version-min=14.0 src/easel-opener/main.m -framework AppKit -o "$app/Contents/MacOS/EaselOpener"
+codesign --force --sign - "$app"

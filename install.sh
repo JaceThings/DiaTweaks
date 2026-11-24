@@ -67,4 +67,5 @@ if [ -n "$cli" ]; then
     fi
 fi
 
+DIAPATCH_HOME="$support" scripts/install-easel-opener
 "$support/bin/diapatch" install --relaunch

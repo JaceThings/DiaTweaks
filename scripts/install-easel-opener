@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+support="${DIAPATCH_HOME:-$HOME/Library/Application Support/DiaPatches}"
+app="$support/Easel Opener.app"
+identity=com.diapatches.easel-opener
+if [ -d "$app" ] && [ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" != "$identity" ]; then
+    echo "Left $app alone: it isn't DiaTweaks' file opener." >&2; exit 1
+fi
+# Identity follows DiaTweaks' existing com.diapatches namespace. No store ID,
+# App Group, extension, or change to Dia's published bundle identity is involved.
+[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' 'build/DiaTweaks Easel Opener.app/Contents/Info.plist')" = "$identity" ]
+mkdir -p "$support"
+next="$support/.easel-opener-next"
+previous="$support/.easel-opener-previous"
+trap 'rm -rf "$next"' EXIT
+rm -rf "$next"
+ditto 'build/DiaTweaks Easel Opener.app' "$next"
+if [ -e "$previous" ]; then echo "Previous opener update needs inspection: $previous" >&2; exit 1; fi
+if [ -d "$app" ]; then mv "$app" "$previous"; fi
+if mv "$next" "$app"; then rm -rf "$previous"; else [ ! -d "$previous" ] || mv "$previous" "$app"; exit 1; fi
+# Scratch installs must not register system-wide file handlers.
+if [ "${DIAPATCH_NO_RELAUNCH:-0}" != 1 ] && [ -z "${DIAPATCH_APP:-}" ]; then
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
+fi

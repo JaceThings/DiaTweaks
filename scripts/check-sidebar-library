@@ -1,0 +1,45 @@
+#!/bin/sh
+# Native regression fixtures use isolated AppKit windows and disposable files.
+# They do not modify Dia preferences, browser profiles or installed binaries.
+set -eu
+cd "$(dirname "$0")/.."
+mkdir -p build/library-checks
+compile() {
+    name=$1
+    shift
+    clang -fobjc-arc -Wno-incomplete-implementation -Isrc/dylib "$@" \
+        -framework AppKit -framework Quartz -framework CoreVideo -o "build/library-checks/$name"
+    "build/library-checks/$name"
+}
+base=src/dylib/Patches/SidebarLibrary
+compile gesture-routing tests/library/gesture-routing.m "$base/GestureState.m" "$base/GestureRouting.m"
+compile interactive-layout tests/library/interactive-layout.m "$base/Interaction.m" "$base/Visibility.m" src/dylib/StdPatch/Hook.m
+compile host-frames tests/library/host-frames.m "$base/Host.m" "$base/HostFrames.m" "$base/Backdrop.m" src/dylib/StdPatch/Hook.m
+compile motion-clock tests/library/motion-clock.m "$base/MotionClock.m"
+compile immediate-close tests/library/immediate-close.m "$base/Motion.m" "$base/MotionClock.m"
+compile view-lifecycle tests/library/view-lifecycle.m \
+    "$base/Surface.m" "$base/Build.m" "$base/Sections.m" "$base/Reload.m" "$base/Refresh.m" "$base/RefreshButton.m" \
+    "$base/Items.m" "$base/Buttons.m" "$base/Files.m" "$base/DateSections.m" "$base/FileRows.m" \
+    "$base/DownloadProgress.m" "$base/FileDetail.m" "$base/FileMenu.m" "$base/Media.m" "$base/MediaTile.m" "$base/InputSurfaces.m" "$base/Theme.m" \
+    "$base/Hidden.m" "$base/Options.m" "$base/RowActions.m" "$base/QuickTip.m" "$base/SelectionMotion.m" "$base/Dissolve.m" "$base/DustSamples.m" "$base/DustView.m" "$base/MotionClock.m" "$base/HoverState.m"
+compile recent-actions tests/library/recent-actions.m "$base/Recent.m" "$base/Files.m" "$base/Dissolve.m" "$base/DustSamples.m" "$base/DustView.m" "$base/MotionClock.m"
+compile horizontal-context tests/library/horizontal-context.m "$base/ContextMenus.m" src/dylib/StdPatch/Hook.m
+
+compile hidden-dissolve tests/library/hidden-dissolve.m "$base/Hidden.m" "$base/Files.m" "$base/Dissolve.m" "$base/DustSamples.m" "$base/DustView.m" "$base/MotionClock.m"
+compile favicon-queue tests/library/favicon-queue.m "$base/Favicon.m"
+compile thumbnail-queue tests/library/thumbnail-queue.m "$base/Thumbnail.m"
+compile scroll-hover tests/library/scroll-hover.m "$base/HoverState.m" "$base/MediaTile.m"
+compile dust-colors tests/library/dust-colors.m "$base/DustSamples.m"
+compile window-context tests/library/window-context.m "$base/WindowContext.m"
+compile dust-snapshot tests/library/dust-snapshot.m "$base/DustView.m" "$base/DustSamples.m" "$base/MotionClock.m"
+compile native-downloads tests/library/native-downloads.m "$base/Downloads.m" "$base/Files.m" "$base/Hidden.m"
+compile archive tests/library/archive.m "$base/Archive.m" "$base/Files.m" "$base/DateSections.m"
+
+# Exercise the header's native late-sizing path; AX presence alone cannot detect a zero-height clip.
+clang -fobjc-arc -Wno-unused-parameter -ffunction-sections -fdata-sections -Isrc/dylib \
+    tests/library/horizontal-entry.m -framework AppKit -Wl,-dead_strip -o build/library-checks/horizontal-entry
+build/library-checks/horizontal-entry
+clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -Isrc/dylib \
+    tests/library/chrome-corner.m src/dylib/Patches/SidebarLibrary/Chrome.m \
+    -framework AppKit -framework QuartzCore -o build/library-checks/chrome-corner
+build/library-checks/chrome-corner
