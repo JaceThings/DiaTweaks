@@ -234,6 +234,7 @@ void DPShowShade(DPCommandBarOverlay *overlay) {
 - (void)dealloc {
     [_watch invalidate];
     if (_keyMonitor) [NSEvent removeMonitor:_keyMonitor];
+    if (_textObserver) [NSNotificationCenter.defaultCenter removeObserver:_textObserver];
 }
 
 - (BOOL)isFlipped { return YES; }
@@ -244,7 +245,7 @@ void DPShowShade(DPCommandBarOverlay *overlay) {
         NSView *bar = DPFindView(self.panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBar); });
         if (!self.collapsedHeight || NSWidth(bar.frame) != self.collapsedWidth) {
             self.collapsedWidth = NSWidth(bar.frame);
-            self.collapsedHeight = NSHeight(bar.frame) - DPSuggestionsHeight(self.panel);
+            self.collapsedHeight = NSHeight(bar.frame) - DPSuggestionsHeight(self.panel) - self.grownBy;
         }
         return DPBarFrame(self, size, self.collapsedHeight);
     }
@@ -324,6 +325,8 @@ BOOL DPHasStrip(NSWindow *window) {
 }
 
 static BOOL DPHasURL(id tab);
+static void DPFitPanel(DPCommandBarOverlay *overlay);
+static CGFloat DPInputGrowth(DPCommandBarOverlay *overlay);
 
 void DPMakeBlank(NSView *page, NSString *tab, NSString *closing) {
     if (!tab || DPInSplit(page)) return;
@@ -574,10 +577,18 @@ static DPCommandBarOverlay *DPLiftBar(NSView *page, id tabBehind) {
         }
     overlay.shownShadows = shadows;
     DPShowShade(overlay);
+    overlay.grownBy = DPInputGrowth(overlay);
     panel.frame = [overlay frameForPanelSize:panel.frame.size];
     DPHidePage(page, YES);
     DPFocusBar(overlay);
     overlay.keyMonitor = DPWatchKeys(overlay);
+    NSTextView *text = DPBarText(overlay);
+    if (text && !DPIsKind(page, DPDiaPopover)) {
+        __weak DPCommandBarOverlay *weak = overlay;
+        overlay.textObserver = [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification object:text queue:nil usingBlock:^(NSNotification *note) {
+            dispatch_async(dispatch_get_main_queue(), ^{ if (weak) DPFitPanel(weak); });
+        }];
+    }
     return overlay;
 }
 
@@ -690,23 +701,41 @@ static DPCommandBarOverlay *DPOverlayAbove(NSView *view) {
     return (DPCommandBarOverlay *)view;
 }
 
-static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd) {
-    DPCallOriginal(DPSuggestions_invalidateIntrinsicContentSize, self);
-    if (!DPCommandBar.on) return;
-    DPCommandBarOverlay *overlay = DPOverlayAbove(self);
-    if (!overlay || DPIsKind(overlay.page, DPDiaPopover)) return;
-    __weak NSView *suggestions = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSView *panel = overlay.panel;
-        CGFloat want = overlay.collapsedHeight + DPSuggestionsHeight(panel);
-        if (!panel || suggestions.intrinsicContentSize.height < 0 || NSHeight(panel.frame) == want) return;
+// Dia's own bar grows to show a second line of text, then scrolls; lifted out of its page, the bar has to be grown here.
+static CGFloat DPInputGrowth(DPCommandBarOverlay *overlay) {
+    NSTextView *text = DPBarText(overlay);
+    NSTextLayoutManager *layout = text.textLayoutManager;
+    __block NSUInteger lines = 0;
+    [layout enumerateTextLayoutFragmentsFromLocation:layout.documentRange.location options:NSTextLayoutFragmentEnumerationOptionsEnsuresLayout
+                                          usingBlock:^BOOL(NSTextLayoutFragment *fragment) {
+                                              lines += fragment.textLineFragments.count;
+                                              return YES;
+                                          }];
+    // The text view is as tall as its lines, which Dia spaces further apart than the layout reports.
+    return lines > 1 ? round(NSHeight(text.frame) / lines) : 0;
+}
+
+static void DPFitPanel(DPCommandBarOverlay *overlay) {
+    NSView *panel = overlay.panel, *suggestions = DPFindView(panel, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaCommandBarSuggestions); });
+    if (!DPCommandBar.on || !panel || panel.superview != overlay || DPIsKind(overlay.page, DPDiaPopover) || suggestions.intrinsicContentSize.height < 0) return;
+    CGFloat grow = DPInputGrowth(overlay), want = overlay.collapsedHeight + grow + DPSuggestionsHeight(panel);
+    if (NSHeight(panel.frame) != want) {
         panel.frame = [overlay frameForPanelSize:NSMakeSize(NSWidth(panel.frame), want)];
         for (NSView *view = suggestions.superview; view && view != panel; view = view.superview) {
             view.frame = NSMakeRect(0, 0, NSWidth(view.frame), NSHeight(panel.frame));
             view.needsLayout = YES;
         }
         [panel layoutSubtreeIfNeeded];
-    });
+    }
+    overlay.grownBy = grow;
+}
+
+static void DPSuggestions_invalidateIntrinsicContentSize(NSView *self, SEL _cmd) {
+    DPCallOriginal(DPSuggestions_invalidateIntrinsicContentSize, self);
+    if (!DPCommandBar.on) return;
+    DPCommandBarOverlay *overlay = DPOverlayAbove(self);
+    if (!overlay || DPIsKind(overlay.page, DPDiaPopover)) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ DPFitPanel(overlay); });
 }
 
 static void DPCapability_mouseDown(NSView *self, SEL _cmd, NSEvent *event) {
