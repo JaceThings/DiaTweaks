@@ -1,4 +1,5 @@
 #import "StdPatch/StdPatch.h"
+#import "SafeMode/SafeMode.h"
 
 @interface NSWindow (DPPrivate)
 - (BOOL)_hasActiveAppearance;
@@ -12,6 +13,13 @@
 
 extern DPPatch DPKeepWindowsActive;
 
+static BOOL DPSettingsIsKey, DPPendingKeyRefresh;
+static NSMapTable<NSWindow *, NSNumber *> *DPAppliedKept;
+
+static BOOL DPRunning(void) {
+    return !DPSafeMode && !DPPaused && !DPPausedAtLaunch;
+}
+
 static BOOL DPIsSettingsWindow(NSWindow *window) {
     return DPIsKind(window.contentViewController, DPDiaSettingsController) || DPIsKind(window.toolbar.delegate, DPDiaSettingsController);
 }
@@ -20,9 +28,11 @@ static BOOL DPIsBrowserWindow(NSWindow *window) {
     return (window.styleMask & NSWindowStyleMaskTitled) && ![window isKindOfClass:NSPanel.class] && !DPIsSettingsWindow(window);
 }
 
+// AppKit asks on every draw: with the tweak off and no Settings window key, this answers from two flags.
 static BOOL DPKeptActive(NSWindow *window) {
-    if (!DPIsBrowserWindow(window)) return NO;
-    return DPKeepWindowsActive.on || (window.visible && DPIsSettingsWindow(NSApp.keyWindow));
+    BOOL on = DPKeepWindowsActive.on;
+    if (!on && !(DPSettingsIsKey && DPRunning())) return NO;
+    return (on || window.visible) && DPIsBrowserWindow(window);
 }
 
 static BOOL DPWindow_hasActiveAppearance(NSWindow *self, SEL _cmd) {
@@ -40,8 +50,12 @@ static void DPRefreshKeyState(NSView *view) {
 }
 
 static void DPApplyKeepWindowsActive(DPPatch *patch) {
+    if (!DPAppliedKept) DPAppliedKept = [NSMapTable weakToStrongObjectsMapTable];
     for (NSWindow *window in NSApp.windows) {
         if (!DPIsBrowserWindow(window)) continue;
+        NSNumber *kept = @(DPKeptActive(window));
+        if ([kept isEqual:[DPAppliedKept objectForKey:window]]) continue;
+        [DPAppliedKept setObject:kept forKey:window];
         if ([window respondsToSelector:@selector(_setShadowParameters)]) [window _setShadowParameters];
         DPRefreshKeyState(window.contentView.superview);
     }
@@ -72,18 +86,36 @@ static NSString *DPVerifyKeepWindowsActive(DPPatch *patch) {
     return nil;
 }
 
+static void DPScheduleKeyRefresh(void) {
+    if (DPPendingKeyRefresh) return;
+    DPPendingKeyRefresh = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DPPendingKeyRefresh = NO;
+        DPSettingsIsKey = DPRunning() && DPIsSettingsWindow(NSApp.keyWindow);
+        DPApplyKeepWindowsActive(&DPKeepWindowsActive);
+    });
+}
+
 static void DPSettingsKeyChanged(NSNotification *note) {
-    if (DPKeepWindowsActive.on || !DPIsSettingsWindow(note.object)) return;
-    dispatch_async(dispatch_get_main_queue(), ^{ DPApplyKeepWindowsActive(&DPKeepWindowsActive); });
+    if (![note.object isKindOfClass:NSWindow.class] || !DPIsSettingsWindow(note.object)) return;
+    DPSettingsIsKey = DPRunning() && [note.name isEqualToString:NSWindowDidBecomeKeyNotification];
+    if (!DPKeepWindowsActive.on && DPRunning()) DPScheduleKeyRefresh();
 }
 
 static void DPInstallKeepWindowsActive(void) {
-    DPHookClass(NSWindow.class, @selector(_hasActiveAppearance), (IMP)DPWindow_hasActiveAppearance);
-    DPHookClass(NSWindow.class, @selector(hasKeyAppearance), (IMP)DPWindow_hasKeyAppearance);
-    for (NSNotificationName name in @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification])
-        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-            DPSettingsKeyChanged(note);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        DPHookClass(NSWindow.class, @selector(_hasActiveAppearance), (IMP)DPWindow_hasActiveAppearance);
+        DPHookClass(NSWindow.class, @selector(hasKeyAppearance), (IMP)DPWindow_hasKeyAppearance);
+        NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+        for (NSNotificationName name in @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification])
+            [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+                DPSettingsKeyChanged(note);
+            }];
+        [center addObserverForName:DPPatchesDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            if (!DPKeepWindowsActive.on) DPScheduleKeyRefresh();
         }];
+    });
 }
 
 DP_PATCH(DPKeepWindowsActive) {
