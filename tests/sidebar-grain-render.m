@@ -5,6 +5,39 @@ extern DPPatch DPKeepWindowsActive;
 - (BOOL)_hasActiveAppearance;
 @end
 
+__attribute__((objc_runtime_name(DPDiaSettingsController)))
+@interface DPTestSettingsController : NSViewController
+@end
+@implementation DPTestSettingsController
+- (void)loadView { self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)]; }
+@end
+
+static NSWindow *DPTestKeyWindow;
+static NSWindow *DPTestApp_keyWindow(id self, SEL _cmd) { return DPTestKeyWindow; }
+
+static void DPTestSettingsPreview(NSWindow *browser, DPSidebarGrainView *grain) {
+    __attribute__((objc_precise_lifetime)) DPTestSettingsController *controller = [DPTestSettingsController new];
+    NSWindow *settings = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100)
+        styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:YES];
+    settings.releasedWhenClosed = NO;
+    settings.contentViewController = controller;
+    Method method = class_getInstanceMethod(NSApplication.class, @selector(keyWindow));
+    IMP original = method_setImplementation(method, (IMP)DPTestApp_keyWindow);
+    [browser orderFront:nil];
+    DPKeepWindowsActive.on = NO;
+    for (NSWindow *key in @[settings, NSNull.null, settings]) {
+        DPTestKeyWindow = [key isKindOfClass:NSWindow.class] ? key : nil;
+        DPKeepWindowsActive.apply(&DPKeepWindowsActive);
+        BOOL previewing = DPTestKeyWindow == settings;
+        assert(browser._hasActiveAppearance == previewing);
+        assert(([[grain valueForKey:@"grainOpacity"] doubleValue] > 0) == previewing);
+    }
+    DPTestKeyWindow = nil;
+    [browser orderOut:nil];
+    method_setImplementation(method, original);
+    DPKeepWindowsActive.apply(&DPKeepWindowsActive);
+}
+
 @interface DPObserverGrainView : DPSidebarGrainView
 @property NSUInteger notices;
 @end
@@ -95,5 +128,6 @@ void DPTestTextureActivity(NSAppearance *appearance) {
             assert((!expected && !preview.layer.compositingFilter) || [preview.layer.compositingFilter isEqual:expected]);
         }
     }
+    DPTestSettingsPreview(window, grain);
     [grain removeFromSuperview]; [preview removeFromSuperview];
 }

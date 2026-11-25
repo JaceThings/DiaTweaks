@@ -12,13 +12,17 @@
 
 extern DPPatch DPKeepWindowsActive;
 
+static BOOL DPIsSettingsWindow(NSWindow *window) {
+    return DPIsKind(window.contentViewController, DPDiaSettingsController) || DPIsKind(window.toolbar.delegate, DPDiaSettingsController);
+}
+
 static BOOL DPIsBrowserWindow(NSWindow *window) {
-    return (window.styleMask & NSWindowStyleMaskTitled) && ![window isKindOfClass:NSPanel.class]
-        && !DPIsKind(window.contentViewController, DPDiaSettingsController) && !DPIsKind(window.toolbar.delegate, DPDiaSettingsController);
+    return (window.styleMask & NSWindowStyleMaskTitled) && ![window isKindOfClass:NSPanel.class] && !DPIsSettingsWindow(window);
 }
 
 static BOOL DPKeptActive(NSWindow *window) {
-    return DPKeepWindowsActive.on && DPIsBrowserWindow(window);
+    if (!DPIsBrowserWindow(window)) return NO;
+    return DPKeepWindowsActive.on || (window.visible && DPIsSettingsWindow(NSApp.keyWindow));
 }
 
 static BOOL DPWindow_hasActiveAppearance(NSWindow *self, SEL _cmd) {
@@ -68,9 +72,18 @@ static NSString *DPVerifyKeepWindowsActive(DPPatch *patch) {
     return nil;
 }
 
+static void DPSettingsKeyChanged(NSNotification *note) {
+    if (DPKeepWindowsActive.on || !DPIsSettingsWindow(note.object)) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ DPApplyKeepWindowsActive(&DPKeepWindowsActive); });
+}
+
 static void DPInstallKeepWindowsActive(void) {
     DPHookClass(NSWindow.class, @selector(_hasActiveAppearance), (IMP)DPWindow_hasActiveAppearance);
     DPHookClass(NSWindow.class, @selector(hasKeyAppearance), (IMP)DPWindow_hasKeyAppearance);
+    for (NSNotificationName name in @[NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification])
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            DPSettingsKeyChanged(note);
+        }];
 }
 
 DP_PATCH(DPKeepWindowsActive) {
