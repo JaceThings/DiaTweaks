@@ -7,7 +7,7 @@
 #import "Patches/CommandBar/CommandBarOverlay.h"
 
 extern DPPatch DPHideSleepingTabs, DPCollapsePinned, DPHideTabGroupBackground, DPUndoCloseTab, DPSavePageAs;
-extern DPPatch DPProfileEmoji, DPKeepFoldersOpen, DPUnloadTab, DPCompactSidebarHeader, DPCompactTabRows, DPTidyTabs;
+extern DPPatch DPProfileEmoji, DPProfileEmojiCurrentOnly, DPKeepFoldersOpen, DPUnloadTab, DPCompactSidebarHeader, DPCompactTabRows, DPTidyTabs;
 DPPatch DPCommandBar;
 
 static NSString *DPTestSuiteName(void) {
@@ -1109,13 +1109,20 @@ static void TestUndoCloseTabAndSavePageAs(void) {
 @end
 @implementation _TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView
 - (void)layout {}
+- (void)updateLayer {}
 @end
+
+static NSTextField *DPEmojiLabelIn(NSView *view) {
+    for (NSView *sub in view.subviews) if ([sub isKindOfClass:NSTextField.class]) return (NSTextField *)sub;
+    return nil;
+}
 
 static void TestProfileEmoji(void) {
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     DPProfileEmoji.install();
     DPProfileEmoji.on = YES;
-    [defaults setObject:@{ @"SPACE-TEST-1" : @"🚀" } forKey:@"profileEmojis"];
+    DPProfileEmojiCurrentOnly.on = NO;
+    [defaults setObject:@{ @"SPACE-TEST-1" : @"🚀", @"SPACE-TEST-2" : @"🦊" } forKey:@"profileEmojis"];
 
     DPFakeIndicator *indicator = [[DPFakeIndicator alloc] initWithFrame:NSMakeRect(0, 0, 100, 20)];
     _TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView *dot = [[_TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView alloc] initWithFrame:NSMakeRect(0, 0, 16, 16)];
@@ -1125,9 +1132,46 @@ static void TestProfileEmoji(void) {
 
     [dot layout];
     [dot layout];
-    NSTextField *label = nil;
-    for (NSView *sub in dot.subviews) if ([sub isKindOfClass:NSTextField.class]) label = (NSTextField *)sub;
+    NSTextField *label = DPEmojiLabelIn(dot);
     Check(label != nil && !label.hidden && [label.stringValue isEqualToString:@"🚀"], @"ProfileEmoji: top dot without native subview does not hide its own emoji label");
+
+    NSView *nativeDot1 = [[NSView alloc] initWithFrame:NSMakeRect(5, 5, 6, 6)];
+    [dot addSubview:nativeDot1 positioned:NSWindowBelow relativeTo:nil];
+    _TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView *dot2 = [[_TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView alloc] initWithFrame:NSMakeRect(20, 0, 16, 16)];
+    NSView *nativeDot2 = [[NSView alloc] initWithFrame:NSMakeRect(5, 5, 6, 6)];
+    [dot2 addSubview:nativeDot2];
+    indicator.dotViews = @{ @"SPACE-TEST-1" : dot, @"SPACE-TEST-2" : dot2 };
+    [indicator addSubview:dot2];
+
+    DPProfileEmojiCurrentOnly.on = YES;
+    [dot layout];
+    [dot2 layout];
+    Check([DPEmojiLabelIn(dot).stringValue isEqualToString:@"🚀"] && nativeDot1.hidden,
+          @"ProfileEmojiCurrentOnly: focused top dot shows emoji");
+    Check(DPEmojiLabelIn(dot2) == nil && !nativeDot2.hidden,
+          @"ProfileEmojiCurrentOnly: unfocused top dot keeps its native dot");
+
+    indicator.focusedSpaceID = @"SPACE-TEST-2";
+    dot.needsLayout = NO;
+    dot2.needsLayout = NO;
+    [dot updateLayer];
+    [dot2 updateLayer];
+    Settle();
+    Check(dot.needsLayout && dot2.needsLayout,
+          @"ProfileEmojiCurrentOnly: switching focusedSpaceID queues layout on both top dots");
+
+    [dot layout];
+    [dot2 layout];
+    Check(DPEmojiLabelIn(dot) == nil && !nativeDot1.hidden,
+          @"ProfileEmojiCurrentOnly: previously focused top dot restores native dot");
+    Check([DPEmojiLabelIn(dot2).stringValue isEqualToString:@"🦊"] && nativeDot2.hidden,
+          @"ProfileEmojiCurrentOnly: newly focused top dot shows its emoji");
+
+    DPProfileEmojiCurrentOnly.on = NO;
+    [dot layout];
+    [dot2 layout];
+    Check([DPEmojiLabelIn(dot).stringValue isEqualToString:@"🚀"] && [DPEmojiLabelIn(dot2).stringValue isEqualToString:@"🦊"],
+          @"ProfileEmojiCurrentOnly: turning off restores emojis on all top dots");
 }
 
 @interface _TtC5ARCUI24FeatheredTruncatingLabel : NSTextField

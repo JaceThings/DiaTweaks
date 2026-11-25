@@ -18,7 +18,7 @@
 BOOL DPTesting = YES;
 
 extern DPPatch DPWindowMaterial, DPTranslucentSidebar, DPCollapsePinned, DPHideTabGroupBackground;
-extern DPPatch DPProfileEmoji, DPCompactTabRows, DPCompactWithChat;
+extern DPPatch DPProfileEmoji, DPProfileEmojiCurrentOnly, DPCompactTabRows, DPCompactWithChat;
 
 static NSString *DPTestSuiteName(void) {
     return [NSString stringWithFormat:@"com.diapatches.view-reuse-layout.%d", getpid()];
@@ -267,9 +267,14 @@ static void DrainMain(void) {
 
 @interface _TtC10TabSidebar17SpaceSwitcherView : NSView
 @property NSDictionary *itemViews;
+@property NSInteger needsLayoutSets;
 @end
 @implementation _TtC10TabSidebar17SpaceSwitcherView
 - (id)safeSwiftValueForKey:(NSString *)key { return [self valueForKey:key]; }
+- (void)setNeedsLayout:(BOOL)needsLayout {
+    if (needsLayout) self.needsLayoutSets++;
+    [super setNeedsLayout:needsLayout];
+}
 @end
 
 @interface DPTrackingDot : NSView
@@ -282,7 +287,7 @@ static void DrainMain(void) {
 @interface _TtC10TabSidebar21SpaceSwitcherItemView : NSView
 @property BOOL isSelected;
 @property DPTrackingDot *dot;
-@property NSInteger subviewAdds, subviewRemovals;
+@property NSInteger subviewAdds, subviewRemovals, needsLayoutSets;
 @end
 @implementation _TtC10TabSidebar21SpaceSwitcherItemView
 - (id)safeSwiftValueForKey:(NSString *)key {
@@ -292,6 +297,10 @@ static void DrainMain(void) {
 }
 - (void)addSubview:(NSView *)view { self.subviewAdds++; [super addSubview:view]; }
 - (void)willRemoveSubview:(NSView *)subview { self.subviewRemovals++; [super willRemoveSubview:subview]; }
+- (void)setNeedsLayout:(BOOL)needsLayout {
+    if (needsLayout) self.needsLayoutSets++;
+    [super setNeedsLayout:needsLayout];
+}
 - (void)layout {}
 - (void)updateLayer {}
 @end
@@ -823,6 +832,11 @@ static void TestPullRequestRepoAndCompactTabRows(void) {
     Check(fabs(NSMinY(header.frame) - 62) < 0.01, @"CompactTabRows: turning off restores exact original group header Y");
 }
 
+static NSTextField *DPEmojiLabelIn(NSView *view) {
+    for (NSView *sub in view.subviews) if ([sub isKindOfClass:NSTextField.class]) return (NSTextField *)sub;
+    return nil;
+}
+
 static void TestProfileEmojiTidyTabsGrainAndCA(void) {
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     [defaults removeObjectForKey:@"profileEmojis"];
@@ -859,6 +873,79 @@ static void TestProfileEmojiTidyTabsGrainAndCA(void) {
     [item updateLayer];
     Check(item.subviewAdds == 0 && item.subviewRemovals == 0 && fabs(emojiLabel.alphaValue - 0.45) < 0.01,
           @"ProfileEmoji: updateLayer updates alphaValue without mutating subview hierarchy");
+
+    _TtC10TabSidebar21SpaceSwitcherItemView *item2 = [[_TtC10TabSidebar21SpaceSwitcherItemView alloc] initWithFrame:NSMakeRect(0, 0, 12, 28)];
+    DPTrackingDot *dot2 = [[DPTrackingDot alloc] initWithFrame:NSMakeRect(2, 11, 6, 6)];
+    item2.dot = dot2;
+    item2.isSelected = NO;
+    [item2 addSubview:dot2];
+    [switcher addSubview:item2];
+    switcher.itemViews = @{ @"S1" : item, @"S2" : item2 };
+    [defaults setObject:@{ @"S1" : @"🔥", @"S2" : @"🦊" } forKey:@"profileEmojis"];
+
+    DPProfileEmojiCurrentOnly.on = YES;
+    item.isSelected = YES;
+    item2.isSelected = NO;
+    item.frame = NSMakeRect(38, 0, 12, 28);
+    item2.frame = NSMakeRect(50, 0, 12, 28);
+    [item layout];
+    [item2 layout];
+    Check([DPEmojiLabelIn(item).stringValue isEqualToString:@"🔥"] && dot.hidden && fabs(NSWidth(item.frame) - 26) < 0.1,
+          @"ProfileEmojiCurrentOnly: selected sidebar item shows emoji at 26pt width");
+    Check(DPEmojiLabelIn(item2) == nil && !dot2.hidden && fabs(NSWidth(item2.frame) - 16) < 0.1,
+          @"ProfileEmojiCurrentOnly: unselected sidebar item keeps dot at 16pt width");
+
+    item.isSelected = NO;
+    item2.isSelected = YES;
+    switcher.needsLayoutSets = item.needsLayoutSets = item2.needsLayoutSets = 0;
+    [item updateLayer];
+    [item2 updateLayer];
+    DrainMain();
+    Check(switcher.needsLayoutSets >= 1 && item.needsLayoutSets >= 1 && item2.needsLayoutSets >= 1,
+          @"ProfileEmojiCurrentOnly: switching selection queues layout on switcher and items");
+
+    [switcher layout];
+    [item layout];
+    [item2 layout];
+    NSTextField *label2 = DPEmojiLabelIn(item2);
+    Check(DPEmojiLabelIn(item) == nil && !dot.hidden && fabs(NSWidth(item.frame) - 16) < 0.1,
+          @"ProfileEmojiCurrentOnly: deselected sidebar item restores dot and 16pt width");
+    Check([label2.stringValue isEqualToString:@"🦊"] && label2.translatesAutoresizingMaskIntoConstraints && NSWidth(label2.frame) > 0
+          && fabs(NSMidX(label2.frame) - NSMidX(item2.bounds)) <= 1.5 && dot2.hidden && fabs(NSWidth(item2.frame) - 26) < 0.1
+          && fabs(NSMaxX(item.frame) - NSMinX(item2.frame)) < 0.1,
+          @"ProfileEmojiCurrentOnly: newly selected sidebar item shows centered emoji at 26pt width without overlapping neighbors");
+
+    // Switching to a profile with no emoji restores native 12pt frames instead of staying stuck at 16pt.
+    [defaults setObject:@{ @"S1" : @"🔥" } forKey:@"profileEmojis"];
+    [switcher layout];
+    [item layout];
+    [item2 layout];
+    Check(DPEmojiLabelIn(item) == nil && DPEmojiLabelIn(item2) == nil
+          && fabs(NSWidth(item.frame) - 12) < 0.1 && fabs(NSWidth(item2.frame) - 12) < 0.1,
+          @"ProfileEmojiCurrentOnly: switching to emoji-less profile restores native 12pt frames");
+
+    [defaults setObject:@{ @"S1" : @"🔥", @"S2" : @"🦊" } forKey:@"profileEmojis"];
+    DPProfileEmojiCurrentOnly.on = NO;
+    [switcher layout];
+    [item layout];
+    [item2 layout];
+    Check([DPEmojiLabelIn(item).stringValue isEqualToString:@"🔥"] && [DPEmojiLabelIn(item2).stringValue isEqualToString:@"🦊"]
+          && fabs(NSWidth(item.frame) - 26) < 0.1 && fabs(NSWidth(item2.frame) - 26) < 0.1,
+          @"ProfileEmojiCurrentOnly: turning off restores emojis and 26pt width on all sidebar items via switcher layout");
+
+    // Turning DPProfileEmoji off while CurrentOnly is on restores native frames and dots.
+    DPProfileEmojiCurrentOnly.on = YES;
+    DPProfileEmoji.on = NO;
+    [switcher layout];
+    [item layout];
+    [item2 layout];
+    Check(DPEmojiLabelIn(item) == nil && DPEmojiLabelIn(item2) == nil && !dot.hidden && !dot2.hidden
+          && fabs(NSWidth(item.frame) - 12) < 0.1 && fabs(NSWidth(item2.frame) - 12) < 0.1,
+          @"ProfileEmoji: turning off while CurrentOnly is on restores native 12pt frames and dots");
+    DPProfileEmoji.on = YES;
+    DPProfileEmojiCurrentOnly.on = NO;
+    [item2 removeFromSuperview];
+    switcher.itemViews = @{ @"S1" : item };
 
     DPSidebarGrain.on = YES;
     item.isSelected = YES;
