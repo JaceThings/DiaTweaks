@@ -282,6 +282,35 @@ int main(int argc, const char *argv[]) {
         testPatch.apply = NULL;
         DPSetPatch(&testPatch, NO, YES);
 
+        // A pane nobody can see only notes that it is out of date, and catches up when it or its ancestor is shown again.
+        DPOverviewView *overview = [[DPOverviewView alloc] initWithFrame:NSMakeRect(0, 0, 560, 600)];
+        DPPaneView *hiddenPane = [[DPPaneView alloc] initWithTitle:@"Patches" content:overview];
+        NSWindow *paneWindow = [NSWindow windowWithContentViewController:[NSViewController new]];
+        NSView *paneHolder = [[NSView alloc] initWithFrame:paneWindow.contentView.bounds];
+        [paneWindow.contentView addSubview:paneHolder];
+        [paneHolder addSubview:hiddenPane];
+        hiddenPane.frame = paneHolder.bounds;
+        hiddenPane.hidden = YES;
+        __block int paneSyncs = 0;
+        Method syncWithQuery = class_getInstanceMethod(DPOverviewView.class, @selector(syncWithQuery:));
+        IMP syncIMP = method_getImplementation(syncWithQuery);
+        method_setImplementation(syncWithQuery, imp_implementationWithBlock(^(DPOverviewView *view, NSString *query) {
+            if (view == overview) paneSyncs++;
+            ((void (*)(id, SEL, NSString *))syncIMP)(view, @selector(syncWithQuery:), query);
+        }));
+        [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
+        expect(paneSyncs == 0, [NSString stringWithFormat:@"a hidden pane skips the rebuild: %d syncs", paneSyncs]);
+        hiddenPane.hidden = NO;
+        expect(paneSyncs == 1, @"showing the pane runs the rebuild it deferred");
+        paneHolder.hidden = YES;
+        [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
+        expect(paneSyncs == 1, @"a pane under a hidden ancestor also skips the rebuild");
+        paneHolder.hidden = NO;
+        expect(paneSyncs == 2, @"unhiding the ancestor flushes the deferred rebuild");
+        hiddenPane.hidden = YES;
+        hiddenPane.hidden = NO;
+        expect(paneSyncs == 2, @"a pane that is already up to date is not rebuilt again");
+        method_setImplementation(syncWithQuery, syncIMP);
         [DPSettingsDefaults() removeObjectForKey:testPatch.choice];
         [DPSettingsDefaults() removeObjectForKey:testPatch.key];
 
