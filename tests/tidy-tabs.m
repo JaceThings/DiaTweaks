@@ -33,8 +33,17 @@ NSHashTable<DPTidyBrush *> *DPTidyBrushes(void) { return [NSHashTable weakObject
 BOOL DPTidyIsBusy(void) { return tidyBusy; }
 void DPTidyWave(CALayer *host, CALayer *line, CGColorRef color, BOOL busy) {}
 
+id DPBrowserOfWindow(NSWindow *w) { return nil; }
+id DPGroupingDelegate(id browser) { return nil; }
+NSArray *DPTrackedContents(id browser) { return @[]; }
+long long DPSessionOf(id contents) { return 0; }
+long long DPActiveSession(id browser) { return 0; }
+void DPMoveTab(id delegate, id browser, NSNumber *session, NSInteger index, void (^done)(void), void (^failed)(void)) { if (done) done(); }
+void DPOnLaunch(void (^block)(void)) { if (block) block(); }
+
 #import "Patches/TidyTabs/Layout.m"
 #import "Patches/TidyTabs/Separator.m"
+#import "Patches/NewTabNextToCurrent/NewTabNextToCurrent.m"
 
 @interface DPFakeTab : NSObject
 @property NSString *URL, *title;
@@ -330,6 +339,98 @@ static void checkLooseCount(void) {
     expectEqual(@(DPTidyTabsBelowLine(bigList)), @5, @"five tabs are five tabs");
 }
 
+@interface DPCountedScriptTab : NSObject
+@property (copy) NSString *tabId, *URL;
+@end
+@implementation DPCountedScriptTab
+@end
+
+@interface DPCountedScriptWindow : NSObject {
+@public
+    NSArray *_tabs;
+}
+@property (copy) NSString *windowId;
+@property (strong) DPCountedScriptTab *activeTab;
+@property int tabListReads;
+@end
+@implementation DPCountedScriptWindow
+- (NSArray *)appleScriptTabs {
+    self.tabListReads++;
+    return _tabs;
+}
+@end
+
+@interface DPCountedAppDelegate : NSObject <NSApplicationDelegate> {
+@public
+    NSArray *_windows;
+}
+@property int windowReads;
+@end
+@implementation DPCountedAppDelegate
+- (NSArray *)appleScriptWindows {
+    self.windowReads++;
+    return _windows;
+}
+@end
+
+static void checkScriptWindowMemo(void) {
+    id savedDelegate = NSApp.delegate;
+    DPCountedAppDelegate *counted = [DPCountedAppDelegate new];
+    NSMutableArray *tabs = [NSMutableArray array];
+    for (int i = 0; i < 100; i++) {
+        DPCountedScriptTab *t = [DPCountedScriptTab new];
+        t.tabId = [NSString stringWithFormat:@"tab-%d", i];
+        t.URL = i == 99 ? @"dia://newtab" : [NSString stringWithFormat:@"https://example.com/%d", i];
+        [tabs addObject:t];
+    }
+    DPCountedScriptWindow *sw = [DPCountedScriptWindow new];
+    sw.windowId = @"memo-win";
+    sw->_tabs = tabs;
+    sw.activeTab = tabs[0];
+    counted->_windows = @[ sw ];
+    NSApp.delegate = counted;
+
+    NSWindow *win = window(@"memo-win");
+    DPNewTabNextToCurrent.on = YES;
+    counted.windowReads = 0;
+    sw.tabListReads = 0;
+
+    // Seed initial state on first note, then switch to a blank tab in the same turn.
+    DPNote(win);
+    expectEqual(@(counted.windowReads), @1, @"first DPNote reads appleScriptWindows once");
+    expectEqual(@(sw.tabListReads), @1, @"first DPNote reads appleScriptTabs once");
+
+    NSMutableArray *withNew = [tabs mutableCopy];
+    DPCountedScriptTab *fresh = [DPCountedScriptTab new];
+    fresh.tabId = @"tab-fresh";
+    fresh.URL = @"";
+    [withNew addObject:fresh];
+    sw->_tabs = withNew;
+    sw.activeTab = fresh;
+    DPNote(win);
+    expectEqual(@(counted.windowReads), @1, @"second DPNote in the same run-loop turn reuses memoized DPScriptWindow");
+    expectEqual(@(sw.tabListReads), @2, @"switching to a new blank tab reads appleScriptTabs once, not 3x");
+
+    // Changing window.identifier invalidates the memo immediately.
+    win.identifier = @"other-id";
+    expectEqual(DPScriptWindow(win), nil, @"changing window.identifier misses the previous memo");
+    win.identifier = @"memo-win";
+    int beforeTurn = counted.windowReads;
+    expectEqual(DPScriptWindow(win), sw, @"restoring window.identifier resolves the scripted window again");
+    expectEqual(@(counted.windowReads), @(beforeTurn + 1), @"identifier change triggered a fresh lookup");
+    expectEqual(DPScriptWindow(win), sw, @"subsequent call in same turn hits memo");
+    expectEqual(@(counted.windowReads), @(beforeTurn + 1), @"memo prevented duplicate lookup in same turn");
+
+    // Draining a run-loop turn clears the per-turn memo.
+    [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    int afterTurn = counted.windowReads;
+    expectEqual(DPScriptWindow(win), sw, @"lookup after run-loop turn still finds scripted window");
+    expectEqual(@(counted.windowReads), @(afterTurn + 1), @"run-loop turn cleared DPScriptWindow memo");
+
+    DPNewTabNextToCurrent.on = NO;
+    NSApp.delegate = savedDelegate;
+}
+
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -362,6 +463,7 @@ int main(void) {
     }
     checkTidyLayout();
     checkLooseCount();
+    checkScriptWindowMemo();
     if (!failures) printf("all Tidy Tabs checks passed\n");
     return failures ? 1 : 0;
 }

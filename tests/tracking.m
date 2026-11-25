@@ -5,6 +5,7 @@ CFTimeInterval DPFoldedAt;
 #define CACurrentMediaTime() (NSProcessInfo.processInfo.systemUptime)
 #import "Patches/KeepFoldersOpen/KeepFoldersOpen.m"
 #undef CACurrentMediaTime
+#import "Patches/CompactSidebarHeader/CompactSidebarHeader.m"
 
 static int gSwitcherLookups;
 static NSWindowController *gMockSwitcher;
@@ -13,6 +14,15 @@ static NSEventModifierFlags gSwitcherMods;
 #import "Patches/CloseFromTabSwitcher/CloseFromTabSwitcher.m"
 #undef DPOpenTabSwitcher
 
+#import "Patches/TabTitles/Title.m"
+static int gTitleScans;
+static NSString *DPCountedDisplayTitle(NSString *title) {
+    gTitleScans++;
+    return DPDisplayTitle(title);
+}
+#define DPDisplayTitle DPCountedDisplayTitle
+#import "Patches/TabTitles/TabTitles.m"
+#undef DPDisplayTitle
 
 static BOOL ownClose;
 BOOL DPTakeOwnClose(void) {
@@ -255,6 +265,71 @@ static void checkKeepFoldersOpen(void) {
     DPKeepFoldersOpen.apply(&DPKeepFoldersOpen);
 }
 
+static int gWeakTableLookups;
+static BOOL DPCountedHashContains(NSHashTable *self, SEL _cmd, id obj) {
+    if (self == DPSidebars) gWeakTableLookups++;
+    return DPCallOriginal(DPCountedHashContains, self, obj);
+}
+
+@interface _TtC10TabSidebar30SidebarContainerViewController : NSViewController
+@end
+@implementation _TtC10TabSidebar30SidebarContainerViewController
+- (void)viewWillLayout { [super viewWillLayout]; }
+@end
+
+@interface _TtC10TabSidebar17SidebarHeaderView : NSView
+@end
+@implementation _TtC10TabSidebar17SidebarHeaderView
+- (BOOL)isFlipped { return YES; }
+- (void)layout { [super layout]; }
+@end
+
+@interface _TtC10TabSidebar17TrafficLightsView : NSView
+@end
+@implementation _TtC10TabSidebar17TrafficLightsView
+@end
+
+static void checkCompactSidebarHeaderPerf(void) {
+    DPCompactSidebarHeader.install();
+    DPCompactSidebarHeader.on = NO;
+    DPHookClass(object_getClass(DPSidebars), @selector(containsObject:), (IMP)DPCountedHashContains);
+    expect(!DPIsHooked(NSView.class, @selector(setFrame:), (IMP)DPCompactFrame_setFrame), @"NSView -setFrame: is not hooked while CompactSidebarHeader is off");
+    expect(!DPIsHooked(NSStackView.class, @selector(setFrame:), (IMP)DPButtonsRow_setFrame), @"NSStackView -setFrame: is not hooked while CompactSidebarHeader is off");
+
+    _TtC10TabSidebar30SidebarContainerViewController *sc = [_TtC10TabSidebar30SidebarContainerViewController new];
+    NSView *sidebar = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 220, 500)];
+    _TtC10TabSidebar17SidebarHeaderView *header = [[_TtC10TabSidebar17SidebarHeaderView alloc] initWithFrame:NSMakeRect(0, 0, 220, 44)];
+    NSStackView *row = [[NSStackView alloc] initWithFrame:NSMakeRect(12, 10, 180, 20)];
+    _TtC10TabSidebar17TrafficLightsView *lights = [[_TtC10TabSidebar17TrafficLightsView alloc] initWithFrame:NSMakeRect(0, 0, 52, 14)];
+    [row addSubview:lights];
+    [header addSubview:row];
+    NSView *body = [[NSView alloc] initWithFrame:NSMakeRect(0, 44, 220, 456)];
+    [sidebar addSubview:header];
+    [sidebar addSubview:body];
+    sc.view = sidebar;
+
+    DPCompactSidebarHeader.on = YES;
+    [sc viewWillLayout];
+    [header layout];
+    header.frame = NSMakeRect(0, 0, 220, 44);
+    body.frame = NSMakeRect(0, 44, 220, 456);
+    expect(fabs(NSHeight(header.frame) - 34) < 0.5 && fabs(NSMinY(body.frame) - 34) < 0.5 && fabs(NSHeight(body.frame) - 466) < 0.5,
+           @"CompactSidebarHeader trims header and lifts plain NSView body by 10pt");
+
+    NSView *host = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)];
+    NSView *unrelated = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    [host addSubview:unrelated];
+    gWeakTableLookups = 0;
+    for (int i = 0; i < 1000; i++) unrelated.frame = NSMakeRect(i % 5, 0, 100, 30);
+    expect(gWeakTableLookups == 0, @"unrelated NSView -setFrame: performs zero DPSidebars weak-table lookups");
+
+    DPCompactSidebarHeader.on = NO;
+    header.frame = NSMakeRect(0, 0, 220, 44);
+    body.frame = NSMakeRect(0, 44, 220, 456);
+    expect(fabs(NSHeight(header.frame) - 44) < 0.5 && fabs(NSMinY(body.frame) - 44) < 0.5,
+           @"turning CompactSidebarHeader off restores full header and body frames");
+}
+
 @interface DPSwitcherCloseTab : NSObject
 @property (copy) NSString *tabId;
 @property BOOL closed;
@@ -365,6 +440,26 @@ static void checkCloseFromTabSwitcher(void) {
     NSApp.delegate = prevDel;
 }
 
+static void checkTabTitlesMemo(void) {
+    DPTabTitles.install();
+    DPTabTitles.on = YES;
+    ArcWebContents *page = [ArcWebContents new];
+    page.title = @"\u200B\uFEFFProject Roadmap";
+    gTitleScans = 0;
+    expect([[page title] isEqualToString:@"Project Roadmap"] && gTitleScans == 1, @"first WebContents -title strips invisible prefix");
+    for (int i = 0; i < 50; i++) {
+        page.title = [NSString stringWithFormat:@"%C%CProject Roadmap", (unichar)0x200B, (unichar)0xFEFF];
+        expect([[page title] isEqualToString:@"Project Roadmap"], @"repeated WebContents -title returns clean title");
+    }
+    expect(gTitleScans == 1, @"50 repeated WebContents -title reads hit per-contents memo with zero rescans");
+
+    page.title = @"\u200DNext Sprint";
+    expect([[page title] isEqualToString:@"Next Sprint"] && gTitleScans == 2, @"changing WebContents title updates the memo cleanly");
+
+    DPTabTitles.on = NO;
+    expect([[page title] isEqualToString:@"\u200DNext Sprint"] && gTitleScans == 2, @"turning Clean Tab Titles off returns raw title");
+}
+
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -391,7 +486,9 @@ int main(void) {
         expect(DPBrowserOfContents([stranger clone]) == nil, @"and a duplicate of an unknown page stays unknown");
         checkUndoCloseTab();
         checkKeepFoldersOpen();
+        checkCompactSidebarHeaderPerf();
         checkCloseFromTabSwitcher();
+        checkTabTitlesMemo();
     }
     if (failures) return 1;
     puts("PASS: tabs opened by a link, a script or a duplicate are tracked");
