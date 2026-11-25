@@ -266,10 +266,12 @@ static void DrainMain(void) {
 @end
 
 @interface _TtC10TabSidebar17SpaceSwitcherView : NSView
-@property NSDictionary *itemViews;
-@property NSInteger needsLayoutSets;
+@property(nonatomic) NSDictionary *itemViews;
+@property NSInteger needsLayoutSets, itemViewReads;
 @end
 @implementation _TtC10TabSidebar17SpaceSwitcherView
+@synthesize itemViews = _itemViews;
+- (NSDictionary *)itemViews { self.itemViewReads++; return _itemViews; }
 - (id)safeSwiftValueForKey:(NSString *)key { return [self valueForKey:key]; }
 - (void)setNeedsLayout:(BOOL)needsLayout {
     if (needsLayout) self.needsLayoutSets++;
@@ -285,18 +287,19 @@ static void DrainMain(void) {
 @end
 
 @interface _TtC10TabSidebar21SpaceSwitcherItemView : NSView
-@property BOOL isSelected;
+@property BOOL isSelected, selectionUnreadable;
 @property DPTrackingDot *dot;
-@property NSInteger subviewAdds, subviewRemovals, needsLayoutSets;
+@property NSInteger subviewAdds, subviewRemovals, needsLayoutSets, frameWrites;
 @end
 @implementation _TtC10TabSidebar21SpaceSwitcherItemView
 - (id)safeSwiftValueForKey:(NSString *)key {
-    if ([key isEqual:@"isSelected"]) return @(self.isSelected);
+    if ([key isEqual:@"isSelected"]) return self.selectionUnreadable ? nil : @(self.isSelected);
     if ([key isEqual:@"$__lazy_storage_$_dotView"]) return self.dot;
     return nil;
 }
 - (void)addSubview:(NSView *)view { self.subviewAdds++; [super addSubview:view]; }
 - (void)willRemoveSubview:(NSView *)subview { self.subviewRemovals++; [super willRemoveSubview:subview]; }
+- (void)setFrame:(NSRect)frame { self.frameWrites++; [super setFrame:frame]; }
 - (void)setNeedsLayout:(BOOL)needsLayout {
     if (needsLayout) self.needsLayoutSets++;
     [super setNeedsLayout:needsLayout];
@@ -935,6 +938,10 @@ static void TestProfileEmojiTidyTabsGrainAndCA(void) {
 
     // Turning DPProfileEmoji off while CurrentOnly is on restores native frames and dots.
     DPProfileEmojiCurrentOnly.on = YES;
+    item.isSelected = NO;
+    item2.isSelected = YES;
+    [item layout];
+    item.dot = nil;
     DPProfileEmoji.on = NO;
     [switcher layout];
     [item layout];
@@ -942,6 +949,44 @@ static void TestProfileEmojiTidyTabsGrainAndCA(void) {
     Check(DPEmojiLabelIn(item) == nil && DPEmojiLabelIn(item2) == nil && !dot.hidden && !dot2.hidden
           && fabs(NSWidth(item.frame) - 12) < 0.1 && fabs(NSWidth(item2.frame) - 12) < 0.1,
           @"ProfileEmoji: turning off while CurrentOnly is on restores native 12pt frames and dots");
+    switcher.itemViewReads = 0;
+    [switcher layout];
+    [item layout];
+    [item2 layout];
+    Check(switcher.itemViewReads == 0, @"ProfileEmoji: off with nothing left to restore skips the switcher and item layout work");
+    item.dot = dot;
+
+    item.frame = NSMakeRect(50, 0, 12, 28);
+    item2.frame = NSMakeRect(38, 0, 12, 28);
+    DPProfileEmojiCurrentOnly.on = NO;
+    DPProfileEmoji.on = YES;
+    [switcher layout];
+    Check(NSMinX(item2.frame) < NSMinX(item.frame),
+          @"ProfileEmoji: turning off forgets the native frames, so the next layout follows the current order");
+
+    DrainMain();
+    item.frame = NSMakeRect(50, 0, 12, 28);
+    item2.frame = NSMakeRect(38, 0, 12, 28);
+    [defaults setObject:@{} forKey:@"profileEmojis"];
+    DrainMain();
+    item.frameWrites = item2.frameWrites = 0;
+    [switcher layout];
+    Check(item.frameWrites == 1 && item2.frameWrites == 1 && fabs(NSWidth(item.frame) - 12) < 0.1 && fabs(NSWidth(item2.frame) - 12) < 0.1,
+          @"ProfileEmoji: restoring native-width target frames writes each item once and stops");
+
+    item.selectionUnreadable = item2.selectionUnreadable = YES;
+    [defaults setObject:@{ @"S1" : @"🔥", @"S2" : @"🦊" } forKey:@"profileEmojis"];
+    DPProfileEmojiCurrentOnly.on = YES;
+    DrainMain();
+    item.frame = NSMakeRect(38, 0, 12, 28);
+    item2.frame = NSMakeRect(50, 0, 12, 28);
+    [item layout];
+    [item2 layout];
+    Check([DPEmojiLabelIn(item).stringValue isEqualToString:@"🔥"] && [DPEmojiLabelIn(item2).stringValue isEqualToString:@"🦊"]
+          && fabs(NSWidth(item.frame) - 26) < 0.1 && fabs(NSWidth(item2.frame) - 26) < 0.1,
+          @"ProfileEmojiCurrentOnly: an unreadable isSelected shows every emoji instead of hiding them all");
+    item.selectionUnreadable = item2.selectionUnreadable = NO;
+
     DPProfileEmoji.on = YES;
     DPProfileEmojiCurrentOnly.on = NO;
     [item2 removeFromSuperview];

@@ -1106,8 +1106,13 @@ static void TestUndoCloseTabAndSavePageAs(void) {
 @end
 
 @interface _TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView : NSView
+@property NSInteger needsLayoutSets;
 @end
 @implementation _TtC8TabStripP33_B0CB782161153EFE9133A89C9E1DF5E27DotView
+- (void)setNeedsLayout:(BOOL)needsLayout {
+    if (needsLayout) self.needsLayoutSets++;
+    [super setNeedsLayout:needsLayout];
+}
 - (void)layout {}
 - (void)updateLayer {}
 @end
@@ -1152,12 +1157,11 @@ static void TestProfileEmoji(void) {
           @"ProfileEmojiCurrentOnly: unfocused top dot keeps its native dot");
 
     indicator.focusedSpaceID = @"SPACE-TEST-2";
-    dot.needsLayout = NO;
-    dot2.needsLayout = NO;
+    dot.needsLayoutSets = dot2.needsLayoutSets = 0;
     [dot updateLayer];
     [dot2 updateLayer];
     Settle();
-    Check(dot.needsLayout && dot2.needsLayout,
+    Check(dot.needsLayoutSets > 0 && dot2.needsLayoutSets > 0,
           @"ProfileEmojiCurrentOnly: switching focusedSpaceID queues layout on both top dots");
 
     [dot layout];
@@ -1172,6 +1176,59 @@ static void TestProfileEmoji(void) {
     [dot2 layout];
     Check([DPEmojiLabelIn(dot).stringValue isEqualToString:@"🚀"] && [DPEmojiLabelIn(dot2).stringValue isEqualToString:@"🦊"],
           @"ProfileEmojiCurrentOnly: turning off restores emojis on all top dots");
+
+    DPProfileEmojiCurrentOnly.on = YES;
+    indicator.focusedSpaceID = nil;
+    [dot layout];
+    [dot2 layout];
+    Check([DPEmojiLabelIn(dot).stringValue isEqualToString:@"🚀"] && [DPEmojiLabelIn(dot2).stringValue isEqualToString:@"🦊"],
+          @"ProfileEmojiCurrentOnly: top dots with no readable focus show every emoji instead of hiding them all");
+
+    indicator.focusedSpaceID = @"SPACE-TEST-1";
+    [dot layout];
+    [dot2 layout];
+    Check(DPEmojiLabelIn(dot) != nil && DPEmojiLabelIn(dot2) == nil && !nativeDot2.hidden,
+          @"ProfileEmojiCurrentOnly: a readable focus hides the emoji of the other top dot again");
+
+    DPProfileEmoji.on = NO;
+    dot.needsLayoutSets = 0;
+    [dot updateLayer];
+    Settle();
+    Check(dot.needsLayoutSets > 0, @"ProfileEmoji: turning off queues a layout on a top dot that still shows an emoji");
+    [dot layout];
+    [dot2 layout];
+    Check(DPEmojiLabelIn(dot) == nil && DPEmojiLabelIn(dot2) == nil && !nativeDot1.hidden && !nativeDot2.hidden,
+          @"ProfileEmoji: turning off restores every top dot's native dot and removes its emoji label");
+
+    dot.needsLayoutSets = 0;
+    DPProfileEmoji.on = YES;
+    [dot updateLayer];
+    DPProfileEmoji.on = NO;
+    Settle();
+    Check(dot.needsLayoutSets == 0, @"ProfileEmoji: a layout queued before turning off does not run once nothing is left to restore");
+    DPProfileEmoji.on = YES;
+    DPProfileEmojiCurrentOnly.on = NO;
+}
+
+@interface DPInheritedUpdateLayerView : NSView
+@end
+@implementation DPInheritedUpdateLayerView
+@end
+
+static int gInheritedUpdateLayerCalls;
+static void DPInheritedUpdateLayer_hook(NSView *self, SEL _cmd) {
+    gInheritedUpdateLayerCalls++;
+    DPCallOriginal(DPInheritedUpdateLayer_hook, self);
+}
+
+static void TestHookInheritedUpdateLayer(void) {
+    IMP base = method_getImplementation(class_getInstanceMethod(NSView.class, @selector(updateLayer)));
+    DPHook("DPNoSuchClassAnywhere", @selector(updateLayer), (IMP)DPInheritedUpdateLayer_hook);
+    DPHookClass(DPInheritedUpdateLayerView.class, @selector(updateLayer), (IMP)DPInheritedUpdateLayer_hook);
+    [[[DPInheritedUpdateLayerView alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)] updateLayer];
+    [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)] updateLayer];
+    Check(gInheritedUpdateLayerCalls == 1 && method_getImplementation(class_getInstanceMethod(NSView.class, @selector(updateLayer))) == base,
+          @"DPHook: a missing class is skipped and a class that inherits updateLayer hooks only itself and still calls NSView's");
 }
 
 @interface _TtC5ARCUI24FeatheredTruncatingLabel : NSTextField
@@ -1425,6 +1482,7 @@ int main(void) {
         TestCollapsePinned();
         TestUndoCloseTabAndSavePageAs();
         TestProfileEmoji();
+        TestHookInheritedUpdateLayer();
         TestPullRequestRepo();
         TestUnloadTab();
         TestCompactSidebarHeader();
