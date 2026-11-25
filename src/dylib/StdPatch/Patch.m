@@ -159,7 +159,7 @@ static void DPRecordChoice(DPPatch *patch) {
 }
 
 void DPSetChoice(DPPatch *patch, NSString *value) {
-    if (!patch || !patch->choice) return;
+    if (!patch || !patch->choice || ![value isKindOfClass:NSString.class]) return;
     [DPSettingsDefaults() setObject:value forKey:patch->choice];
     if (!DPSafeMode && !DPPausedAtLaunch && patch->on && patch->apply) {
         DPRecordChoice(patch);
