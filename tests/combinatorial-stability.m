@@ -229,7 +229,7 @@ static int gLastConfigArgc;
 static int gPopupCalls, gPipRequests;
 static NSMutableArray<NSEvent * (^)(NSEvent *)> *gKeyMonitors;
 
-static const NSPoint DPCombOffscreenPointer = {-1000, -1000};
+static const NSPoint DPCombOffscreenPointer = {-100000, -100000};
 static NSPoint DPEvent_mouseLocation(id self, SEL _cmd) { return DPCombOffscreenPointer; }
 
 static id DPEvent_addLocalMonitor(id self, SEL _cmd, NSEventMask mask, NSEvent * (^handler)(NSEvent *)) {
