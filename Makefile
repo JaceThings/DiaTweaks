@@ -10,6 +10,8 @@ SWIFTFLAGS := -target arm64-apple-macos14.0 -O -parse-as-library -wmo -module-na
 	-Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
 PASSKEYS := src/dylib/Patches/Passkeys/extension
 EXTENSION := $(foreach file,manifest.json page.js bridge.js worker.js,-Wl,-sectcreate,__TEXT,__pk_$(basename $(file)),$(PASSKEYS)/$(file))
+PROVIDER_LOGOS := $(wildcard src/dylib/Patches/DiaChatModel/logos/*)
+PROVIDER_IMAGES := $(foreach file,$(PROVIDER_LOGOS),-Wl,-sectcreate,__TEXT,__dp_$(basename $(notdir $(file))),$(file))
 
 DYLIB_HEADERS := $(shell find src/dylib -name '*.h')
 HEADERS_BIN := build/dp_headers.bin
@@ -45,8 +47,8 @@ build/obj/%.o: src/dylib/%.m
 
 -include $(DYLIB_OBJS:.o=.d)
 
-build/DiaPatches.dylib: $(DYLIB_OBJS) build/DiaPatchesSwift.o $(HEADERS_BIN) $(wildcard $(PASSKEYS)/*) | build
-	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -Wl,-sectcreate,__TEXT,__dp_headers,$(HEADERS_BIN) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework UniformTypeIdentifiers \
+build/DiaPatches.dylib: $(DYLIB_OBJS) build/DiaPatchesSwift.o $(HEADERS_BIN) $(wildcard $(PASSKEYS)/*) $(PROVIDER_LOGOS) | build
+	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -Wl,-sectcreate,__TEXT,__dp_headers,$(HEADERS_BIN) $(PROVIDER_IMAGES) -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework UniformTypeIdentifiers \
 		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.o,$^)
 
 # With DIAPATCH_MANIFEST set, the dylib writes the patch list and exits as it loads, so diapatch never runs.
@@ -184,7 +186,7 @@ build/hide-chat-button: tests/hide-chat-button.m src/dylib/Patches/HideChatButto
 CHAT_MODEL := src/dylib/Patches/DiaChatModel
 AGENT_TRANSPORT := $(addprefix src/dylib/Patches/AgentTransport/,AgentRelay.m AgentSocket.m AgentFilters.m AgentFrames.m AgentWriter.m)
 
-build/dia-chat-model: tests/dia-chat-model.m $(CHAT_MODEL)/DiaChatModel.m $(CHAT_MODEL)/Fallback.m $(CHAT_MODEL)/AgentRequest.m $(AGENT_TRANSPORT) src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h src/dylib/Patches/AgentTransport/*.h) | build
+build/dia-chat-model: tests/dia-chat-model.m $(CHAT_MODEL)/DiaChatModel.m $(CHAT_MODEL)/Fallback.m $(CHAT_MODEL)/AgentRequest.m $(CHAT_MODEL)/Providers.h $(AGENT_TRANSPORT) src/dylib/StdPatch/Hook.m $(wildcard src/dylib/StdPatch/*.h src/dylib/Patches/AgentTransport/*.h) | build
 	clang $(CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ tests/dia-chat-model.m $(CHAT_MODEL)/DiaChatModel.m $(CHAT_MODEL)/Fallback.m $(CHAT_MODEL)/AgentRequest.m $(AGENT_TRANSPORT) src/dylib/StdPatch/Hook.m
 
 check-dia-chat-model: build/dia-chat-model
@@ -515,6 +517,7 @@ check: build/diapatch build/diapatch-tests build/group-tabs build/mouse-back-for
 	build/combinatorial-stability
 	build/local-tweaks --type=local-tweaks
 	tests/sidebar-grain
+	tests/providers
 	scripts/build-tweaks --check
 	scripts/check-patches
 
