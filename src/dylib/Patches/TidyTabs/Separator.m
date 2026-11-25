@@ -2,6 +2,7 @@
 
 static char DPLineFrameKey;
 static const CGFloat DPCloseAllGap = 4;
+static Class DPHookedCloseAll;
 
 static CALayer *DPSeparatorLine(NSView *separator) {
     for (CALayer *layer in separator.layer.sublayers)
@@ -83,7 +84,10 @@ void DPPlaceSeparatorBrush(NSView *separator) {
     DPTidyBrush *existing = DPBrushIn(separator, NO);
     if (!DPTidyTabs.on && !existing) return;
     NSView *closeAll = DPCloseAll(separator);
-    if (DPTidyTabs.on && closeAll) DPHookClass(object_getClass(closeAll), @selector(setHidden:), (IMP)DPCloseAll_setHidden);
+    if (DPTidyTabs.on && closeAll && object_getClass(closeAll) != DPHookedCloseAll) {
+        DPHookedCloseAll = object_getClass(closeAll);
+        DPHookClass(DPHookedCloseAll, @selector(setHidden:), (IMP)DPCloseAll_setHidden);
+    }
     BOOL shown = DPTidyTabs.on && closeAll && !closeAll.hidden && (DPTidyIsBusy() || DPTidyTabsBelowLine(DPListOf(separator)) >= DPTidyMinimumTabs);
     DPTidyBrush *brush = existing ?: DPBrushIn(separator, shown);
     CALayer *line = DPSeparatorLine(separator);
@@ -91,7 +95,7 @@ void DPPlaceSeparatorBrush(NSView *separator) {
     CGFloat right = closeAll ? NSMinX(closeAll.frame) - DPCloseAllGap : NSMaxX(separator.bounds) - 7;
     if (DPTidyTabs.on) {
         NSRect target = NSMakeRect(right - DPTidyBrushSize, round(NSMidY(separator.bounds) - DPTidyBrushSize / 2), DPTidyBrushSize, DPTidyBrushSize);
-        if (!NSEqualRects(brush.frame, target)) brush.frame = target;
+        if (brush && !NSEqualRects(brush.frame, target) && DPMayAdjust(brush)) brush.frame = target;
         if (brush.hidden != !shown) brush.hidden = !shown;
     } else {
         [brush removeFromSuperview];
@@ -99,15 +103,14 @@ void DPPlaceSeparatorBrush(NSView *separator) {
     if (!line) return;
     NSRect dia = [DPDiaValue(line, &DPLineFrameKey, [NSValue valueWithRect:line.frame]) rectValue], frame = dia;
     CGFloat trimmed = MIN(NSWidth(dia), MAX(0, right - DPTidyBrushSize - DPTidyLineGap - NSMinX(dia)));
-    if (shown) {
-        frame.size.width = trimmed;
-        DPOverride(line, &DPLineFrameKey, [NSValue valueWithRect:dia], [NSValue valueWithRect:frame]);
-    } else if (DPGet(line, &DPLineFrameKey)) {
-        DPSet(line, &DPLineFrameKey, nil);
-    }
-    if (!NSEqualRects(line.frame, frame)) {
+    if (shown) frame.size.width = trimmed;
+    BOOL adjusted = NSEqualRects(line.frame, frame);
+    if (!adjusted && DPMayAdjust(separator)) {
         DPWithoutAnimation(^{ line.frame = frame; });
+        adjusted = YES;
     }
+    if (shown && adjusted) DPOverride(line, &DPLineFrameKey, [NSValue valueWithRect:dia], [NSValue valueWithRect:frame]);
+    else if (DPGet(line, &DPLineFrameKey)) DPSet(line, &DPLineFrameKey, nil);
     DPTidyWave(separator.layer, line, line.backgroundColor, DPTidyTabs.on && DPTidyIsBusy());
 }
 
