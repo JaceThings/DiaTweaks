@@ -1,5 +1,4 @@
 #import "Settings.h"
-#include <notify.h>
 
 typedef enum { DPKeyChoice, DPKeyShortcut, DPKeySetting } DPKeyType;
 
@@ -344,7 +343,7 @@ DPConfigImport *DPImportConfigData(NSData *data, BOOL replace, NSError **error) 
         DPPatch *patch = value.pointerValue;
         if (patch->on && patch->apply && !patch->relaunch && !DPSafeMode && !DPPausedAtLaunch) patch->apply(patch);
     }
-    notify_post([DPSettingsDomain() stringByAppendingString:@".changed"].UTF8String);
+    // No notify_post here: our own DPWatchSavedSettings would run the whole apply loop again.
 
     NSMutableArray<NSString *> *relaunch = [NSMutableArray new];
     for (NSString *key in DPSortedKeys(wasOn)) {

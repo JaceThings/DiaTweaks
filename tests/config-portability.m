@@ -1,5 +1,6 @@
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
+#include <notify.h>
 #import "SafeMode/SafeMode.h"
 #import "StdPatch/StdPatch.h"
 #import "Settings/Settings.h"
@@ -142,8 +143,50 @@ static const DPSetting *DPDeclared(DPPatch *patch, NSString *key) {
     return NULL;
 }
 
-static int gApplied;
+static int gApplied, gPatchesChanged;
 static void DPCountApply(DPPatch *patch) { gApplied++; }
+
+@interface DPConfigSpy : NSObject
+@end
+@implementation DPConfigSpy
+- (void)patchesChanged:(NSNotification *)note { gPatchesChanged++; }
+@end
+
+static void DPPumpNotifications(double seconds) {
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:seconds];
+    while ([deadline timeIntervalSinceNow] > 0) [[NSRunLoop mainRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+}
+
+static void DPCheckSingleApply(void) {
+    DPConfigSpy *spy = [DPConfigSpy new];
+    [NSNotificationCenter.defaultCenter addObserver:spy selector:@selector(patchesChanged:) name:DPPatchesDidChangeNotification object:nil];
+    DPWatchSavedSettings();
+
+    DPPatch *corners = DPPatchNamed(@"windowCorners");
+    void (*cornersApply)(DPPatch *) = corners->apply;
+    DPSaveOn(@"windowCorners", YES);
+    corners->apply = DPCountApply;
+    DPSafeMode = 0;
+    gApplied = 0;
+    gPatchesChanged = 0;
+    DPImport(@"{\"version\": 1, \"settings\": {\"windowCornerRadius\": 9}}", NO);
+    DPSafeMode = 1;
+    expectEqual(@(gApplied), @1, @"importing applies each changed tweak once");
+    expectEqual(@(gPatchesChanged), @1, @"and tells the rows once");
+    DPPumpNotifications(0.5);
+    expectEqual(@(gApplied), @1, @"and the import isn't applied a second time later");
+    expectEqual(@(gPatchesChanged), @1, @"or announced twice");
+
+    notify_post([DPSettingsDomain() stringByAppendingString:@".changed"].UTF8String);
+    for (NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:2]; gPatchesChanged < 2 && [deadline timeIntervalSinceNow] > 0;)
+        DPPumpNotifications(0.05);
+    expectEqual(@(gPatchesChanged), @2, @"so a notification from elsewhere still reaches Dia's watcher");
+
+    corners->apply = cornersApply;
+    DPSaveOn(@"windowCorners", NO);
+    [NSNotificationCenter.defaultCenter removeObserver:spy];
+    DPPumpNotifications(0.2);
+}
 
 static void DPCheckExperimentalData(void) {
     NSMutableArray<NSString *> *flagged = [NSMutableArray new];
@@ -553,6 +596,7 @@ int main(void) {
         expectEqual(DPExportConfigJSON(NULL), populated, @"an export of the import is the same bytes");
 
         DPCheckImport(defaults);
+        DPCheckSingleApply();
         DPCheckPreview(defaults);
 
         [NSFileManager.defaultManager removeItemAtPath:home error:NULL];
