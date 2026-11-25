@@ -160,6 +160,176 @@ static Class makeClass(const char *name, Class parent, SEL sel, IMP imp) {
     return cls;
 }
 
+typedef struct { NSRect frame; int kind; } DPCase;
+
+static NSInteger referenceBelowLine(DPFakeCollection *collection, CGFloat line) {
+    NSMutableArray<NSValue *> *frames = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *isTab = [NSMutableArray array];
+    NSCountedSet<NSNumber *> *heights = [NSCountedSet set];
+    for (NSInteger section = 0; section < collection.numberOfSections; section++)
+        for (NSInteger item = 0; item < [collection numberOfItemsInSection:section]; item++) {
+            NSIndexPath *path = [NSIndexPath indexPathForItem:item inSection:section];
+            NSCollectionViewLayoutAttributes *attrs = [collection.collectionViewLayout layoutAttributesForItemAtIndexPath:path];
+            NSRect frame = attrs.frame;
+            if (attrs.hidden || attrs.alpha < 1 || NSMinY(frame) < line || NSHeight(frame) <= 0) continue;
+            NSView *cell = [collection itemAtIndexPath:path].view;
+            BOOL tab = cell && strstr(object_getClassName(cell), "TabUI7TabView");
+            if (!cell && section == collection.numberOfSections - 1 && item == [collection numberOfItemsInSection:section] - 1) continue;
+            [frames addObject:[NSValue valueWithRect:frame]];
+            [isTab addObject:cell ? @(tab) : (id)NSNull.null];
+            if (tab) [heights addObject:@(round(NSHeight(frame)))];
+        }
+    NSNumber *height = nil;
+    for (NSNumber *each in heights) if (!height || [heights countForObject:each] > [heights countForObject:height]) height = each;
+    if (!height) return 0;
+    NSInteger loose = 0;
+    for (NSUInteger i = 0; i < frames.count; i++) {
+        NSRect frame = frames[i].rectValue;
+        if (isTab[i] == (id)NSNull.null ? fabs(NSHeight(frame) - height.doubleValue) > 1 : !isTab[i].boolValue) continue;
+        BOOL inside = NO;
+        for (NSValue *other in frames)
+            inside |= NSHeight(other.rectValue) > NSHeight(frame) + 1 && NSPointInRect(NSMakePoint(NSMidX(frame), NSMidY(frame)), other.rectValue);
+        loose += !inside;
+    }
+    return loose;
+}
+
+static uint32_t seed = 12345;
+static uint32_t roll(uint32_t n) { seed = seed * 1664525u + 1013904223u; return (seed >> 8) % n; }
+
+static void fill(DPFakeCollection *collection, NSUInteger rows, BOOL withFolders) {
+    NSMutableArray *frames = [NSMutableArray array], *kinds = [NSMutableArray array];
+    NSMutableSet *hidden = [NSMutableSet set];
+    CGFloat y = 0;
+    NSUInteger sections = 1 + roll(3);
+    for (NSUInteger section = 0; section < sections; section++) {
+        NSMutableArray *sectionFrames = [NSMutableArray array], *sectionKinds = [NSMutableArray array];
+        for (NSUInteger row = 0; row < rows / sections; row++) {
+            if (withFolders && roll(8) == 0) {
+                NSUInteger children = 1 + roll(4);
+                [sectionFrames addObject:[NSValue valueWithRect:NSMakeRect(0, y, 200, 24 * (children + 1))]];
+                [sectionKinds addObject:@2];
+                for (NSUInteger child = 0; child < children; child++) {
+                    [sectionFrames addObject:[NSValue valueWithRect:NSMakeRect(8, y + 24 * (child + 1), 184, 24)]];
+                    [sectionKinds addObject:roll(5) ? @1 : @0];
+                }
+                y += 24 * (children + 1);
+                continue;
+            }
+            if (roll(25) == 0) [hidden addObject:[NSString stringWithFormat:@"%lu.%lu", (unsigned long)section, (unsigned long)sectionFrames.count]];
+            [sectionFrames addObject:[NSValue valueWithRect:NSMakeRect(0, y, 200, roll(30) == 0 ? 36 : 24)]];
+            [sectionKinds addObject:roll(6) ? @1 : roll(2) ? @0 : @2];
+            y += 24;
+        }
+        [frames addObject:sectionFrames];
+        [kinds addObject:sectionKinds];
+    }
+    DPFakeLayout *layout = [DPFakeLayout new];
+    layout.frames = frames;
+    layout.hidden = hidden;
+    collection.fakeLayout = layout;
+    collection.kinds = kinds;
+}
+
+static NSView *makeList(DPFakeCollection *collection, NSView **separatorOut) {
+    NSView *list = [[objc_getClass(DPDiaTabList) alloc] initWithFrame:NSMakeRect(0, 0, 200, 400)];
+    NSScrollView *scroll = [[DPCountingScroll alloc] initWithFrame:list.bounds];
+    scroll.documentView = collection;
+    [list addSubview:scroll];
+    objc_setAssociatedObject(list, &DPFakeScrollKey, scroll, OBJC_ASSOCIATION_RETAIN);
+    objc_setAssociatedObject(scroll, &DPFakeDiaKey, [NSValue valueWithRect:scroll.frame], OBJC_ASSOCIATION_RETAIN);
+    if (separatorOut) {
+        NSView *separator = [[objc_getClass(DPDiaTabListSeparator) alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+        [collection addSubview:separator];
+        *separatorOut = separator;
+    }
+    return list;
+}
+
+static void checkTidyLayout(void) {
+    DPTidyTabs.on = YES;
+    Class collectionClass = makeClass(DPDiaTabListCollection, DPFakeCollection.class, 0, NULL);
+    makeClass(DPDiaTabList, NSView.class, @selector(layout), (IMP)restoreScroll);
+    makeClass(DPDiaTabListSeparator, NSView.class, @selector(layout), (IMP)restoreLine);
+    makeClass("_TtC5TabUI7TabView", NSView.class, 0, NULL);
+    makeClass(DPDiaTabGroupCell, NSView.class, 0, NULL);
+    DPInstallTidyLayout();
+
+    DPFakeCollection *collection = [[collectionClass alloc] initWithFrame:NSMakeRect(0, 0, 200, 400)];
+    fill(collection, 4, NO);
+    NSView *list = makeList(collection, NULL);
+    NSScrollView *scroll = DPTidyListScroll(list);
+    for (int pass = 0; pass < 40; pass++) [list layout];
+    expectEqual(@(frameWrites > 0 && frameWrites <= (NSInteger)DPAdjustLimit), @YES,
+        [NSString stringWithFormat:@"a list Dia keeps resetting stops being resized after %lu tries a turn (wrote %ld times)", (unsigned long)DPAdjustLimit, (long)frameWrites]);
+    expectEqual(@(NSHeight(scroll.frame) > 0), @YES, @"the scroll view is left with a frame");
+
+    NSView *separator = nil;
+    DPFakeCollection *barCollection = [[collectionClass alloc] initWithFrame:NSMakeRect(0, 0, 200, 400)];
+    fill(barCollection, 4, NO);
+    NSView *barList = makeList(barCollection, &separator);
+    separator.wantsLayer = YES;
+    NSButton *closeAll = [[NSButton alloc] initWithFrame:NSMakeRect(170, 2, 24, 20)];
+    [separator addSubview:closeAll];
+    DPCountingLayer *line = [DPCountingLayer layer];
+    line.frame = CGRectMake(0, 12, 160, 1);
+    objc_setAssociatedObject(line, &DPFakeDiaKey, [NSValue valueWithRect:line.frame], OBJC_ASSOCIATION_RETAIN);
+    [separator.layer addSublayer:line];
+    tidyBusy = YES;
+    lineWrites = 0;
+    hookCalls = 0;
+    for (int pass = 0; pass < 40; pass++) [separator layout];
+    expectEqual(@(lineWrites > 0 && lineWrites <= (NSInteger)DPAdjustLimit), @YES,
+        [NSString stringWithFormat:@"a separator line Dia keeps resetting stops being trimmed after %lu tries a turn (wrote %ld times)", (unsigned long)DPAdjustLimit, (long)lineWrites]);
+    expectEqual(@(hookCalls), @1, @"Close All's class is hooked once, not on every separator pass");
+    (void)barList;
+    tidyBusy = NO;
+}
+
+static void checkLooseCount(void) {
+    Class collectionClass = objc_getClass(DPDiaTabListCollection);
+    int mismatches = 0, cases = 0, exact = 0;
+    for (int round = 0; round < 60; round++) {
+        NSUInteger rows = (NSUInteger)(roll(2) ? 2 + roll(10) : 40 + roll(300));
+        DPFakeCollection *collection = [[collectionClass alloc] initWithFrame:NSMakeRect(0, 0, 200, 8000)];
+        fill(collection, rows, roll(3) != 0);
+        NSView *separator = nil;
+        NSView *list = makeList(collection, round % 2 ? &separator : NULL);
+        separator.frame = NSMakeRect(0, 24 * (CGFloat)roll(4), 200, 24);
+        CGFloat line = separator ? NSMaxY([collection convertRect:separator.bounds fromView:separator]) - 0.5 : -CGFLOAT_MAX;
+        NSInteger want = MIN(referenceBelowLine(collection, line), DPTidyMinimumTabs), got = DPTidyTabsBelowLine(list);
+        cases++;
+        exact += want < DPTidyMinimumTabs;
+        if (got != want) {
+            mismatches++;
+            printf("FAIL loose count case %d: got %ld, want %ld\n", round, (long)got, (long)want);
+        }
+    }
+    failures += mismatches;
+    expectEqual(@(cases), @60, @"every generated sidebar was counted");
+    expectEqual(@(exact >= 8 && exact < 55), @YES, @"some sidebars count exactly and some hit the minimum");
+
+    DPFakeCollection *big = [[collectionClass alloc] initWithFrame:NSMakeRect(0, 0, 200, 8000)];
+    NSMutableArray *frames = [NSMutableArray array], *kinds = [NSMutableArray array];
+    for (int i = 0; i < 400; i++) {
+        [frames addObject:[NSValue valueWithRect:NSMakeRect(0, 24 * i, 200, 24)]];
+        [kinds addObject:@1];
+    }
+    DPFakeLayout *layout = [DPFakeLayout new];
+    layout.frames = @[ frames ];
+    big.fakeLayout = layout;
+    big.kinds = @[ kinds ];
+    NSView *bigList = makeList(big, NULL);
+    lookups = 0;
+    expectEqual(@(DPTidyTabsBelowLine(bigList)), @(DPTidyMinimumTabs), @"a 400 tab sidebar stops counting at the minimum");
+    expectEqual(@(lookups), @(DPTidyMinimumTabs), @"a 400 tab sidebar only materializes cells up to the minimum");
+
+    NSMutableArray *few = [kinds subarrayWithRange:NSMakeRange(0, 5)].mutableCopy;
+    big.kinds = @[ few ];
+    layout.frames = @[ [frames subarrayWithRange:NSMakeRange(0, 5)] ];
+    expectEqual(@(DPTidyTabsBelowLine(bigList)), @5, @"five tabs are five tabs");
+}
+
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -191,6 +361,7 @@ int main(void) {
             @"address truncation does not split a UTF-16 surrogate pair");
     }
     checkTidyLayout();
+    checkLooseCount();
     if (!failures) printf("all Tidy Tabs checks passed\n");
     return failures ? 1 : 0;
 }
