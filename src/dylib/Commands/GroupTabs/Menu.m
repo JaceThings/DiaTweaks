@@ -169,7 +169,9 @@ static void DPInstallMenuBarItem(void) {
 }
 
 static void DPMenuAdded(NSMenu *menu, NSMenuItem *item) {
-    if (DPIsCommandTag(item.tag) || (DPGroupTabs.on && DPIsNewGroupTitle(item.title)) || DPIsTrackedGroupMenu(menu)) DPPlaceGroupItem(menu);
+    @autoreleasepool {
+        if (DPIsCommandTag(item.tag) || (DPGroupTabs.on && DPIsNewGroupTitle(item.title)) || DPIsTrackedGroupMenu(menu)) DPPlaceGroupItem(menu);
+    }
 }
 
 static void DPMenu_addItem(NSMenu *self, SEL _cmd, NSMenuItem *item) {

@@ -302,6 +302,28 @@ int main(void) {
         [fresh addItemWithTitle:@"New Group with 2 Tabs" action:nil keyEquivalent:@""];
         expect([fresh itemWithTag:DPGroupMenuTag] == nil, @"Menu.m does not mutate fresh context menus while off");
 
+        DPGroupTabs.on = YES;
+        NSArray<NSMenuItem *> *built;
+        __weak NSMenu *weakDropped;
+        @autoreleasepool {
+            NSMenu *dropped = [[NSMenu alloc] initWithTitle:@""];
+            weakDropped = dropped;
+            for (NSString *title in @[ @"Duplicate", @"New Group with 2 Tabs", @"Close Tab" ])
+                [dropped addItem:[[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""]];
+            built = [dropped.itemArray copy];
+        }
+        expect([built filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"tag == %ld", (long)DPGroupMenuTag]].count == 1, @"Menu.m places Group Tabs by Domain in a scratch menu Dia builds");
+        expect(weakDropped == nil, @"Menu.m does not keep Dia's scratch menu alive once Dia drops it");
+        NSMenu *tabsMenu = [[NSMenu alloc] initWithTitle:@"Tabs"];
+        BOOL moved = YES;
+        @try {
+            for (NSMenuItem *item in built) [tabsMenu addItem:item];
+        } @catch (NSException *exception) {
+            moved = NO;
+        }
+        expect(moved && built.firstObject.menu == tabsMenu, @"Dia can move a scratch menu's items into the Tabs menu after Group Tabs placed items in it");
+        DPGroupTabs.on = NO;
+
         NSToolbar *testToolbar = [[NSToolbar alloc] initWithIdentifier:@"DPTestToolbar"];
         DPFakeToolbarDelegate *tbDelegate = [DPFakeToolbarDelegate new];
         testToolbar.delegate = tbDelegate;
