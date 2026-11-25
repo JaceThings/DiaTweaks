@@ -143,7 +143,6 @@ static void DPApplyICloudPasswords(DPPatch *patch) { DPRegisterHosts(patch->on);
 
 DP_PATCH(DPICloudPasswords) {
     .key = @"icloudPasswords",
-    .experimental = YES,
     .order = 101,
     .title = @"Allow iCloud Passwords",
     .detail = @"AutoFill passwords from Apple Passwords with the iCloud Passwords, Better Passwords or Open Passwords extension. A patched Dia can’t start Apple’s helper, so each time one connects, the original Dia that DiaTweaks keeps opens briefly, without windows, to start it.",
