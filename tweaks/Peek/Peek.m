@@ -135,7 +135,8 @@ static void DPInstallPeek(void) {
 
 static void DPApplyPeek(DPPatch *patch) {
     DPSamplesProgressColors = patch->on;
-    if (!patch->on) DPPeekCloseAll();
+    if (patch->on) DPPeekEnableChatContext();
+    else DPPeekCloseAll();
 }
 
 NSString *DPPeekPinnedLinksProblem(void) {
@@ -151,6 +152,8 @@ static NSString *DPVerifyPeek(DPPatch *patch) {
         return @"new windows don't reach Peek";
     if (!patch->on && DPPeekAllCards(nil).count) return @"Peek cards stayed open when turned off";
     if (patch->on) {
+        NSString *context = DPPeekChatContextProblem();
+        if (context) return context;
         NSCountedSet<NSWindow *> *visibleByWindow = [NSCountedSet set];
         for (DPPeekCard *peek in DPPeekAllCards(nil)) {
             if (peek.closing || peek.isHiddenOrHasHiddenAncestor || !peek.window) continue;

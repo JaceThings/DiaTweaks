@@ -316,6 +316,10 @@ int main(void) {
         Check(p1 != nil && DPPeekPageIn(window) == p1Page && [p1.originTabID isEqual:@"A"], "P1 opens on Tab A");
         Check(p1.superview == holder1 && p1.tabBadge.superview == rowA, "P1 mounts in holder1 with badge on rowA");
         Check(DPPeekSyncTimer != nil, "sync timer runs while cards exist");
+        DPPeekSyncTabs(window);
+        gDescriptions = 0;
+        DPPeekSyncTabs(window);
+        Check(gDescriptions == 0, "idle sync short-circuits when active tab and open tab set are unchanged");
 
         ArcWebContents *dupWarm = [ArcWebContents new];
         dupWarm.url = [NSURL URLWithString:@"about:blank"];
@@ -558,7 +562,37 @@ int main(void) {
         }
 
         {
+            sw.appleScriptTabs = [NSMutableArray arrayWithObjects:[DPTabMock tabWithID:@"A"], nil];
+            sw.activeID = @"A";
             ArcWebContents *hintSource = [ArcWebContents new];
+            DPPeekOpenFrom(window, @"A", [NSURL URLWithString:@"https://hints.example"], NSMakeRect(100, 100, 80, 20), delegate, hintSource, nil, nil);
+            DPPeekCard *hintCard = DPPeekCardIn(window);
+            NSArray<NSView *> *(^pills)(void) = ^NSArray<NSView *> *{
+                NSMutableArray<NSView *> *found = [NSMutableArray array];
+                for (DPPeekButton *button in hintCard.controls.subviews)
+                    if ([button isKindOfClass:DPPeekButton.class] && button.pill) [found addObject:button.pill];
+                return found;
+            };
+            hintCard.frame = NSMakeRect(NSMinX(hintCard.frame), NSMinY(hintCard.frame), 1500, NSHeight(hintCard.frame));
+            [hintCard layoutSubtreeIfNeeded];
+            NSArray<NSView *> *settled = pills();
+            Check(hintCard && settled.count == 3, "an opened card has a hover hint beside each of its three controls");
+            hintCard.grown = 0.5;
+            hintCard.frame = NSInsetRect(hintCard.frame, 100, 0);
+            [hintCard layoutSubtreeIfNeeded];
+            NSArray<NSView *> *moving = pills();
+            BOOL kept = moving.count == settled.count;
+            for (NSUInteger i = 0; kept && i < moving.count; i++) kept = moving[i] == settled[i];
+            Check(kept, "laying out mid-grow keeps the hover hints instead of rebuilding them every frame");
+            hintCard.grown = 1;
+            hintCard.needsLayout = YES;
+            [hintCard layoutSubtreeIfNeeded];
+            NSArray<NSView *> *grown = pills();
+            BOOL rebuilt = grown.count == settled.count;
+            for (NSUInteger i = 0; rebuilt && i < grown.count; i++) rebuilt = grown[i] != settled[i];
+            Check(rebuilt, "the layout where the grow settles rebuilds the hover hints for the final width");
+            [hintCard handOverTo:nil attach:nil];
+
             Method update = class_getInstanceMethod(NSView.class, @selector(updateTrackingAreas));
             gViewUpdateTrackingAreas = method_setImplementation(update, (IMP)DPProbe_updateTrackingAreas);
             DPPeekAddress *address = [[DPPeekAddress alloc] initWithPage:hintSource];

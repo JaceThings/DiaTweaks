@@ -111,6 +111,8 @@ extern BOOL DPPeekFindingLink;
 
 void DPPeekInstallChat(void);
 void DPPeekInstallChatContext(void);
+void DPPeekEnableChatContext(void);
+NSString *DPPeekChatContextProblem(void);
 void DPPeekChatAttach(DPPeekCard *peek);
 void DPPeekChatDetach(DPPeekCard *peek);
 void DPPeekChatDetachQuiet(DPPeekCard *peek);
