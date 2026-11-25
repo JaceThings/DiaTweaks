@@ -141,6 +141,14 @@ mod tests {
         unsafe {
             CFPreferencesAppSynchronize(prefs.domain.as_concrete_TypeRef());
         }
+        let _ = std::process::Command::new("/usr/bin/defaults")
+            .args(["delete", &prefs.name])
+            .output();
+        if let Ok(home) = std::env::var("HOME") {
+            let _ = std::fs::remove_file(
+                std::path::Path::new(&home).join(format!("Library/Preferences/{}.plist", prefs.name)),
+            );
+        }
     }
 
     #[test]
