@@ -222,6 +222,14 @@ NSButton *DPMakeBarButton(NSString *symbol, NSString *label, NSString *key, void
 #import "Peek/Handoff.m"
 #import "Peek/Zoom.m"
 
+static IMP gViewUpdateTrackingAreas;
+static void DPProbe_updateTrackingAreas(NSView *self, SEL _cmd) {
+    ((void (*)(id, SEL))gViewUpdateTrackingAreas)(self, _cmd);
+    if (![self isKindOfClass:DPPeekAddress.class]) return;
+    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect options:NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingInVisibleRect
+                                                         owner:self userInfo:@{ @"probe" : @YES }]];
+}
+
 static int failures;
 static void Check(BOOL ok, const char *message) {
     if (!ok) { fprintf(stderr, "FAIL: %s\n", message); failures++; }
@@ -547,6 +555,18 @@ int main(void) {
             Check(DPPeekAllCards(window).count == 0 && DPPeekSyncTimer == nil, "handing over the last Peek stops the sync timer");
             [tabHost removeFromSuperview];
             sw.appleScriptTabs = [NSMutableArray arrayWithObjects:[DPTabMock tabWithID:@"pin-1"], [DPTabMock tabWithID:@"C"], nil];
+        }
+
+        {
+            ArcWebContents *hintSource = [ArcWebContents new];
+            Method update = class_getInstanceMethod(NSView.class, @selector(updateTrackingAreas));
+            gViewUpdateTrackingAreas = method_setImplementation(update, (IMP)DPProbe_updateTrackingAreas);
+            DPPeekAddress *address = [[DPPeekAddress alloc] initWithPage:hintSource];
+            [address updateTrackingAreas];
+            method_setImplementation(update, gViewUpdateTrackingAreas);
+            NSTrackingArea *only = address.trackingAreas.firstObject;
+            Check(address.trackingAreas.count == 1 && only.owner == address && !only.userInfo,
+                  "the address field rebuilds its tracking area after its superclass has, so nothing AppKit added survives it");
         }
 
         DPPeekTabWindow *window2 = [[DPPeekTabWindow alloc] initWithContentRect:NSMakeRect(-30000, -30000, 800, 500)

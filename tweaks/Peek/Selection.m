@@ -60,6 +60,7 @@ void DPPeekUpdateSyncTimer(void) {
 
 void DPPeekCloseForSource(id source) {
     if (!source) return;
+    DPPeekCoolForSource(source);
     for (DPPeekCard *peek in DPPeekAllCards(nil))
         if (!peek.closing && peek.source == source) {
             DPPeekChatDetachQuiet(peek);
@@ -174,21 +175,21 @@ static void DPPeekPage_close(id self, SEL _cmd) {
     DPCallOriginal(DPPeekPage_close, self);
     if (!DPPeek.on) return;
     __weak id weak = self;
-    DPPeekRunMain(^{ if (DPPeek.on && DPPeekHasCards() && weak) DPPeekCloseForPageOrSource(weak); });
+    DPPeekRunMain(^{ if (DPPeek.on && (DPPeekHasCards() || DPPeekHasWarm()) && weak) DPPeekCloseForPageOrSource(weak); });
 }
 
 static void DPPeekPage_closeTiming(id self, SEL _cmd, NSInteger timing) {
     DPCallOriginal(DPPeekPage_closeTiming, self, timing);
     if (!DPPeek.on) return;
     __weak id weak = self;
-    DPPeekRunMain(^{ if (DPPeek.on && DPPeekHasCards() && weak) DPPeekCloseForPageOrSource(weak); });
+    DPPeekRunMain(^{ if (DPPeek.on && (DPPeekHasCards() || DPPeekHasWarm()) && weak) DPPeekCloseForPageOrSource(weak); });
 }
 
 static void DPPeekWebContent_finalizeDiscard(id self, SEL _cmd, id page, BOOL discarded) {
     DPCallOriginal(DPPeekWebContent_finalizeDiscard, self, page, discarded);
     if (!DPPeek.on || !discarded || !page) return;
     __weak id weak = page;
-    DPPeekRunMain(^{ if (DPPeek.on && DPPeekHasCards() && weak) DPPeekCloseForSource(weak); });
+    DPPeekRunMain(^{ if (DPPeek.on && (DPPeekHasCards() || DPPeekHasWarm()) && weak) DPPeekCloseForSource(weak); });
 }
 
 void DPPeekInstallSelection(void) {
