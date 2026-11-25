@@ -57,6 +57,7 @@ void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
     return shared;
 }
 - (void)check:(void (^)(void))done {}
+- (void)checkAutomatically:(void (^)(void))done {}
 - (BOOL)available:(NSString *)part { return NO; }
 - (BOOL)staged:(NSString *)part { return NO; }
 - (BOOL)downloading:(NSString *)part { return NO; }
