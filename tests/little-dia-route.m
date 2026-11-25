@@ -28,7 +28,7 @@ static NSEventModifierFlags DPEvent_modifierFlags(id self, SEL _cmd) { return 0;
 static NSPoint DPEvent_mouseLocation(id self, SEL _cmd) { return NSMakePoint(-100000, -100000); }
 
 void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(void), void (^claimed)(NSWindow *window)) {
-    [gExpected addObject:@{@"frame" : [NSValue valueWithRect:frame], @"missed" : [missed copy]}];
+    [gExpected addObject:@{@"frame" : [NSValue valueWithRect:frame], @"missed" : [missed copy], @"url" : noted[@"url"] ?: NSNull.null}];
 }
 
 @interface FakeExtInfo : NSObject
@@ -43,7 +43,9 @@ void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(v
 @end
 @implementation FakeExtensions
 - (BOOL)isExtensionSystemReady { return self.extensionSystemReady; }
-- (id)getExtensionInfo:(NSString *)extID { return self.info; }
+- (id)getExtensionInfo:(NSString *)extID {
+    return self.info;
+}
 @end
 
 @interface FakeContext : NSObject
@@ -191,6 +193,7 @@ int main(void) {
         [manager handleEvent:makeGetURL(@"https://docs.ankiweb.net/intro.html", getpid() + 1, YES) withReplyEvent:nullReply];
         expect(browser.sentPayloads.count == 1 && gOriginalEvents.count == 0, @"external https GURL routes to Little Dia");
         expect([parseJSON(browser.sentPayloads[0])[@"url"] isEqual:@"https://docs.ankiweb.net/intro.html"], @"URL preserved");
+        expect(gExpected.count == 1 && [gExpected[0][@"url"] isEqual:@"https://docs.ankiweb.net/intro.html"], @"the expected window carries its request's URL");
 
         reset(browser);
         [manager handleEvent:makeGetURL(@"  HTTPS://jisho.org/search/食べる [1] \n", getpid() + 1, YES) withReplyEvent:nullReply];
@@ -210,6 +213,8 @@ int main(void) {
         [list2 insertDescriptor:[NSAppleEventDescriptor descriptorWithString:@"https://example.com/b"] atIndex:2];
         [manager handleEvent:makeEvent(kInternetEventClass, kAEGetURL, list2, getpid() + 1, YES, nil) withReplyEvent:nullReply];
         expect(browser.sentPayloads.count == 2 && gOriginalEvents.count == 0, @"2-item typeAEList routes both URLs to Little Dia");
+        expect(gExpected.count == 2 && [gExpected[0][@"url"] isEqual:@"https://example.com/a"] && [gExpected[1][@"url"] isEqual:@"https://example.com/b"],
+               @"each expected window carries its own link's URL");
 
         reset(browser);
         [manager handleEvent:makeGetURL(@"file:///tmp/notes.html", getpid() + 1, YES) withReplyEvent:nullReply];
@@ -317,6 +322,7 @@ int main(void) {
         expect(disabledBrowser.sentPayloads.count == 0 && gOriginalEvents.count == 1 && DPPutAwayWindows().count == 0,
                @"disabled extension everywhere falls back cleanly without sending omnibox input");
         [veiledWin orderOut:nil];
+
     }
     if (failures) return 1;
     puts("PASS: Little Dia routes GURL, AE lists, Unicode URLs, openURLs, and hidden multi-profile windows");

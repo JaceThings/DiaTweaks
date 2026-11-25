@@ -116,6 +116,16 @@ typedef NS_ENUM(NSInteger, DPTestOutcome) {
 @implementation _TtC13AppsUpsellBar17AppsUpsellBarView
 @end
 
+static NSInteger gSubviewReads;
+@interface DPCountedView : NSView
+@end
+@implementation DPCountedView
+- (NSArray<NSView *> *)subviews {
+    gSubviewReads++;
+    return [super subviews];
+}
+@end
+
 static NSMutableArray<NSWindow *> *gTestWindows;
 static char gSheetsKey;
 static char gSheetHandlersKey;
@@ -607,6 +617,57 @@ int main(void) {
             [covered removeFromSuperview];
             [coveredLate removeFromSuperview];
             [coveredAll removeFromSuperview];
+        }
+
+        {
+            DPTurnOffAI.on = NO;
+            DPHideConnectAppPrompts.on = YES;
+            _TtC6Dialog15DialogPanelView *pending = DPMakePanel(
+                @"Connect Linear to Dia?", @"Use Linear in Chat.", YES, @"OK", @"Don\u2019t connect Linear");
+            _TtC6Dialog25DialogPanelViewController *pendingVC = [_TtC6Dialog25DialogPanelViewController new];
+            pendingVC.dialogView = pending;
+            [pendingVC view];
+            DPHideConnectAppPrompts.on = NO;
+
+            NSWindow *busy = DPMakeWindow();
+            busy.contentView = [[DPCountedView alloc] initWithFrame:NSMakeRect(0, 0, 400, 260)];
+            for (int i = 0; i < 400; i++) {
+                NSView *row = [[DPCountedView alloc] initWithFrame:NSMakeRect(0, 0, 400, 20)];
+                [row addSubview:[[DPCountedView alloc] initWithFrame:NSMakeRect(0, 0, 100, 20)]];
+                [busy.contentView addSubview:row];
+            }
+            gSubviewReads = 0;
+            [busy orderFront:nil];
+            [busy makeKeyAndOrderFront:nil];
+            check("off with a hidden prompt elsewhere: showing a window walks none of its views", gSubviewReads == 0);
+            check("off: a prompt in another window stays hidden", pendingVC.view.hidden && pending.hidden);
+
+            [busy.contentView addSubview:pendingVC.view];
+            [busy orderFront:nil];
+            check("off: showing the window that holds the hidden prompt restores it", !pendingVC.view.hidden && !pending.hidden);
+            [pendingVC.view removeFromSuperview];
+
+            gSubviewReads = 0;
+            [busy orderFront:nil];
+            [busy makeKeyAndOrderFront:nil];
+            [browserWindow beginSheet:busy completionHandler:nil];
+            check("off after the prompt is restored: showing a window or sheet walks none of its views", gSubviewReads == 0);
+            [browserWindow endSheet:busy];
+
+            __weak _TtC6Dialog15DialogPanelView *weakGone = nil;
+            @autoreleasepool {
+                _TtC6Dialog15DialogPanelView *gone = DPMakePanel(
+                    @"Connect Notion to Dia?", @"Use Notion in Chat.", YES, @"OK", @"Don\u2019t connect Notion");
+                _TtC6Dialog25DialogPanelViewController *goneVC = [_TtC6Dialog25DialogPanelViewController new];
+                goneVC.dialogView = gone;
+                DPHideConnectAppPrompts.on = YES;
+                [goneVC view];
+                DPHideConnectAppPrompts.on = NO;
+                check("on: the overlay's prompt is hidden at load", gone.hidden && goneVC.view.hidden);
+                weakGone = gone;
+            }
+            check("off: a prompt that is dismissed without being shown again is not kept alive", !weakGone);
+
         }
 
         check("patch metadata matches spec",
