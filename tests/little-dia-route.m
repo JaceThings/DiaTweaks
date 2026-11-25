@@ -31,6 +31,8 @@ void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(v
     [gExpected addObject:@{@"frame" : [NSValue valueWithRect:frame], @"missed" : [missed copy], @"url" : noted[@"url"] ?: NSNull.null}];
 }
 
+NSNotificationName const DPPatchesDidChangeNotification = @"DPPatchesDidChange";
+
 @interface FakeExtInfo : NSObject
 @property BOOL enabled;
 @end
@@ -39,11 +41,13 @@ void DPExpectLittleDiaWindow(NSRect frame, NSDictionary *noted, void (^missed)(v
 
 @interface FakeExtensions : NSObject
 @property BOOL extensionSystemReady;
+@property NSInteger infoProbes;
 @property (nonatomic, strong) FakeExtInfo *info;
 @end
 @implementation FakeExtensions
 - (BOOL)isExtensionSystemReady { return self.extensionSystemReady; }
 - (id)getExtensionInfo:(NSString *)extID {
+    self.infoProbes++;
     return self.info;
 }
 @end
@@ -323,6 +327,20 @@ int main(void) {
                @"disabled extension everywhere falls back cleanly without sending omnibox input");
         [veiledWin orderOut:nil];
 
+        reset(browser);
+        gReadyCache = -1;
+        browser.context.extensions.infoProbes = 0;
+        expect(DPLittleDiaReady() && DPLittleDiaReady() && DPLittleDiaReady(), @"DPLittleDiaReady reports YES while enabled");
+        expect(browser.context.extensions.infoProbes == 1, @"DPLittleDiaReady memoizes readiness across repeated calls in one run-loop turn");
+        browser.context.extensions.info.enabled = NO;
+        expect(DPLittleDiaReady(), @"memoized readiness holds within the same turn before invalidation");
+        [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];
+        expect(!DPLittleDiaReady() && browser.context.extensions.infoProbes == 2,
+               @"DPPatchesDidChangeNotification invalidates memoized readiness immediately");
+        browser.context.extensions.info.enabled = YES;
+        [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+        expect(DPLittleDiaReady() && browser.context.extensions.infoProbes == 3,
+               @"next run-loop turn refreshes DPLittleDiaReady automatically");
     }
     if (failures) return 1;
     puts("PASS: Little Dia routes GURL, AE lists, Unicode URLs, openURLs, and hidden multi-profile windows");
