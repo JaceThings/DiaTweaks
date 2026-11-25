@@ -87,6 +87,19 @@ static void expect(BOOL ok, NSString *what) {
 - (void)browser:(id)browser removeTabsFromGroupWithSessionIds:(NSArray *)ids completion:(void (^)(id))done { self.ungroupCalls++; }
 @end
 
+@interface DPThrowingMenu : NSMenu
+@property NSInteger throwTag;
+@end
+@implementation DPThrowingMenu
+- (void)insertItem:(NSMenuItem *)item atIndex:(NSInteger)index {
+    if (self.throwTag && item.tag == self.throwTag) {
+        self.throwTag = 0;
+        @throw [NSException exceptionWithName:NSRangeException reason:@"index out of range" userInfo:nil];
+    }
+    [super insertItem:item atIndex:index];
+}
+@end
+
 static int runtimeLookups;
 static char aliasNames[32][48];
 static Class aliasClasses[32];
@@ -322,6 +335,22 @@ int main(void) {
             moved = NO;
         }
         expect(moved && built.firstObject.menu == tabsMenu, @"Dia can move a scratch menu's items into the Tabs menu after Group Tabs placed items in it");
+
+        for (NSNumber *failing in @[ @(DPGroupMenuTag), @(DPExpandMenuTag) ]) {
+            DPThrowingMenu *flaky = [[DPThrowingMenu alloc] initWithTitle:@"Flaky"];
+            flaky.throwTag = failing.integerValue;
+            BOOL threw = NO;
+            @try {
+                [flaky addItem:[[NSMenuItem alloc] initWithTitle:@"New Group with 2 Tabs" action:nil keyEquivalent:@""]];
+            } @catch (NSException *exception) {
+                threw = YES;
+            }
+            expect(threw && !DPInserting, @"Menu.m stops ignoring menus after AppKit throws while it places Group Tabs items");
+            [flaky addItem:[[NSMenuItem alloc] initWithTitle:@"New Group with 3 Tabs" action:nil keyEquivalent:@""]];
+            BOOL complete = [flaky itemWithTag:DPGroupMenuTag] != nil;
+            for (NSInteger i = 0; i < DPFollowerCount; i++) complete = complete && [flaky itemWithTag:DPFollowerTags[i]] != nil;
+            expect(complete, @"Menu.m still places Group Tabs items in a menu after an earlier placement threw");
+        }
         DPGroupTabs.on = NO;
 
         NSToolbar *testToolbar = [[NSToolbar alloc] initWithIdentifier:@"DPTestToolbar"];
