@@ -192,7 +192,7 @@ int main(void) {
 
         [DPSettingsDefaults() setBool:YES forKey:@"showExperimentalTweaks"];
         DPLoadPatches();
-        expect(DPPatchCount == 104, @"the dylib lists 104 tweaks");
+        expect(DPPatchCount == 105, @"the dylib lists 105 tweaks");
         // Dia's classes aren't here, so every tweak would look unavailable; this test is about the layout.
         for (NSUInteger i = 0; i < DPPatchCount; i++) DPPatches[i]->unavailable = NO;
 
