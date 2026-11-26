@@ -1,10 +1,19 @@
 #import "Updates/Updates.h"
+#import "SafeMode/SafeMode.h"
+#include <sys/stat.h>
 #include <sys/xattr.h>
 
 NSString *const DPDia = @"dia", *const DPTweaks = @"tweaks";
 NSNotificationName const DPUpdatesDidChangeNotification = @"DPUpdatesDidChange";
 
 NSString *DPPartName(NSString *part) { return [part isEqual:DPDia] ? @"Dia" : @"DiaTweaks"; }
+
+static NSArray<NSString *> *DPParts(void) {
+    static NSArray<NSString *> *parts;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ parts = @[ DPDia, DPTweaks ]; });
+    return parts;
+}
 
 static NSString *DPSupport(NSString *name) {
     return [DPAppSupport(@"DiaPatches") stringByAppendingPathComponent:name];
@@ -14,26 +23,36 @@ static NSTask *DPCLITask(NSArray<NSString *> *args) {
     NSTask *task = [NSTask new];
     task.executableURL = [NSURL fileURLWithPath:DPSupport(@"bin/diapatch")];
     task.arguments = args;
+    task.standardInput = NSFileHandle.fileHandleWithNullDevice;
     return task;
 }
 
-static BOOL DPLaunchCLI(NSArray<NSString *> *args) { return [DPCLITask(args) launchAndReturnError:nil]; }
+static BOOL DPLaunchCLI(NSArray<NSString *> *args) {
+    NSTask *task = DPCLITask(args);
+    task.standardOutput = task.standardError = NSFileHandle.fileHandleWithNullDevice;
+    return [task launchAndReturnError:nil];
+}
 
-static NSUserDefaults *DPUpdateDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
+static NSDictionary *DPUpdateEntry(NSDictionary *found, NSString *part) {
+    id entry = found[part];
+    return [entry isKindOfClass:NSDictionary.class] ? entry : nil;
+}
 
-// diapatch writes release.plist when it installs a release, so a source build has none.
 BOOL DPIsLocalBuild(NSString *part) {
-    return [part isEqual:DPTweaks] && ![[NSDictionary dictionaryWithContentsOfFile:DPSupport(@"release.plist")][@"tag"] isKindOfClass:NSString.class];
+    static BOOL local;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ local = ![[NSDictionary dictionaryWithContentsOfFile:DPSupport(@"release.plist")][@"tag"] isKindOfClass:NSString.class]; });
+    return local && [part isEqual:DPTweaks];
 }
 
 static NSString *DPAutoKey(NSString *part) { return [part isEqual:DPDia] ? @"autoUpdateDia" : @"autoUpdateTweaks"; }
 
 DPAutoLevel DPAutoLevelOf(NSString *part) {
-    id level = [DPUpdateDefaults() objectForKey:DPAutoKey(part)];
+    id level = [DPSettingsDefaults() objectForKey:DPAutoKey(part)];
     return level ? MIN(MAX([level integerValue], DPAutoOff), DPAutoInstall) : DPAutoInstall;
 }
 
-void DPSetAutoLevel(NSString *part, DPAutoLevel level) { [DPUpdateDefaults() setInteger:level forKey:DPAutoKey(part)]; }
+void DPSetAutoLevel(NSString *part, DPAutoLevel level) { [DPSettingsDefaults() setInteger:level forKey:DPAutoKey(part)]; }
 
 static NSString *DPReasonIn(NSData *data) {
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
@@ -42,19 +61,29 @@ static NSString *DPReasonIn(NSData *data) {
     return line.length ? line : nil;
 }
 
+static BOOL DPHandedOff;
+
 void DPRunCLIReporting(NSArray<NSString *> *args, void (^completion)(NSString *output, NSString *reason)) {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+    dispatch_async(queue, ^{
         NSTask *task = DPCLITask(args);
         NSPipe *pipe = [NSPipe pipe], *errors = [NSPipe pipe];
         task.standardOutput = pipe;
         task.standardError = errors;
         NSString *output = nil, *reason = nil;
-        if ([task launchAndReturnError:nil]) {
-            // diapatch writes little to stderr, so reading stdout first can't leave it blocked on a full pipe.
+        NSError *launchError = nil;
+        if ([task launchAndReturnError:&launchError]) {
+            // Drain stderr concurrently so verbose child output can't fill the pipe buffer and deadlock stdout.
+            __block NSData *errData = nil;
+            dispatch_group_t group = dispatch_group_create();
+            dispatch_group_async(group, queue, ^{ errData = [errors.fileHandleForReading readDataToEndOfFile]; });
             NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
+            dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
             [task waitUntilExit];
             if (task.terminationStatus == 0) output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-            else reason = DPReasonIn([errors.fileHandleForReading readDataToEndOfFile]);
+            else reason = DPReasonIn(errData);
+        } else {
+            reason = launchError.localizedDescription;
         }
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(output, reason); });
     });
@@ -65,16 +94,21 @@ void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
 }
 
 void DPHandOffAndQuit(NSArray<NSString *> *args) {
-    if (DPLaunchCLI([args arrayByAddingObjectsFromArray:@[@"--wait", @(getpid()).stringValue, @"--relaunch"]])) [NSApp terminate:nil];
+    if (DPHandedOff) return;
+    if (!DPLaunchCLI([args arrayByAddingObjectsFromArray:@[@"--wait", @(getpid()).stringValue, @"--relaunch"]])) return;
+    DPHandedOff = YES;
+    [NSApp terminate:nil];
 }
 
 @implementation DPUpdates {
     NSMutableDictionary<NSString *, NSMutableArray *> *_whenDownloaded;
-    NSMutableArray *_checked;
+    NSMutableArray *_checked, *_recheck;
     NSMutableDictionary<NSString *, NSString *> *_failed;
+    NSString *_unpatchable;
     NSTimer *_progress;
     NSDictionary *_found;
     NSMutableDictionary<NSString *, id> *_pretend;
+    CFTimeInterval _lastAutoCheck;
 }
 
 + (instancetype)shared {
@@ -88,6 +122,7 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     if (!(self = [super init])) return nil;
     _whenDownloaded = [NSMutableDictionary new];
     _checked = [NSMutableArray new];
+    _recheck = [NSMutableArray new];
     _failed = [NSMutableDictionary new];
     _pretend = [NSMutableDictionary new];
     return self;
@@ -96,34 +131,72 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
 - (void)changed { [NSNotificationCenter.defaultCenter postNotificationName:DPUpdatesDidChangeNotification object:self]; }
 
 - (void)check:(void (^)(void))done {
-    if (done) [_checked addObject:done];
+    if (done) [_checked addObject:[done copy]];
     if (_checking) return;
     _checking = YES;
     [self changed];
     DPRunCLI(@[@"check", @"--json"], ^(NSString *output) {
-        id found = output ? [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
-        self->_found = [found isKindOfClass:NSDictionary.class] ? found : nil;
-        NSString *unpatchable = self->_found[DPDia][@"unpatchable"];
-        if ([unpatchable isKindOfClass:NSString.class] && !self->_failed[DPDia] && !self->_whenDownloaded[DPDia]) self->_failed[DPDia] = unpatchable;
+        NSData *json = [output dataUsingEncoding:NSUTF8StringEncoding];
+        id raw = json ? [NSJSONSerialization JSONObjectWithData:json options:0 error:nil] : nil;
+        NSMutableDictionary *parsed = nil;
+        if ([raw isKindOfClass:NSDictionary.class]) {
+            parsed = [NSMutableDictionary new];
+            for (NSString *part in DPParts()) {
+                NSDictionary *entry = DPUpdateEntry(raw, part);
+                if (entry) parsed[part] = entry;
+            }
+        }
+        self->_found = parsed;
+        for (NSString *part in DPParts())
+            if ([self staged:part]) [self->_failed removeObjectForKey:part];
+        NSString *unpatchable = DPUpdateEntry(self->_found, DPDia)[@"unpatchable"];
+        if ([unpatchable isKindOfClass:NSString.class]) {
+            if (!self->_failed[DPDia] && !self->_whenDownloaded[DPDia]) self->_failed[DPDia] = self->_unpatchable = unpatchable;
+        } else if (self->_unpatchable && [self->_failed[DPDia] isEqualToString:self->_unpatchable]) {
+            [self->_failed removeObjectForKey:DPDia];
+            self->_unpatchable = nil;
+        }
         self->_checking = NO;
         NSArray *waiting = [self->_checked copy];
         [self->_checked removeAllObjects];
+        NSArray *recheck = self->_recheck.count ? [self->_recheck copy] : nil;
+        [self->_recheck removeAllObjects];
         [self changed];
         for (void (^block)(void) in waiting) block();
+        if (recheck) {
+            [self->_checked addObjectsFromArray:recheck];
+            [self check:nil];
+        }
     });
+}
+
+- (void)checkAutomatically:(void (^)(void))done {
+    if (DPPaused || DPSafeMode || DPPausedAtLaunch) {
+        if (done) done();
+        return;
+    }
+    // Home asks on every visit and launch asks once, so one check a minute covers both.
+    CFTimeInterval now = CACurrentMediaTime();
+    if (_lastAutoCheck && now - _lastAutoCheck < 60) {
+        if (_checking && done) [_checked addObject:[done copy]];
+        else if (done) done();
+        return;
+    }
+    _lastAutoCheck = now;
+    [self check:done];
 }
 
 - (NSDictionary *)found {
     if (!_pretend.count) return _found;
     NSMutableDictionary *found = [_found mutableCopy] ?: [NSMutableDictionary new];
     for (NSString *part in _pretend) {
-        BOOL staged = [_pretend[part] isEqual:@"staged"];
-        NSString *latest = [part isEqual:DPDia] ? @"1.56.0 (90000)" : @"v1.1.0";
-        NSMutableDictionary *entry = [found[part] ?: @{} mutableCopy];
+        BOOL dia = [part isEqual:DPDia], staged = [_pretend[part] isEqual:@"staged"];
+        NSString *latest = dia ? @"1.56.0 (90000)" : @"v1.1.0";
+        NSMutableDictionary *entry = [DPUpdateEntry(found, part) ?: @{} mutableCopy];
         [entry addEntriesFromDictionary:@{
             @"latest" : latest, @"available" : @(!staged), @"staged" : staged ? latest : NSNull.null,
-            @"size" : [part isEqual:DPDia] ? @704038560 : @960161,
-            @"releaseNotes" : [part isEqual:DPDia] ? @"https://www.diabrowser.com/release-notes/latest" : @"https://github.com/JaceThings/DiaTweaks/releases",
+            @"size" : dia ? @704038560 : @960161,
+            @"releaseNotes" : dia ? @"https://www.diabrowser.com/release-notes/latest" : @"https://github.com/JaceThings/DiaTweaks/releases",
         }];
         found[part] = entry;
     }
@@ -132,32 +205,43 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
 
 - (NSString *)checkProblem {
     NSMutableArray<NSString *> *names = [NSMutableArray new];
-    for (NSString *part in @[DPDia, DPTweaks])
-        if ([_found[part][@"error"] isKindOfClass:NSString.class]) [names addObject:DPPartName(part)];
-    return names.count == 2 ? @"Couldn’t check for updates" : names.count ? [NSString stringWithFormat:@"Couldn’t check for %@ updates", names[0]] : nil;
+    for (NSString *part in DPParts())
+        if ([DPUpdateEntry(_found, part)[@"error"] isKindOfClass:NSString.class]) [names addObject:DPPartName(part)];
+    if (names.count == 2) return @"Couldn’t check for updates";
+    return names.count ? [NSString stringWithFormat:@"Couldn’t check for %@ updates", names[0]] : nil;
 }
 
-- (BOOL)available:(NSString *)part { return [self.found[part][@"available"] boolValue]; }
-- (BOOL)staged:(NSString *)part { return [self.found[part][@"staged"] isKindOfClass:NSString.class]; }
+- (BOOL)available:(NSString *)part {
+    id available = DPUpdateEntry(self.found, part)[@"available"];
+    return [available isKindOfClass:NSNumber.class] && [available boolValue];
+}
+- (BOOL)staged:(NSString *)part { return [DPUpdateEntry(self.found, part)[@"staged"] isKindOfClass:NSString.class]; }
 - (BOOL)downloading:(NSString *)part { return _whenDownloaded[part] != nil; }
 - (BOOL)failed:(NSString *)part { return _failed[part] != nil; }
 - (NSString *)failure:(NSString *)part { return _failed[part].length ? _failed[part] : nil; }
 
 - (double)progress:(NSString *)part {
     if ([_pretend[part] isKindOfClass:NSDate.class]) return MIN(-[_pretend[part] timeIntervalSinceNow] / 3, 1);
-    NSString *file = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches"] stringByAppendingPathComponent:[part isEqual:DPDia] ? @"download/Dia.zip" : @"release/DiaTweaks.zip"];
-    double size = [self.found[part][@"size"] doubleValue];
-    double got = [[NSFileManager.defaultManager attributesOfItemAtPath:file error:nil][NSFileSize] doubleValue];
-    return size > 0 && got < size ? got / size : got > 0 ? -1 : 0;
+    static NSString *cacheDir;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cacheDir = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"DiaPatches"];
+    });
+    NSString *file = [cacheDir stringByAppendingPathComponent:[part isEqual:DPDia] ? @"download/Dia.zip" : @"release/DiaTweaks.zip"];
+    id rawSize = DPUpdateEntry(self.found, part)[@"size"];
+    double size = [rawSize isKindOfClass:NSNumber.class] ? [rawSize doubleValue] : 0;
+    struct stat info;
+    double got = stat(file.fileSystemRepresentation, &info) == 0 ? info.st_size : 0;
+    if (size > 0 && got < size) return got / size;
+    return got > 0 ? -1 : 0;
 }
 
 - (void)download:(NSString *)part then:(void (^)(void))done {
     if (_whenDownloaded[part]) {
-        if (done) [_whenDownloaded[part] addObject:done];
+        if (done) [_whenDownloaded[part] addObject:[done copy]];
         return;
     }
-    _whenDownloaded[part] = done ? [NSMutableArray arrayWithObject:done] : [NSMutableArray new];
+    _whenDownloaded[part] = done ? [NSMutableArray arrayWithObject:[done copy]] : [NSMutableArray new];
     [_failed removeObjectForKey:part];
     if (!_progress) _progress = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *_) { [self tick]; }];
     [self changed];
@@ -171,19 +255,25 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
     });
 }
 
+- (void)stopTickingIfIdle {
+    if (_whenDownloaded.count) return;
+    [_progress invalidate];
+    _progress = nil;
+}
+
 - (void)finishDownload:(NSString *)part {
     NSArray *waiting = _whenDownloaded[part];
     [_whenDownloaded removeObjectForKey:part];
-    if (!_whenDownloaded.count) {
-        [_progress invalidate];
-        _progress = nil;
-    }
+    [self stopTickingIfIdle];
     if (_pretend[part]) {
         _pretend[part] = @"staged";
         [self changed];
         for (void (^block)(void) in waiting) block();
     } else {
-        [self check:^{ for (void (^block)(void) in waiting) block(); }];
+        void (^notify)(void) = ^{ for (void (^block)(void) in waiting) block(); };
+        // A check started before the download finished holds a stale snapshot, so schedule a fresh check after it.
+        if (_checking) [_recheck addObject:[notify copy]];
+        else [self check:notify];
     }
 }
 
@@ -209,7 +299,10 @@ void DPHandOffAndQuit(NSArray<NSString *> *args) {
 }
 
 - (void)stopPretending {
+    for (NSString *part in _pretend.allKeys)
+        if ([_pretend[part] isKindOfClass:NSDate.class]) [_whenDownloaded removeObjectForKey:part];
     [_pretend removeAllObjects];
+    [self stopTickingIfIdle];
     [self changed];
 }
 @end
@@ -222,7 +315,8 @@ static void DPInstallDownloaded(DPUpdates *updates, NSArray<NSString *> *parts) 
             continue;
         }
         [missing addObject:DPPartName(each)];
-        if ([updates failure:each]) [reasons addObject:[updates failure:each]];
+        NSString *reason = [updates failure:each];
+        if (reason) [reasons addObject:reason];
     }
     if (staged.count) return [updates installAndRelaunch:staged];
     NSAlert *failed = [NSAlert new];
@@ -235,12 +329,11 @@ static void DPShowUpdateAlert(void) {
     DPUpdates *updates = DPUpdates.shared;
     [updates check:^{
         NSMutableArray<NSString *> *parts = [NSMutableArray new], *names = [NSMutableArray new];
-        for (NSString *part in @[DPDia, DPTweaks]) {
-            if (![updates available:part] && ![updates staged:part]) continue;
+        for (NSString *part in DPParts()) {
+            BOOL staged = [updates staged:part];
+            if (!staged && ![updates available:part]) continue;
             [parts addObject:part];
-            // What's staged can differ from the feed's latest after Dia switches between stable and Early Birds.
-            NSString *version = updates.found[part][[updates staged:part] ? @"staged" : @"latest"];
-            [names addObject:[NSString stringWithFormat:@"%@ %@", DPPartName(part), version]];
+            [names addObject:[NSString stringWithFormat:@"%@ %@", DPPartName(part), updates.found[part][staged ? @"staged" : @"latest"]]];
         }
         NSAlert *alert = [NSAlert new];
         if (!parts.count) {
@@ -249,20 +342,29 @@ static void DPShowUpdateAlert(void) {
             return;
         }
         alert.messageText = [[names componentsJoinedByString:@" and "] stringByAppendingString:@" available"];
-        alert.informativeText = parts.count > 1 ? @"Dia relaunches to install them once they’re downloaded."
-                                                : @"Dia relaunches to install it once it’s downloaded.";
+        BOOL allStaged = YES;
+        for (NSString *part in parts) allStaged &= [updates staged:part];
+        BOOL many = parts.count > 1;
+        NSString *what = many ? @"them" : @"it", *are = many ? @"they’re" : @"it’s";
+        alert.informativeText = allStaged ? [NSString stringWithFormat:@"Dia relaunches to install %@.", what]
+                                          : [NSString stringWithFormat:@"Dia relaunches to install %@ once %@ downloaded.", what, are];
         [alert addButtonWithTitle:@"Update and Relaunch"];
         [alert addButtonWithTitle:@"Later"];
         if ([alert runModal] != NSAlertFirstButtonReturn) return;
         __block NSUInteger left = parts.count;
-        for (NSString *part in parts)
-            [updates download:part then:^{ if (--left == 0) DPInstallDownloaded(updates, parts); }];
+        void (^ready)(void) = ^{ if (--left == 0) DPInstallDownloaded(updates, parts); };
+        for (NSString *part in parts) {
+            if ([updates staged:part]) ready();
+            else [updates download:part then:ready];
+        }
     }];
 }
 
 static void DPInstallOnQuit(void) {
-    BOOL dia = DPAutoLevelOf(DPDia) == DPAutoInstall && [NSFileManager.defaultManager fileExistsAtPath:DPSupport(@"staged/Dia.app")];
-    BOOL tweaks = DPAutoLevelOf(DPTweaks) == DPAutoInstall && !DPIsLocalBuild(DPTweaks) && [NSFileManager.defaultManager fileExistsAtPath:DPSupport(@"staged/DiaTweaks")];
+    if (DPHandedOff) return;
+    NSFileManager *files = NSFileManager.defaultManager;
+    BOOL dia = DPAutoLevelOf(DPDia) == DPAutoInstall && [files fileExistsAtPath:DPSupport(@"staged/Dia.app")] && [files fileExistsAtPath:DPSupport(@"staged/ready")];
+    BOOL tweaks = DPAutoLevelOf(DPTweaks) == DPAutoInstall && !DPIsLocalBuild(DPTweaks) && [files fileExistsAtPath:DPSupport(@"staged/DiaTweaks/release.plist")];
     if (!dia && !tweaks) return;
     NSMutableArray *args = [NSMutableArray arrayWithObjects:@"apply", @"--wait", @(getpid()).stringValue, nil];
     if (dia) [args addObject:@"--dia"];
@@ -270,13 +372,13 @@ static void DPInstallOnQuit(void) {
     DPLaunchCLI(args);
 }
 
-@protocol DPSparkleUpdater
+@protocol DPSparkleUpdater <NSObject>
 @property (nonatomic, readonly) NSURL *feedURL;
 @end
 
 static void DPSaveDiaFeed(id<DPSparkleUpdater> updater) {
-    NSString *feed = updater.feedURL.absoluteString;
-    if (feed) [DPUpdateDefaults() setObject:feed forKey:@"diaFeed"];
+    NSString *feed = [updater respondsToSelector:@selector(feedURL)] ? updater.feedURL.absoluteString : nil;
+    if (feed) [DPSettingsDefaults() setObject:feed forKey:@"diaFeed"];
 }
 
 static BOOL DPUpdater_startUpdater(id self, SEL _cmd, NSError **error) {
@@ -311,12 +413,15 @@ void DPInstallUpdates(void) {
     DPOnLaunch(^{
         DPOnMenuItem(nil, @"Check for Updates", ^{ DPShowUpdateAlert(); });
         if (DPAutoLevelOf(DPDia) == DPAutoOff && DPAutoLevelOf(DPTweaks) == DPAutoOff) return;
-        DPUpdates *updates = DPUpdates.shared;
-        [updates check:^{
-            for (NSString *part in @[DPDia, DPTweaks])
-                if (DPAutoLevelOf(part) >= DPAutoDownload && !DPIsLocalBuild(part) && [updates available:part] && ![updates failed:part])
-                    [updates download:part then:nil];
-        }];
+        // Dia builds its windows and tabs first, and a paused launch never reaches the network at all.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            DPUpdates *updates = DPUpdates.shared;
+            [updates checkAutomatically:^{
+                for (NSString *part in DPParts())
+                    if (DPAutoLevelOf(part) >= DPAutoDownload && !DPIsLocalBuild(part) && [updates available:part] && ![updates failed:part])
+                        [updates download:part then:nil];
+            }];
+        });
     });
     DPOnQuit(^{ DPInstallOnQuit(); });
 }

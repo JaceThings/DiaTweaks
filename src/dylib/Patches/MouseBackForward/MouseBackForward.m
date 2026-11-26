@@ -5,16 +5,27 @@ extern DPPatch DPMouseBackForward;
 
 static const NSInteger DPWebContentsHidden = 0;
 static NSHashTable *DPPages;
+static id DPMouseMonitor;
+
+static BOOL DPCanSteer(id page) {
+    static const char *const needs[] = {"nativeView", "visibility", "hasFocus", "canGoBack", "canGoForward", "navigationController"};
+    for (size_t i = 0; i < sizeof needs / sizeof *needs; i++)
+        if (![page respondsToSelector:sel_registerName(needs[i])]) return NO;
+    return YES;
+}
 
 static void DPPage_setVisibility(id self, SEL _cmd, NSInteger visibility) {
-    [DPPages addObject:self];
+    if (DPCanSteer(self)) [DPPages addObject:self];
     DPCallOriginal(DPPage_setVisibility, self, visibility);
 }
 
 static NSInteger DPOffset(NSEvent *event) {
-    if (event.type == NSEventTypeSwipe)
-        return event.phase == NSEventPhaseNone && fabs(event.deltaX) > fabs(event.deltaY) ? (event.deltaX > 0 ? -1 : 1) : 0;
-    return event.buttonNumber == 3 ? -1 : event.buttonNumber == 4 ? 1 : 0;
+    if (event.type == NSEventTypeSwipe) {
+        if (event.phase != NSEventPhaseNone || !(fabs(event.deltaX) > fabs(event.deltaY))) return 0;
+        return event.deltaX > 0 ? -1 : 1;
+    }
+    if (event.buttonNumber == 3) return -1;
+    return event.buttonNumber == 4 ? 1 : 0;
 }
 
 static BOOL DPPageBool(id page, SEL sel) { return ((BOOL (*)(id, SEL))objc_msgSend)(page, sel); }
@@ -31,7 +42,7 @@ static id DPPageAt(NSEvent *event) {
     NSView *hit = [window.contentView.superview hitTest:point];
     id focused = nil, only = nil;
     NSUInteger count = 0;
-    for (id page in DPPages.allObjects) {
+    for (id page in DPPages) {
         NSView *view = [page performSelector:@selector(nativeView)];
         if (view.window != window || ((NSInteger (*)(id, SEL))objc_msgSend)(page, @selector(visibility)) == DPWebContentsHidden) continue;
         if ([hit isDescendantOf:view]) return page;
@@ -45,20 +56,26 @@ static id DPPageAt(NSEvent *event) {
 static void DPGo(id page, NSInteger offset) {
     if (!DPPageBool(page, offset < 0 ? @selector(canGoBack) : @selector(canGoForward))) return;
     id controller = [page performSelector:@selector(navigationController)];
-    if (offset < 0) [controller performSelector:@selector(goBack)];
-    else [controller performSelector:@selector(goForward)];
+    SEL go = offset < 0 ? @selector(goBack) : @selector(goForward);
+    if ([controller respondsToSelector:go]) ((void (*)(id, SEL))objc_msgSend)(controller, go);
+}
+
+static void DPApplyMouseBackForward(DPPatch *patch) {
+    NSEventMask mask = NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp | NSEventMaskSwipe;
+    DPSyncMonitor(&DPMouseMonitor, patch->on, mask, ^NSEvent *(NSEvent *event) {
+        if (!DPMouseBackForward.on) return event;
+        NSInteger offset = DPOffset(event);
+        id page = offset ? DPPageAt(event) : nil;
+        if (!page) return event;
+        if (event.type != NSEventTypeOtherMouseDown) DPGo(page, offset);
+        return nil;
+    });
 }
 
 static void DPInstallMouseBackForward(void) {
     DPPages = [NSHashTable weakObjectsHashTable];
     DPHook(DPDiaWebContents, @selector(setVisibility:), (IMP)DPPage_setVisibility);
-    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp | NSEventMaskSwipe handler:^NSEvent *(NSEvent *event) {
-        NSInteger offset = DPOffset(event);
-        id page = DPMouseBackForward.on && offset ? DPPageAt(event) : nil;
-        if (!page) return event;
-        if (event.type != NSEventTypeOtherMouseDown) DPGo(page, offset);
-        return nil;
-    }];
+    DPApplyMouseBackForward(&DPMouseBackForward);
 }
 
 static NSString *DPVerifyMouseBackForward(DPPatch *patch) {
@@ -73,13 +90,14 @@ static NSString *DPVerifyMouseBackForward(DPPatch *patch) {
 
 DP_PATCH(DPMouseBackForward) {
     .key = @"mouseBackForward",
-    .order = 86,
+    .order = 12,
     .title = @"Mouse Back and Forward Buttons",
     .detail = @"Use your mouse’s side buttons to go back and forward, even on sites that block them. In split tabs, navigate the page under the pointer.",
     .symbol = @"computermouse.fill",
-    .tint = @"systemPinkColor",
-    .section = @"Tabs",
+    .tint = @"systemBlueColor",
+    .section = @"Page",
     .classes = DPClasses(DPDiaWebContents, DPDiaNavigationController),
     .install = DPInstallMouseBackForward,
+    .apply = DPApplyMouseBackForward,
     .verify = DPVerifyMouseBackForward,
 };

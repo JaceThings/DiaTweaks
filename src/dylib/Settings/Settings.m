@@ -1,4 +1,7 @@
 #import "Settings.h"
+#include <mach/vm_map.h>
+
+extern const uintptr_t objc_debug_isa_class_mask;
 
 static char DPSettingsKey, DPSearchItemKey;
 
@@ -10,18 +13,55 @@ static DPSidebarRow DPOurRow(NSTableView *table, NSInteger row) {
     return row >= 0 && ours >= 0 ? ours : DPDiaRow;
 }
 
+static BOOL DPIsRegisteredClass(const void *candidate) {
+    if (!candidate) return NO;
+    static CFMutableSetRef known;
+    if (known && CFSetContainsValue(known, candidate)) return YES;
+    if (known) CFRelease(known);
+    known = CFSetCreateMutable(NULL, 0, NULL);
+    unsigned int count = 0;
+    Class *classes = objc_copyClassList(&count);
+    for (unsigned int i = 0; i < count; i++) CFSetAddValue(known, (__bridge const void *)classes[i]);
+    free(classes);
+    return CFSetContainsValue(known, candidate);
+}
+
+// The pane's toolbar items live in a raw Swift ivar: retaining an unmapped word or struct pointer would crash before @try.
+static NSArray *DPDiaPaneItems(id delegate) {
+    void **slot = DPIvar(delegate, "paneToolbarItems");
+    uintptr_t ptr = slot ? (uintptr_t)*slot : 0;
+    if (ptr < 0x100000000ULL || (ptr & 0xC000000000000007ULL)) return nil;
+    uintptr_t isa = 0;
+    vm_size_t read = 0;
+    if (vm_read_overwrite(mach_task_self(), (vm_address_t)ptr, sizeof isa, (vm_address_t)&isa, &read) != KERN_SUCCESS || read != sizeof isa)
+        return nil;
+    const void *rawCls = (const void *)(isa & objc_debug_isa_class_mask);
+    if (!DPIsRegisteredClass(rawCls)) return nil;
+    const char *name = class_getName((__bridge Class)rawCls);
+    if (!name || !strstr(name, "Array")) return nil;
+    @try {
+        id raw = (__bridge id)(void *)ptr;
+        return [raw isKindOfClass:NSArray.class] ? raw : nil;
+    } @catch (NSException *exception) {
+        return nil;
+    }
+}
+
 static void DPRemoveDiaPaneItems(NSToolbar *toolbar) {
-    void **slot = DPIvar(toolbar.delegate, "paneToolbarItems");
-    // A Swift array of objects is its storage, an NSArray; one bridged from Objective-C is tagged and left alone.
-    if (!slot || !*slot || ((uintptr_t)*slot & 0xC000000000000001)) return;
-    NSArray<NSToolbarItem *> *paneItems = (__bridge NSArray *)*slot;
-    NSSet *identifiers = [NSSet setWithArray:[paneItems valueForKey:@"itemIdentifier"]];
+    NSArray *raw = DPDiaPaneItems(toolbar.delegate);
+    if (!raw) return;
+    NSMutableSet *identifiers = [NSMutableSet set];
+    for (id item in raw) {
+        id identifier = DPValueForKey(item, @"itemIdentifier");
+        if ([identifier isKindOfClass:NSString.class]) [identifiers addObject:identifier];
+    }
     for (NSInteger i = toolbar.items.count - 1; i >= 0; i--)
         if ([identifiers containsObject:toolbar.items[i].itemIdentifier]) [toolbar removeItemAtIndex:i];
 }
 
 @interface DPSettings : NSObject
 @property (nonatomic, weak) NSTableView *table;
+@property (nonatomic, weak) NSClipView *watchedClip;
 @property (nonatomic, weak) NSTextField *title;
 @property (nonatomic, copy) NSString *originalTitle, *shownTitle;
 @property (nonatomic, strong) DPPaneView *home, *patches;
@@ -30,7 +70,7 @@ static void DPRemoveDiaPaneItems(NSToolbar *toolbar) {
 @property (nonatomic) NSWindowCollectionBehavior behavior;
 @property (nonatomic) NSSize minSize, maxSize;
 @property (nonatomic) CGFloat fixedHeight, dividerHeight;
-@property (nonatomic) BOOL backWasEnabled, watchingHeight;
+@property (nonatomic) BOOL backWasEnabled, backBorrowed, zoomWasEnabled;
 @end
 
 static CGFloat const DPDividerMinHeight = 17;
@@ -49,12 +89,17 @@ static __weak DPPaneView *DPShownPane;
     return settings;
 }
 
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
 - (CGFloat)fittedDividerHeight {
     NSTableView *table = self.table;
     NSClipView *clip = table.enclosingScrollView.contentView;
     if (!clip || table.numberOfRows < DPOurRowCount) return DPDividerMinHeight;
-    if (!self.watchingHeight) {
-        self.watchingHeight = YES;
+    if (self.watchedClip != clip) {
+        [NSNotificationCenter.defaultCenter removeObserver:self];
+        self.watchedClip = clip;
         clip.postsFrameChangedNotifications = clip.postsBoundsChangedNotifications = YES;
         for (NSNotificationName name in @[NSViewFrameDidChangeNotification, NSViewBoundsDidChangeNotification])
             [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(fitDivider) name:name object:clip];
@@ -65,9 +110,10 @@ static __weak DPPaneView *DPShownPane;
 }
 
 - (void)fitDivider {
+    NSInteger divider = self.table.numberOfRows - DPOurRowCount + DPDividerRow;
+    if (divider < 0) return;
     CGFloat before = self.dividerHeight;
     if ([self fittedDividerHeight] == before) return;
-    NSInteger divider = self.table.numberOfRows - DPOurRowCount + DPDividerRow;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0;
         [self.table noteHeightOfRowsWithIndexesChanged:[NSIndexSet indexSetWithIndex:divider]];
@@ -80,8 +126,13 @@ static __weak DPPaneView *DPShownPane;
     return nil;
 }
 
+- (BOOL)isPrepared:(DPSidebarRow)row {
+    return (row == DPHomeRow ? self.home : self.patches).superview != nil;
+}
+
 - (void)preparePane:(DPPaneView *)pane {
-    NSView *detail = ((NSSplitViewController *)self.table.window.contentViewController).splitViewItems.lastObject.viewController.view;
+    NSViewController *controller = self.table.window.contentViewController;
+    NSView *detail = [controller isKindOfClass:NSSplitViewController.class] ? ((NSSplitViewController *)controller).splitViewItems.lastObject.viewController.view : nil;
     if (!detail || pane.superview == detail) return;
     pane.hidden = YES;
     pane.frame = detail.bounds;
@@ -100,7 +151,7 @@ static __weak DPPaneView *DPShownPane;
     self.shown = DPShownPane = pane;
     __weak DPSettings *weakSelf = self;
     pane.titleChanged = ^(NSString *title, BOOL canGoBack) {
-        weakSelf.title.stringValue = weakSelf.shownTitle = title;
+        if (title) weakSelf.title.stringValue = weakSelf.shownTitle = title;
         [weakSelf borrowBack:canGoBack];
     };
     [self allowResizing:YES];
@@ -114,10 +165,12 @@ static __weak DPPaneView *DPShownPane;
     }
 
     for (NSToolbarItem *item in toolbar.items)
-        if ([item.itemIdentifier isEqualToString:@"PreferencesPaneTitle"])
+        if ([item.itemIdentifier isEqualToString:@"PreferencesPaneTitle"]) {
             self.title = (NSTextField *)DPFindView(item.view, ^BOOL(NSView *v) { return [v isKindOfClass:NSTextField.class]; });
+            break;
+        }
     self.originalTitle = self.title.stringValue;
-    self.title.stringValue = self.shownTitle = pane.title;
+    if (pane.title) self.title.stringValue = self.shownTitle = pane.title;
 }
 
 - (void)hidePane {
@@ -133,18 +186,23 @@ static __weak DPPaneView *DPShownPane;
     NSUInteger index = pane.searchItem ? [toolbar.items indexOfObject:pane.searchItem] : NSNotFound;
     if (index != NSNotFound) {
         [toolbar removeItemAtIndex:index];
-        if (index > 0 && [toolbar.items[index - 1].itemIdentifier isEqualToString:NSToolbarFlexibleSpaceItemIdentifier]) [toolbar removeItemAtIndex:index - 1];
+        if (index > 0 && index - 1 < toolbar.items.count && [toolbar.items[index - 1].itemIdentifier isEqualToString:NSToolbarFlexibleSpaceItemIdentifier])
+            [toolbar removeItemAtIndex:index - 1];
     }
-    NSString *shown = self.title.stringValue;
-    if (pane.showsPage) [self borrowBack:NO];
+    DPSet(toolbar, &DPSearchItemKey, nil);
+    BOOL restoreTitle = self.originalTitle && [self.title.stringValue isEqualToString:self.shownTitle];
+    pane.titleChanged = nil;
+    [self borrowBack:NO];
     [pane reset];
     self.shown = DPShownPane = nil;
-    if ([shown isEqualToString:self.shownTitle]) self.title.stringValue = self.originalTitle;
+    if (restoreTitle) self.title.stringValue = self.originalTitle;
 }
 
 - (void)borrowBack:(BOOL)borrow {
+    if (borrow == self.backBorrowed) return;
     NSToolbarItem *back = [self backItem];
     if (borrow) self.backWasEnabled = back.enabled;
+    self.backBorrowed = borrow;
     back.enabled = borrow || self.backWasEnabled;
 }
 
@@ -156,13 +214,14 @@ static __weak DPPaneView *DPShownPane;
 
 - (void)allowResizing:(BOOL)allow {
     NSWindow *window = self.table.window;
-    if (allow == (self.fixedHeight > 0)) return;
+    if (!window || allow == (self.fixedHeight > 0)) return;
     if (allow) {
         self.mask = window.styleMask;
         self.behavior = window.collectionBehavior;
         self.minSize = window.contentMinSize;
         self.maxSize = window.contentMaxSize;
         self.fixedHeight = window.frame.size.height;
+        self.zoomWasEnabled = [window standardWindowButton:NSWindowZoomButton].enabled;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
         window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) | NSWindowCollectionBehaviorFullScreenNone;
@@ -176,6 +235,7 @@ static __weak DPPaneView *DPShownPane;
     window.collectionBehavior = self.behavior;
     window.contentMinSize = self.minSize;
     window.contentMaxSize = self.maxSize;
+    [window standardWindowButton:NSWindowZoomButton].enabled = self.zoomWasEnabled;
     [window setFrame:NSMakeRect(frame.origin.x, NSMaxY(frame) - self.fixedHeight, frame.size.width, self.fixedHeight) display:YES];
     self.fixedHeight = 0;
 }
@@ -198,11 +258,34 @@ static NSView *DPDividerCell(NSTableView *table) {
     return cell;
 }
 
+static NSTableCellView *DPPlainLinkCell(void) {
+    NSTableCellView *cell = [NSTableCellView new];
+    NSImageView *image = [NSImageView new];
+    NSTextField *text = [NSTextField labelWithString:@""];
+    text.lineBreakMode = NSLineBreakByTruncatingTail;
+    for (NSView *view in @[ image, text ]) {
+        view.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell addSubview:view];
+    }
+    [NSLayoutConstraint activateConstraints:@[
+        [image.leadingAnchor constraintEqualToAnchor:cell.leadingAnchor constant:8],
+        [image.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor],
+        [image.widthAnchor constraintEqualToConstant:16],
+        [image.heightAnchor constraintEqualToConstant:16],
+        [text.leadingAnchor constraintEqualToAnchor:image.trailingAnchor constant:6],
+        [text.trailingAnchor constraintLessThanOrEqualToAnchor:cell.trailingAnchor constant:-8],
+        [text.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor],
+    ]];
+    cell.imageView = image;
+    cell.textField = text;
+    return cell;
+}
+
 static NSView *DPLinkCell(NSTableView *table, NSString *title, NSString *symbol) {
     NSString *identifier = [@"DiaPatchesCell." stringByAppendingString:title];
     NSTableCellView *cell = [table makeViewWithIdentifier:identifier owner:nil];
     if (cell) return cell;
-    cell = [objc_getClass(DPDiaSettingsSidebarCell) new];
+    cell = [objc_getClass(DPDiaSettingsSidebarCell) new] ?: DPPlainLinkCell();
     cell.identifier = identifier;
     cell.textField.stringValue = title;
     cell.imageView.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:title];
@@ -218,7 +301,7 @@ static NSView *DPSidebar_viewForRow(id self, SEL _cmd, NSTableView *table, NSTab
     if (ours == DPDiaRow) return DPCallOriginal(DPSidebar_viewForRow, self, table, column, row);
     DPSettings *settings = [DPSettings forTable:table];
     if (ours == DPDividerRow) return DPDividerCell(table);
-    dispatch_async(dispatch_get_main_queue(), ^{ [settings preparePane:[settings paneFor:ours]]; });
+    if (![settings isPrepared:ours]) dispatch_async(dispatch_get_main_queue(), ^{ [settings preparePane:[settings paneFor:ours]]; });
     return ours == DPHomeRow ? DPLinkCell(table, @"Home", @"house") : DPLinkCell(table, @"Patches", @"wand.and.stars");
 }
 
@@ -268,6 +351,7 @@ static void DPAddSidebarMethod(SEL sel, IMP imp) {
 
 void DPInstallSettings(void) {
     DPInstallPreviews();
+    if (!objc_getClass(DPDiaSettingsSidebar)) return;
     DPHook(DPDiaSettingsController, @selector(handleBack), (IMP)DPSettings_handleBack);
     DPHook(DPDiaSettingsSidebar, @selector(numberOfRowsInTableView:), (IMP)DPSidebar_numberOfRows);
     DPHook(DPDiaSettingsSidebar, @selector(tableView:viewForTableColumn:row:), (IMP)DPSidebar_viewForRow);

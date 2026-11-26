@@ -1,8 +1,9 @@
 use anyhow::Result;
 
 use crate::{
+    config, dia,
     env::Env,
-    restore,
+    pause, restore,
     signals::{self, Cancelled},
     status, tweaks,
     ui::{self, Ui},
@@ -12,6 +13,8 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
     Tweaks,
+    Pause,
+    Settings,
     UpdateDia,
     UpdateDiaTweaks,
     Status,
@@ -24,9 +27,21 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
     ui.enter_menu(true);
     let mut action = Action::Tweaks;
     loop {
-        action = ui::prompt(
-            cliclack::select("What do you want to do?")
+        let paused = dia::is_paused(&env.support);
+        let (pause_label, pause_hint) = if paused {
+            ("Resume tweaks", "turn tweaks back on")
+        } else {
+            ("Pause tweaks", "turn every tweak off, keeping settings")
+        };
+        let picked = ui::prompt(
+            cliclack::select("What do you want to do? (Esc to quit)")
                 .item(Action::Tweaks, "Tweaks", "turn tweaks on or off")
+                .item(Action::Pause, pause_label, pause_hint)
+                .item(
+                    Action::Settings,
+                    "Back up or import settings",
+                    "save or load your tweaks and settings",
+                )
                 .item(Action::UpdateDia, "Update Dia", "")
                 .item(Action::UpdateDiaTweaks, "Update DiaTweaks", "")
                 .item(Action::Status, "Status", "")
@@ -38,9 +53,16 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
                 .item(Action::Quit, "Quit", "")
                 .initial_value(action)
                 .interact(),
-        )?;
+        );
+        action = match picked {
+            Ok(action) => action,
+            Err(err) if signals::interrupted() || !err.is::<Cancelled>() => return Err(err),
+            Err(_) => Action::Quit,
+        };
         let result = match action {
             Action::Tweaks => tweaks::menu(env, ui),
+            Action::Pause => pause::set(env, ui, !paused),
+            Action::Settings => config::menu(env, ui),
             Action::UpdateDia => update_dia::run(env, ui),
             Action::UpdateDiaTweaks => update::run(env, ui),
             Action::Status => status::show(env, ui),
@@ -48,7 +70,7 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
             Action::Quit => break,
         };
         match result {
-            // The menu would go on with a replaced binary or a Dia without DiaTweaks.
+            // Exit the menu after replacing the binary or unpatching Dia.
             Ok(()) if matches!(action, Action::UpdateDiaTweaks | Action::Restore) => break,
             Ok(()) => {}
             Err(err) => match err.downcast_ref::<Cancelled>() {

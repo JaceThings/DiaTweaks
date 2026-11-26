@@ -34,33 +34,55 @@ static NSString *const kWorker = @"const popupTab = async ({ tabId, url }) => {\
     @"  if (request.action !== 'promote' || !tab.url) return;\n"
     @"  const normal = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);\n"
     @"  if (normal) {\n"
-    @"    await chrome.tabs.create({ windowId: normal.id, url: tab.url, active: true });\n"
+    @"    const moved = await chrome.tabs.move(tab.id, { windowId: normal.id, index: -1 }).catch(() => null);\n"
+    @"    if (moved) await chrome.tabs.update(tab.id, { active: true });\n"
+    @"    else await chrome.tabs.create({ windowId: normal.id, url: tab.url, active: true });\n"
     @"    await chrome.windows.update(normal.id, { focused: true });\n"
     @"  } else {\n"
     @"    await chrome.windows.create({ url: tab.url, focused: true });\n"
     @"  }\n"
-    @"  await chrome.windows.remove(tab.windowId);\n"
+    @"  await chrome.windows.remove(tab.windowId).catch(() => {});\n"
     @"});\n";
 
 // Chromium keeps an extension's worker from its first run, so a changed worker needs a new folder.
 static NSString *DPExtensionFolder(void) {
-    uint32_t hash = 2166136261u;
-    for (const char *c = kWorker.UTF8String; *c; c++) hash = (hash ^ (uint8_t)*c) * 16777619u;
-    return DPAppSupport([NSString stringWithFormat:@"DiaPatches/little-dia-%08x", hash]);
+    static NSString *folder;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        uint32_t hash = 2166136261u;
+        for (const char *c = kWorker.UTF8String; *c; c++) hash = (hash ^ (uint8_t)*c) * 16777619u;
+        folder = DPAppSupport([NSString stringWithFormat:@"DiaPatches/little-dia-%08x", hash]);
+    });
+    return folder;
 }
 
 static NSString *gExtensionID;
 static NSError *gWriteError;
 static NSTimeInterval gLaunchedAt;
 static const NSTimeInterval DPLaunchTime = 20;
+static int gReadyCache = -1;
+static BOOL gReadyQueued;
+
+static void DPWatchReadyCache(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        [NSNotificationCenter.defaultCenter addObserverForName:DPPatchesDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+            gReadyCache = -1;
+        }];
+    });
+}
 
 static NSString *DPExtensionID(NSString *folder) {
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
     const char *path = folder.fileSystemRepresentation;
     CC_SHA256(path, (CC_LONG)strlen(path), digest);
-    NSMutableString *id = [NSMutableString string];
-    for (int i = 0; i < 16; i++) [id appendFormat:@"%c%c", 'a' + (digest[i] >> 4), 'a' + (digest[i] & 15)];
-    return id;
+    char buf[33];
+    for (int i = 0; i < 16; i++) {
+        buf[i * 2] = 'a' + (digest[i] >> 4);
+        buf[i * 2 + 1] = 'a' + (digest[i] & 15);
+    }
+    buf[32] = '\0';
+    return [NSString stringWithUTF8String:buf];
 }
 
 static NSDictionary<NSString *, NSString *> *DPExtensionFiles(void) {
@@ -68,6 +90,7 @@ static NSDictionary<NSString *, NSString *> *DPExtensionFiles(void) {
 }
 
 BOOL DPWriteLittleDiaExtension(BOOL on) {
+    gReadyCache = -1;
     NSString *folder = DPExtensionFolder(), *parent = folder.stringByDeletingLastPathComponent;
     NSFileManager *files = NSFileManager.defaultManager;
     for (NSString *name in [files contentsOfDirectoryAtPath:parent error:nil])
@@ -95,7 +118,10 @@ NSString *DPLittleDiaExtensionProblem(void) {
 }
 
 void DPInstallLittleDiaExtension(void) {
+    DPWatchReadyCache();
+    gReadyCache = -1;
     gLaunchedAt = NSProcessInfo.processInfo.systemUptime;
+    if (!DPLittleDia.on) DPDropExtension(DPExtensionFolder());
     if (!DPWriteLittleDiaExtension(DPLittleDia.on) || !DPLittleDia.on) return;
     DPLoadExtension(DPExtensionFolder());
     gExtensionID = DPExtensionID(DPExtensionFolder());
@@ -106,16 +132,7 @@ static id DPExtensions(id browser) {
     return [context respondsToSelector:@selector(extensions)] ? DPMsg(context, @selector(extensions)) : nil;
 }
 
-// No browser means a launch with no window yet, but only for a while: later it's Dia with every window closed.
-BOOL DPLittleDiaStarting(void) {
-    id extensions = DPExtensions(DPCommandBrowser());
-    if (!extensions) return gExtensionID && NSProcessInfo.processInfo.systemUptime - gLaunchedAt < DPLaunchTime;
-    return gExtensionID && [extensions respondsToSelector:@selector(isExtensionSystemReady)] && !DPMsgBool(extensions, @selector(isExtensionSystemReady));
-}
-
-// Chromium crashes on input for an extension that isn't loaded and on, as after it's turned off in Extensions.
-BOOL DPLittleDiaReady(void) {
-    id browser = DPCommandBrowser();
+static BOOL DPBrowserReady(id browser) {
     id extensions = DPExtensions(browser);
     SEL trigger = @selector(triggerExtensionOmniboxInput:inputText:disposition:);
     if (!gExtensionID || ![browser respondsToSelector:trigger] || ![extensions respondsToSelector:@selector(isExtensionSystemReady)]
@@ -125,12 +142,56 @@ BOOL DPLittleDiaReady(void) {
     return [info respondsToSelector:@selector(enabled)] && DPMsgBool(info, @selector(enabled));
 }
 
+// DPLinkArrived orders hidden Dia windows out before routing, leaving orderedWindows empty.
+static id DPLittleDiaBrowser(BOOL readyOnly) {
+    id browser = DPCommandBrowser();
+    if (browser && DPBrowserReady(browser)) return browser;
+    id fallback = browser;
+    for (NSWindow *window in DPPutAwayWindows()) {
+        id candidate = DPBrowserOfWindow(window);
+        if (candidate && DPBrowserReady(candidate)) return candidate;
+        if (!fallback) fallback = candidate;
+    }
+    for (NSWindow *window in NSApp.windows) {
+        if (DPIsLittleDiaWindow(window) || (!window.visible && !window.miniaturized)) continue;
+        id candidate = DPBrowserOfWindow(window);
+        if (candidate && DPBrowserReady(candidate)) return candidate;
+        if (!fallback) fallback = candidate;
+    }
+    return readyOnly ? nil : fallback;
+}
+
+// No browser means a launch with no window yet, but only for a while: later it's Dia with every window closed.
+BOOL DPLittleDiaStarting(void) {
+    id extensions = DPExtensions(DPLittleDiaBrowser(NO));
+    if (!extensions) return gExtensionID && NSProcessInfo.processInfo.systemUptime - gLaunchedAt < DPLaunchTime;
+    return gExtensionID && [extensions respondsToSelector:@selector(isExtensionSystemReady)] && !DPMsgBool(extensions, @selector(isExtensionSystemReady));
+}
+
+// Chromium crashes on input for an extension that isn't loaded and on, as after it's turned off in Extensions.
+BOOL DPLittleDiaReady(void) {
+    DPWatchReadyCache();
+    if (gReadyCache < 0) {
+        gReadyCache = DPLittleDiaBrowser(YES) ? 1 : 0;
+        if (!gReadyQueued) {
+            gReadyQueued = YES;
+            CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+                gReadyQueued = NO;
+                gReadyCache = -1;
+            });
+            CFRunLoopWakeUp(CFRunLoopGetMain());
+        }
+    }
+    return gReadyCache != 0;
+}
+
 BOOL DPSendToLittleDia(NSDictionary *request) {
-    if (!DPLittleDiaReady()) return NO;
+    id browser = DPLittleDiaBrowser(YES);
+    if (!browser) return NO;
     NSData *json = [NSJSONSerialization dataWithJSONObject:request options:0 error:nil];
     NSString *text = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : nil;
     if (!text) return NO;
     void (*send)(id, SEL, NSString *, NSString *, long) = (void *)objc_msgSend;
-    send(DPCommandBrowser(), @selector(triggerExtensionOmniboxInput:inputText:disposition:), gExtensionID, text, 1);
+    send(browser, @selector(triggerExtensionOmniboxInput:inputText:disposition:), gExtensionID, text, 1);
     return YES;
 }

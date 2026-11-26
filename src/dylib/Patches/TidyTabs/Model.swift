@@ -4,9 +4,15 @@ import XPC
 #if canImport(FoundationModels)
 import FoundationModels
 
-// macOS 27 renames this samplingMode, but the macOS 26 SDK only has this spelling, so it's the one that builds on both.
+// FoundationModels 2 (the macOS 27 SDK) renames this samplingMode and back-deploys it to macOS 26; version 1 only has sampling.
 @available(macOS 26, *)
-private func DPTidyOptions() -> GenerationOptions { GenerationOptions(sampling: .greedy) }
+private func DPTidyOptions() -> GenerationOptions {
+    #if canImport(FoundationModels, _version: 2)
+    GenerationOptions(samplingMode: .greedy)
+    #else
+    GenerationOptions(sampling: .greedy)
+    #endif
+}
 
 @available(macOS 26, *)
 private let DPTidyInstructions = """
@@ -102,11 +108,13 @@ private func DPTidyIneligibleReason() -> String? {
     let domain = unsafeBitCast(domainSymbol, to: Domain.self)("OS_ELIGIBILITY_DOMAIN_GREYMATTER")
     var answer: UInt64 = 0, source: UInt64 = 0
     var statusPointer: UnsafeMutableRawPointer?, contextPointer: UnsafeMutableRawPointer?
-    guard unsafeBitCast(answerSymbol, to: Answer.self)(domain, &answer, &source, &statusPointer, &contextPointer) == 0,
-          let statusPointer else { return nil }
-    // Both come back retained.
-    let status = Unmanaged<AnyObject>.fromOpaque(statusPointer).takeRetainedValue() as! xpc_object_t
-    let context = contextPointer.map { Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() as! xpc_object_t }
+    guard unsafeBitCast(answerSymbol, to: Answer.self)(domain, &answer, &source, &statusPointer, &contextPointer) == 0 else { return nil }
+    // Both come back retained when non-null.
+    let statusObj = statusPointer.map { Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() }
+    let contextObj = contextPointer.map { Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() }
+    guard let status = statusObj as? xpc_object_t, xpc_get_type(status) == XPC_TYPE_DICTIONARY else { return nil }
+    let rawContext = contextObj as? xpc_object_t
+    let context = rawContext.flatMap { xpc_get_type($0) == XPC_TYPE_DICTIONARY ? $0 : nil }
     let fails = { (input: String) in xpc_dictionary_get_int64(status, "OS_ELIGIBILITY_INPUT_" + input) == 2 }
     if fails("DEVICE_CLASS") || fails("GENERATIVE_MODEL_SYSTEM") { return "This Mac can't run Apple Intelligence." }
     if fails("EXTERNAL_BOOT_DRIVE") { return "Apple Intelligence doesn't work while your Mac starts up from an external drive." }
@@ -144,7 +152,7 @@ public func DPTidyAskModel(_ tabs: NSArray, _ done: @escaping @convention(block)
     }
     if let reason = DPTidyUnavailableReason() { return finish(nil, reason as String) }
     #if canImport(FoundationModels)
-    guard #available(macOS 26, *) else { return }
+    guard #available(macOS 26, *) else { return finish(nil, "Tidy Tabs needs macOS 26 or later.") }
     let lines = tabs.map { tab -> String in
         let tab = tab as? NSDictionary
         let title = String(((tab?["title"] as? String) ?? "").prefix(90))

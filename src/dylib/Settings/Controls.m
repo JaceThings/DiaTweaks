@@ -15,6 +15,22 @@ NSView *DPGroup(NSArray<NSView *> *rows) {
     NSStackView *stack = [NSStackView new];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.spacing = 0;
+    DPFillView *box = [DPFillView new];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [box addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:box.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:box.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:box.topAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:box.bottomAnchor],
+    ]];
+    DPSetGroupRows(box, rows);
+    return box;
+}
+
+void DPSetGroupRows(NSView *group, NSArray<NSView *> *rows) {
+    NSStackView *stack = group.subviews.firstObject;
+    for (NSView *view in stack.arrangedSubviews.copy) [view removeFromSuperview];
     [rows enumerateObjectsUsingBlock:^(NSView *row, NSUInteger i, BOOL *_) {
         if (i > 0) {
             DPSeparatorView *line = [DPSeparatorView new];
@@ -25,16 +41,18 @@ NSView *DPGroup(NSArray<NSView *> *rows) {
         [stack addArrangedSubview:row];
         [row.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
     }];
-    DPFillView *box = [DPFillView new];
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [box addSubview:stack];
-    [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:box.leadingAnchor],
-        [stack.trailingAnchor constraintEqualToAnchor:box.trailingAnchor],
-        [stack.topAnchor constraintEqualToAnchor:box.topAnchor],
-        [stack.bottomAnchor constraintEqualToAnchor:box.bottomAnchor],
-    ]];
-    return box;
+}
+
+BOOL DPTidyGroup(NSView *group) {
+    NSArray<NSView *> *views = ((NSStackView *)group.subviews.firstObject).arrangedSubviews;
+    BOOL any = NO;
+    for (NSUInteger i = 0; i < views.count; i += 2) {
+        BOOL visible = !views[i].hidden;
+        if (i) views[i - 1].hidden = !visible || !any;
+        any |= visible;
+    }
+    group.hidden = !any;
+    return any;
 }
 
 NSView *DPRow(NSView *leading, NSView *trailing) {
@@ -51,6 +69,19 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
         [trailing.leadingAnchor constraintGreaterThanOrEqualToAnchor:leading.trailingAnchor constant:12],
         [trailing.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12],
         [trailing.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+    ]];
+    return row;
+}
+
+NSView *DPFullRow(NSView *content) {
+    NSView *row = [NSView new];
+    content.translatesAutoresizingMaskIntoConstraints = NO;
+    [row addSubview:content];
+    [NSLayoutConstraint activateConstraints:@[
+        [content.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:12],
+        [content.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12],
+        [content.topAnchor constraintEqualToAnchor:row.topAnchor constant:10],
+        [content.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-10],
     ]];
     return row;
 }
@@ -73,10 +104,10 @@ NSView *DPRow(NSView *leading, NSView *trailing) {
     NSRect frame = [self convertRect:toggle.bounds fromView:toggle];
     if (toggle.enabled && NSPointInRect(point, frame)) return;
     if (toggle.enabled && NSPointInRect(point, NSInsetRect(frame, -10, -10))) [toggle performClick:nil];
-    else self.open();
+    else if (self.open) self.open();
 }
 - (BOOL)accessibilityPerformPress {
-    self.open();
+    if (self.open) self.open();
     return YES;
 }
 @end
@@ -102,7 +133,7 @@ NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void)) {
 + (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description;
 @end
 
-// NSImageView throws on a missing symbol, which crashed Settings.
+// NSImageView throws on a missing symbol.
 NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color) {
     static NSMutableDictionary<NSString *, id> *cache;
     if (!cache) cache = [NSMutableDictionary new];
@@ -141,7 +172,42 @@ NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing) {
     return stack;
 }
 
+NSStackView *DPHeading(NSString *symbol, NSString *tint, NSArray<NSView *> *lines) {
+    NSStackView *heading = [NSStackView stackViewWithViews:@[ DPIconTile(symbol, DPTintColor(tint)), DPColumn(lines, 2) ]];
+    heading.spacing = 10;
+    return heading;
+}
+
+NSStackView *DPDisclosure(NSView *leading) {
+    NSStackView *trailing = [NSStackView stackViewWithViews:@[ leading, DPSymbol(@"chevron.right", 11, NSColor.tertiaryLabelColor) ]];
+    trailing.spacing = 10;
+    return trailing;
+}
+
+NSTextField *DPHiddenNote(void) {
+    NSTextField *note = DPLabel(@"", 11, NSFontWeightRegular, NSColor.secondaryLabelColor);
+    note.hidden = YES;
+    return note;
+}
+
+NSTextField *DPExperimentalBadge(void) { return DPLabel(@"Experimental", 11, NSFontWeightSemibold, NSColor.systemOrangeColor); }
+
+void DPPresentAlert(NSAlert *alert, NSWindow *window, void (^finish)(NSModalResponse response)) {
+    if (window) [alert beginSheetModalForWindow:window completionHandler:finish];
+    else finish([alert runModal]);
+}
+
+void DPPresentPanel(NSSavePanel *panel, NSWindow *window, void (^finish)(NSModalResponse response)) {
+    if (window) [panel beginSheetModalForWindow:window completionHandler:finish];
+    else finish([panel runModal]);
+}
+
 NSTextField *DPHeader(NSString *text) { return DPLabel(text, 12, NSFontWeightSemibold, NSColor.secondaryLabelColor); }
+
+NSColor *DPTintColor(NSString *tint) {
+    id color = [tint hasSuffix:@"Color"] && [NSColor respondsToSelector:NSSelectorFromString(tint)] ? [NSColor valueForKey:tint] : nil;
+    return [color isKindOfClass:NSColor.class] ? color : NSColor.systemGrayColor;
+}
 
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color) {
     NSTextField *label = [NSTextField wrappingLabelWithString:text];
@@ -156,17 +222,26 @@ NSView *DPIconTile(NSString *symbol, NSColor *color) { return DPIconTileOfSize(s
 static CGFloat DPLinear(CGFloat c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
 
 static NSColor *DPTileFill(NSColor *color) {
+    if (!color) return NSColor.blackColor;
+    static NSMutableDictionary<NSColor *, NSColor *> *cache;
+    if (!cache) cache = [NSMutableDictionary new];
+    NSColor *cached = cache[color];
+    if (cached) return cached;
     __block NSColor *rgb;
     [[NSAppearance appearanceNamed:NSAppearanceNameAqua] performAsCurrentDrawingAppearance:^{
         rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
     }];
+    NSColor *fill = NSColor.blackColor;
     for (CGFloat dark = 0; dark < 1; dark += 0.01) {
         CGFloat k = 1 - dark;
         CGFloat luminance = 0.2126 * DPLinear(rgb.redComponent * k) + 0.7152 * DPLinear(rgb.greenComponent * k) +
                             0.0722 * DPLinear(rgb.blueComponent * k);
-        if (1.05 / (luminance + 0.05) >= 3) return [NSColor colorWithSRGBRed:rgb.redComponent * k green:rgb.greenComponent * k blue:rgb.blueComponent * k alpha:1];
+        if (1.05 / (luminance + 0.05) >= 3) {
+            fill = [NSColor colorWithSRGBRed:rgb.redComponent * k green:rgb.greenComponent * k blue:rgb.blueComponent * k alpha:1];
+            break;
+        }
     }
-    return NSColor.blackColor;
+    return cache[color] = fill;
 }
 
 NSView *DPIconTileOfSize(NSString *symbol, NSColor *color, CGFloat size) {

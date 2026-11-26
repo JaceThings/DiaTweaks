@@ -8,14 +8,23 @@ void DPInstallPreviews(void);
 extern NSToolbarItemIdentifier const DPSearchItemIdentifier;
 
 NSView *DPGroup(NSArray<NSView *> *rows);
+void DPSetGroupRows(NSView *group, NSArray<NSView *> *rows);
+BOOL DPTidyGroup(NSView *group);
 NSView *DPRow(NSView *leading, NSView *trailing);
+NSView *DPFullRow(NSView *content);
 NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void));
 NSTextField *DPLabel(NSString *text, CGFloat size, NSFontWeight weight, NSColor *color);
 NSTextField *DPHeader(NSString *text);
+NSTextField *DPExperimentalBadge(void);
+void DPPresentAlert(NSAlert *alert, NSWindow *window, void (^finish)(NSModalResponse response));
+void DPPresentPanel(NSSavePanel *panel, NSWindow *window, void (^finish)(NSModalResponse response));
 NSView *DPIconTile(NSString *symbol, NSColor *color);
 NSView *DPIconTileOfSize(NSString *symbol, NSColor *color, CGFloat size);
 NSImageView *DPSymbol(NSString *symbols, CGFloat size, NSColor *color);
 NSStackView *DPColumn(NSArray<NSView *> *views, CGFloat spacing);
+NSStackView *DPHeading(NSString *symbol, NSString *tint, NSArray<NSView *> *lines);
+NSStackView *DPDisclosure(NSView *leading);
+NSTextField *DPHiddenNote(void);
 void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 
 @interface DPFlippedView : NSView
@@ -33,14 +42,47 @@ void DPFillStack(NSStackView *stack, NSArray<NSView *> *views);
 @end
 
 void DPForEachOption(DPPatch *patch, void (^body)(DPPatch *option));
+BOOL DPShownOn(DPPatch *patch);
+BOOL DPShowsExperimental(void);
+void DPSetShowsExperimental(BOOL on);
+BOOL DPExperimentalShown(DPPatch *patch);
+NSArray<NSValue *> *DPShownMembers(NSArray<NSValue *> *members);
+NSUInteger DPHiddenExperimentalCount(void);
+NSString *DPActiveSummary(DPPatch *patch);
 NSString *DPWhyDisabled(DPPatch *patch);
 NSString *DPWhyHidden(DPPatch *patch);
 NSString *DPWhyHiddenBy(DPPatch *disabler);
 NSURL *DPWikiURL(DPPatch *patch);
+NSArray<NSString *> *DPRelaunchingOnPause(void);
+void DPSyncPauseRow(NSTextField *label, NSButton *button);
+void DPSetTweaksPaused(BOOL paused, NSWindow *window);
+
+typedef struct DPFolderSpec {
+    __unsafe_unretained NSString *key, *title, *detail, *symbol, *tint, *section;
+} DPFolderSpec;
+
+const DPFolderSpec *DPFolderSpecNamed(NSString *key);
+NSArray<NSValue *> *DPFolderMembers(NSString *key);
+NSColor *DPTintColor(NSString *tint);
+
+@interface DPConfigImport : NSObject
+@property (nonatomic, readonly) NSUInteger appliedCount, resetCount;
+@property (nonatomic, readonly) NSArray<NSString *> *unknownKeys, *warnings, *relaunchTitles;
+@end
+
+@interface DPConfigPreview : NSObject
+@property (nonatomic, readonly) NSUInteger changes, resets;
+@property (nonatomic, readonly) NSArray<NSString *> *unknownKeys, *warnings;
+@property (nonatomic, readonly) BOOL setsLaunchFlags;
+- (BOOL)isEmpty;
+@end
+
+NSData *DPExportConfigJSON(NSError **error);
+DPConfigImport *DPImportConfigData(NSData *data, BOOL replace, NSError **error);
+DPConfigPreview *DPPreviewConfigData(NSData *data, BOOL replace, NSError **error);
 
 @interface DPPreviewView : DPFillView
 - (instancetype)initWithKey:(NSString *)key;
-+ (void)preload;
 @end
 
 @interface DPPageView : NSStackView
@@ -48,10 +90,17 @@ NSURL *DPWikiURL(DPPatch *patch);
 - (void)sync;
 @end
 
+@interface DPFolderView : NSStackView
+- (instancetype)initWithFolder:(const DPFolderSpec *)folder;
+@property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
+- (void)sync;
+@end
+
 @protocol DPPaneContent <NSObject>
 @property (nonatomic, copy) void (^open)(NSString *title, NSView *page);
 @optional
 - (void)syncWithQuery:(NSString *)query;
+- (void)filterWithQuery:(NSString *)query;
 - (void)refresh;
 @end
 

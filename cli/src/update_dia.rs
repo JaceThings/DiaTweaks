@@ -1,7 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 
 use crate::{
-    child::OnInterrupt,
+    child::{Finished, OnInterrupt},
     dia::{self, Diapatch},
     env::Env,
     lock,
@@ -10,16 +10,18 @@ use crate::{
 };
 
 const FINISHING: &str = "Finishing so Dia isn't left half-installed…";
+const UNFINISHED: &str = "cleaned up an unfinished staged Dia update";
 
 pub fn run(env: &Env, ui: &Ui) -> Result<()> {
     let diapatch = Diapatch::find(env)?;
     if !env.app.exists() {
         bail!(
-            "Dia isn't installed at {}. Get it from https://www.diabrowser.com, then run install.sh.",
-            env.app.display()
+            "Dia isn't installed at {}. Get it from https://www.diabrowser.com, then run {}.",
+            env.app.display(),
+            env.install_hint()
         );
     }
-    let _lock = lock::acquire(&env.support)?;
+    let _lock = lock::acquire(env, ui)?;
 
     let spinner = ui.spinner("Checking for a newer Dia");
     let status = spinner.check(diapatch.status(&spinner))?;
@@ -30,12 +32,13 @@ pub fn run(env: &Env, ui: &Ui) -> Result<()> {
         }
         None => {
             let Some(official) = status.official else {
-                return Err(spinner.fail(anyhow::anyhow!(
-                    "DiaTweaks has no copy of the official Dia. Run install.sh to set it up again."
+                return Err(spinner.fail(anyhow!(
+                    "DiaTweaks has no copy of the official Dia. Run {} to set it up again.",
+                    env.install_hint()
                 )));
             };
             let Some(latest) = status.feed else {
-                return Err(spinner.fail(anyhow::anyhow!(
+                return Err(spinner.fail(anyhow!(
                     "Couldn't reach Dia's update feed. Check your internet connection, then try again."
                 )));
             };
@@ -64,7 +67,13 @@ fn download(env: &Env, ui: &Ui, diapatch: &Diapatch, latest: &str) -> Result<Str
         "Downloading and patching Dia {latest}. This can take a few minutes"
     ));
     let done = spinner.check(diapatch.run(&["update"], OnInterrupt::StopDownloads, &spinner))?;
-    let staged = dia::version_of(&env.staged());
+    let staged = (done.status.success() || signals::interrupted())
+        .then(|| {
+            dia::staged_ready(&env.support)
+                .then(|| dia::version_of(&env.staged()))
+                .flatten()
+        })
+        .flatten();
     match (staged, signals::interrupted()) {
         (Some(staged), true) => Err(spinner.fail(
             Cancelled(format!(
@@ -77,9 +86,7 @@ fn download(env: &Env, ui: &Ui, diapatch: &Diapatch, latest: &str) -> Result<Str
             spinner.stop(format_args!("Dia {staged} is ready"));
             Ok(staged)
         }
-        (None, false) => {
-            Err(spinner.fail(anyhow::anyhow!("Couldn't update Dia:\n{}", done.tail(5))))
-        }
+        (None, false) => Err(spinner.fail(done.failure("Couldn't update Dia:", 5, &env.support))),
     }
 }
 
@@ -94,21 +101,22 @@ fn install(env: &Env, ui: &Ui, diapatch: &Diapatch, ready: &str) -> Result<()> {
         let done =
             spinner.check(diapatch.run(&["apply"], OnInterrupt::Finish(FINISHING), &spinner))?;
         if !done.status.success() {
-            return Err(spinner.fail(anyhow::anyhow!("Couldn't install Dia:\n{}", done.tail(5))));
+            return Err(spinner.fail(done.failure("Couldn't install Dia:", 5, &env.support)));
         }
-        spinner.check(installed(env, ready))?;
+        spinner.check(installed(env, ready, &done))?;
         spinner.stop(format_args!("Installed Dia {ready}"));
         ui.done(format_args!("Dia {ready} is installed."));
         return Ok(());
     }
     if !ui.choose("Relaunch Dia now to install it?", true)? {
-        match dia::is_patched(&env.app) {
-            true => ui.done(format_args!(
+        if dia::is_patched(&env.app) {
+            ui.done(format_args!(
                 "Dia {ready} installs the next time you quit Dia."
-            )),
-            false => ui.done(format_args!(
+            ));
+        } else {
+            ui.done(format_args!(
                 "Quit Dia, then run `diatweaks update-dia` to install Dia {ready}."
-            )),
+            ));
         }
         return Ok(());
     }
@@ -120,27 +128,82 @@ fn install(env: &Env, ui: &Ui, diapatch: &Diapatch, ready: &str) -> Result<()> {
         &spinner,
     ))?;
     if !done.status.success() {
-        return Err(spinner.fail(anyhow::anyhow!("Couldn't install Dia:\n{}", done.tail(5))));
+        return Err(spinner.fail(done.failure("Couldn't install Dia:", 5, &env.support)));
     }
-    spinner.check(installed(env, ready))?;
+    spinner.check(installed(env, ready, &done))?;
     spinner.stop(format_args!("Installed Dia {ready} and reopened it"));
     ui.done(format_args!("Dia {ready} is installed."));
     Ok(())
 }
 
-/// diapatch exits 0 when it drops the staged build for a hand-installed official Dia, so check the Dia in place.
-fn installed(env: &Env, ready: &str) -> Result<()> {
+// diapatch apply exits 0 when it drops the staged build: it was unfinished, or Dia was replaced by hand.
+fn installed(env: &Env, ready: &str, done: &Finished) -> Result<()> {
+    if done.output.contains(UNFINISHED) {
+        bail!(
+            "Dia {ready} wasn't installed: its download hadn't finished, so DiaTweaks cleared it away and left your Dia as it was. Run `diatweaks update-dia` to download it again."
+        );
+    }
     let Some(now) = dia::version_of(&env.app) else {
         bail!(
-            "Dia {ready} wasn't installed, and there is no Dia at {}.",
+            "Dia {ready} wasn't installed, and there is no Dia at {}. Get Dia from https://www.diabrowser.com, then run `diatweaks update`.",
             env.app.display()
         );
     };
     match (dia::is_patched(&env.app), now == ready) {
         (true, true) => Ok(()),
-        (true, false) => bail!("Dia {ready} wasn't installed. Dia {now} is in place instead."),
+        (true, false) => bail!(
+            "Dia {ready} wasn't installed. Dia {now} is in place instead. Run `diatweaks update-dia` to try again."
+        ),
         (false, _) => bail!(
             "Dia {ready} wasn't installed. Dia {now} is still in place, and it isn't patched. Run `diatweaks update` to patch it."
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, os::unix::process::ExitStatusExt, process::ExitStatus};
+
+    fn applied(output: &str) -> Finished {
+        Finished {
+            status: ExitStatus::from_raw(0),
+            output: output.into(),
+        }
+    }
+
+    #[test]
+    fn unfinished_downloads_are_not_reported_as_installed() {
+        assert!(include_str!("../../src/diapatch/main.m").contains(UNFINISHED));
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::at(dir.path());
+        let plist = |version: &str| {
+            fs::create_dir_all(env.app.join("Contents")).unwrap();
+            fs::write(
+                env.app.join("Contents/Info.plist"),
+                format!("<plist version=\"1.0\"><dict><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>1</string><key>DiaPatches</key><true/></dict></plist>"),
+            )
+            .unwrap();
+        };
+
+        plist("2.0");
+        assert!(installed(&env, "2.0 (1)", &applied("installed patched Dia 2.0 (1)")).is_ok());
+        let err = installed(
+            &env,
+            "2.0 (1)",
+            &applied("cleaned up an unfinished staged Dia update; run `diatweaks update` to stage it again"),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("wasn't installed") && err.contains("`diatweaks update-dia`"),
+            "{err}"
+        );
+
+        plist("1.0");
+        let err = installed(&env, "2.0 (1)", &applied(""))
+            .unwrap_err()
+            .to_string();
+        assert!(err.starts_with("Dia 2.0 (1) wasn't installed. Dia 1.0 (1) is in place instead."));
     }
 }

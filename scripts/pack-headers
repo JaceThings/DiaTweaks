@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+import os
+import struct
+import sys
+
+if len(sys.argv) != 3:
+    sys.exit("usage: pack-headers <src/dylib> <out.bin>")
+root, out = sys.argv[1:]
+paths = sorted(
+    os.path.relpath(os.path.join(folder, name), root)
+    for folder, _, names in os.walk(root)
+    for name in names
+    if name.endswith(".h")
+)
+blob = bytearray(struct.pack("<I", len(paths)))
+for path in paths:
+    name = path.encode()
+    if len(name) > 0xFFFF:
+        sys.exit(f"{path} has a path too long to pack")
+    with open(os.path.join(root, path), "rb") as handle:
+        data = handle.read()
+    blob += struct.pack("<H", len(name)) + name + struct.pack("<I", len(data)) + data
+os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+# A partial write here would have a fresh mtime, so make would embed a truncated archive.
+with open(out + ".tmp", "wb") as handle:
+    handle.write(blob)
+os.replace(out + ".tmp", out)

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-tag=$1
+tag=${1:?usage: scripts/release-notes <tag>}
 repo=${GITHUB_REPOSITORY:-JaceThings/DiaTweaks}
 previous=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)
 range=${previous:+$previous..}$tag
@@ -10,15 +10,26 @@ if [ "$(git cat-file -t "$tag")" = tag ]; then
     printf '## 📣 Announcement\n\n%s\n\n' "$(git cat-file tag "$tag" | sed '1,/^$/d; /^-----BEGIN/,$d')"
 fi
 
-keys() { [ -z "$1" ] || git grep -h -o '\.key = @"[^"]*"' "$1" -- src/dylib/Patches | sed 's/.*@"//; s/"$//'; }
+keys() { [ -z "$1" ] || git grep -h -o '\.key = @"[^"]*"' "$1" -- src/dylib/Patches src/dylib/Local tweaks | sed 's/.*@"//; s/"$//'; }
 old=$(keys "$previous")
 
 tweaks='' skip=''
 for key in $(keys "$tag"); do
     printf '%s\n' "$old" | grep -qx "$key" && continue
-    patch=$(git grep -h -A8 "\.key = @\"$key\"" "$tag" -- src/dylib/Patches)
-    title=$(printf '%s\n' "$patch" | sed -n 's/.*\.title = @"\(.*\)",/\1/p' | head -1)
-    detail=$(printf '%s\n' "$patch" | sed -n 's/.*\.detail = @"\(.*\)",/\1/p' | head -1)
+    file=$(git grep -l "\.key = @\"$key\"" "$tag" -- src/dylib/Patches src/dylib/Local tweaks | head -1)
+    meta=$(git show "$file" | python3 -c '
+import re, sys
+key, src = sys.argv[1], sys.stdin.read()
+m = re.search(r"\.key\s*=\s*@\"" + re.escape(key) + r"\"(.*?)\};", src, re.S)
+block = m.group(1) if m else ""
+def field(name):
+    fm = re.search(r"\." + name + r"\s*=\s*((?:@\"(?:[^\"\\]|\\.)*\"\s*)+),", block, re.S)
+    return "".join(re.findall(r"@\"((?:[^\"\\]|\\.)*)\"", fm.group(1))) if fm else ""
+print(field("title"))
+print(field("detail"))
+' "$key")
+    title=$(printf '%s\n' "$meta" | sed -n '1p')
+    detail=$(printf '%s\n' "$meta" | sed -n '2p')
     tweaks="$tweaks- **[$title](https://github.com/$repo/wiki/$(printf '%s' "$title" | tr ' ' -))**\\
   $detail
 "

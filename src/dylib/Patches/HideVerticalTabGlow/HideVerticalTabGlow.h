@@ -2,7 +2,9 @@
 
 #define DPVerticalSidebarRoot "_TtC10TabSidebar15SidebarRootView"
 extern DPPatch DPHideVerticalTabGlow;
+extern char DPTabStyledKey;
 BOOL DPIsVerticalTab(NSView *shape);
+void DPTrackStyledShape(NSView *shape);
 id DPTabDecoration(NSView *shape, const char *name);
 BOOL DPHasTabOverride(id part);
 void DPHideTabDecoration(id part, NSView *shape);

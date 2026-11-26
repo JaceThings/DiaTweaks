@@ -3,10 +3,15 @@
 
 extern DPPatch DPHideHistorySuggestions;
 
+static NSString *DPStringValue(id object, NSString *key) {
+    id value = DPValueForKey(object, key);
+    return [value isKindOfClass:NSString.class] ? value : nil;
+}
+
 static BOOL DPFromHistory(id match) {
-    if ([[match valueForKey:@"hasTabMatch"] boolValue]) return NO;
-    NSString *provider = [match valueForKey:@"providerType"], *type = [match valueForKey:@"matchType"];
-    // The address as typed is made by the history provider too but isn't a suggestion; without it Return searches the text.
+    if ([DPValueForKey(match, @"hasTabMatch") boolValue]) return NO;
+    NSString *provider = DPStringValue(match, @"providerType"), *type = DPStringValue(match, @"matchType");
+    // Kept: without url-what-you-typed, Return searches instead of navigating.
     if ([type isEqualToString:@"url-what-you-typed"]) return NO;
     return [provider hasPrefix:@"History"] || [provider isEqualToString:@"Shortcuts"] || [type hasPrefix:@"history-"] || [type isEqualToString:@"search-history"];
 }
@@ -14,14 +19,20 @@ static BOOL DPFromHistory(id match) {
 static id DPWithoutHistory(id result) {
     SEL make = @selector(init:perProviderMatches:);
     if (![[result class] instancesRespondToSelector:make]) return result;
+    id rawPerProvider = DPValueForKey(result, @"perProviderMatches");
+    id rawCombined = DPValueForKey(result, @"combinedMatches");
+    if ((rawPerProvider && ![rawPerProvider isKindOfClass:NSDictionary.class]) || (rawCombined && ![rawCombined isKindOfClass:NSArray.class])) return result;
+    if (!rawPerProvider && !rawCombined) return result;
     NSPredicate *kept = [NSPredicate predicateWithBlock:^BOOL(id match, id _) { return !DPFromHistory(match); }];
-    NSDictionary<NSString *, NSArray *> *perProvider = [result valueForKey:@"perProviderMatches"];
-    NSMutableDictionary *filtered = [NSMutableDictionary dictionaryWithCapacity:perProvider.count];
+    NSDictionary<NSString *, NSArray *> *perProvider = rawPerProvider;
+    NSMutableDictionary *filtered = perProvider ? [NSMutableDictionary dictionaryWithCapacity:perProvider.count] : nil;
     for (NSString *provider in perProvider) {
-        NSArray *matches = [perProvider[provider] filteredArrayUsingPredicate:kept];
+        id list = perProvider[provider];
+        if (![list isKindOfClass:NSArray.class]) continue;
+        NSArray *matches = [list filteredArrayUsingPredicate:kept];
         if (matches.count) filtered[provider] = matches;
     }
-    NSArray *combined = [[result valueForKey:@"combinedMatches"] filteredArrayUsingPredicate:kept];
+    NSArray *combined = rawCombined ? ([(NSArray *)rawCombined filteredArrayUsingPredicate:kept] ?: @[]) : nil;
     return ((id (*)(id, SEL, id, id))objc_msgSend)([[result class] alloc], make, combined, filtered);
 }
 
@@ -40,7 +51,7 @@ DP_PATCH(DPHideHistorySuggestions) {
     .key = @"hideHistorySuggestions",
     .order = 92,
     .title = @"Hide History Suggestions",
-    .detail = @"Leave pages you've visited out of the suggestions in the address field and command bar. Searches and open tabs still show.",
+    .detail = @"Leave pages you’ve visited out of the suggestions in the address field and command bar. Searches and open tabs still show.",
     .symbol = @"clock.badge.xmark.fill clock.fill",
     .tint = @"systemOrangeColor",
     .section = @"Command Bar",

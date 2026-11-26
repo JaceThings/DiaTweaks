@@ -7,15 +7,20 @@ void DPInstallGroupTabs(void);
 id DPCommandBrowser(void);
 NSWindow *DPBrowserWindow(id browser);
 id DPBrowserOfWindow(NSWindow *window);
+id DPBrowserOfContents(id contents);
 id DPGroupingDelegate(id browser);
 NSArray *DPTrackedContents(id browser);
 long long DPSessionOf(id contents);
-long long DPActiveSession(id browser);  // 0 when the tab in front can't be told from the others.
+long long DPActiveSession(id browser);
 
 long long DPLongID(id value);
+void DPLoadTabGroups(id delegate, id browser, void (^use)(NSArray *groups));
+void DPRemoveFromGroups(id delegate, id browser, NSArray *ids, void (^done)(void));
 id DPMsg(id object, SEL sel);
 BOOL DPMsgBool(id object, SEL sel);
 NSString *DPText(id value);
+NSArray *DPAppleScriptWindows(void);
+NSArray *DPAppleScriptTabs(id window);
 
 NSString *DPDomainKey(NSString *urlString);
 NSString *DPGroupTitle(NSString *domain);

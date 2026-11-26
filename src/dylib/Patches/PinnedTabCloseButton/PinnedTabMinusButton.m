@@ -1,9 +1,10 @@
 #import "Patches/PinnedTabCloseButton/PinnedTabs.h"
 
-enum { DPDismiss = 2 };  // TabUI.TabCloseButtonStyle.
+enum { DPDismiss = 2 };
 
 static NSImage *DPMinus;
 static char DPDiaImageKey;
+static BOOL DPMinusShown;
 
 static id DPMinusController(NSView *content) {
     NSView *tab = DPEnclosingTab(content);
@@ -22,19 +23,26 @@ static NSButton *DPCloseButton(NSView *content) {
 
 static void DPContent_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPContent_layout, self);
+    BOOL on = DPMinusOn();
+    if (!on && !DPMinusShown) return;
     NSButton *button = DPCloseButton(self);
+    if (!button || (!on && !DPGet(button, &DPDiaImageKey))) return;
     NSImage *dia = DPDiaValue(button, &DPDiaImageKey, button.image);
-    if (!dia) return;
-    BOOL minus = DPMinusOn() && DPMinusController(self);
-    if (minus) DPOverride(button, &DPDiaImageKey, dia, DPMinus);
+    if (!dia) {
+        if (!on) DPSet(button, &DPDiaImageKey, nil);
+        return;
+    }
+    BOOL minus = on && DPMinusController(self);
+    if (minus) DPOverride(button, &DPDiaImageKey, dia, DPMinus), DPMinusShown = YES;
+    else if (DPGet(button, &DPDiaImageKey)) DPSet(button, &DPDiaImageKey, nil);
     NSImage *shown = minus ? DPMinus : dia;
     if (button.image != shown) button.image = shown;
 }
 
-// The icon decides, so a click does what it showed; a stale icon keeps the tab rather than removing the pin.
+// Gate on the shown icon so a stale minus still keeps the tab pinned.
 static void DPContent_closeButtonClicked(NSView *self, SEL _cmd) {
-    BOOL minus = DPMinusOn() && DPCloseButton(self).image == DPMinus;
-    if (!(minus && DPClickKeepingTab(self, ^{ DPCallOriginal(DPContent_closeButtonClicked, self); })))
+    if (!DPMinusOn() || DPCloseButton(self).image != DPMinus
+        || !DPClickKeepingTab(self, ^{ DPCallOriginal(DPContent_closeButtonClicked, self); }))
         DPCallOriginal(DPContent_closeButtonClicked, self);
 }
 
@@ -68,7 +76,7 @@ DP_PATCH(DPPinnedTabMinusButton) {
     .title = @"Minus Button on Open Pinned Tabs",
     .detail = @"Show a minus button instead on pinned tabs with a page open, in or out of a folder, as in Arc. It closes the page and keeps the tab pinned.",
     .symbol = @"minus.circle.fill",
-    .tint = @"systemPinkColor",
+    .tint = @"systemTealColor",
     .requires = @"pinnedTabCloseButton",
     .classes = DPClasses(DPDiaTabView, DPDiaTabContentView, DPDiaTabPageAttributes),
     .install = DPInstallPinnedTabMinusButton,

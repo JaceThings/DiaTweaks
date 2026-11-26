@@ -19,7 +19,10 @@ static NSView *DPSidebarOf(NSView *list) {
     return list;
 }
 
-@implementation DPTidyHover
+@implementation DPTidyHover {
+    NSInteger _tabsBelowLine;
+    CFTimeInterval _countedAt;
+}
 
 + (DPTidyHover *)forList:(NSView *)list { return DPGet(list, &DPHoverKey); }
 
@@ -36,7 +39,6 @@ static NSView *DPSidebarOf(NSView *list) {
     hover.tracking = [[NSTrackingArea alloc] initWithRect:sidebar.bounds
         options:NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveInKeyWindow owner:hover userInfo:nil];
     [sidebar addTrackingArea:hover.tracking];
-    // No enter event comes for a pointer that's already inside.
     if (first) dispatch_async(dispatch_get_main_queue(), ^{ if ([hover containsPointer]) hover.revealed = YES; });
     return hover;
 }
@@ -71,7 +73,13 @@ static NSView *DPSidebarOf(NSView *list) {
     NSWindow *window = list.window;
     if (!window.isKeyWindow || !NSApp.isActive || list.hiddenOrHasHiddenAncestor) return NO;
     NSPoint point = [window convertPointFromScreen:NSEvent.mouseLocation];
-    return NSPointInRect(point, DPTidyHoverZone(list)) && DPTidyTabsBelowLine(list) >= DPTidyMinimumTabs;
+    if (!NSPointInRect(point, DPTidyHoverZone(list))) return NO;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (now - _countedAt > 0.25) {
+        _tabsBelowLine = DPTidyTabsBelowLine(list);
+        _countedAt = now;
+    }
+    return _tabsBelowLine >= DPTidyMinimumTabs;
 }
 
 - (void)setRevealed:(BOOL)revealed {

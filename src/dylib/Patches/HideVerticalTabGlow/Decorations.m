@@ -20,6 +20,8 @@ void DPRestoreTabDecoration(id part) {
 void DPHideTabDecoration(id part, NSView *shape) {
     if (!part) return;
     if (!DPHideVerticalTabGlow.on || !DPIsVerticalTab(shape)) return DPRestoreTabDecoration(part);
+    DPSet(shape, &DPTabStyledKey, @YES);
+    DPTrackStyledShape(shape);
     DPOverride(part, &DPDiaHiddenKey, DPDiaValue(part, &DPDiaHiddenKey, @([part isHidden])), @YES);
     [part setHidden:YES];
 }

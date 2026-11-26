@@ -1,31 +1,49 @@
 #import "CompactCommandBar.h"
 
+static NSMapTable<NSView *, NSMapTable *> *DPParts;
+
+// Every layout and keystroke asks for the same few parts, so remember where each was rather than search the bar again.
 NSView *DPCommandBarPart(NSView *commandBar, const char *className) {
-    return DPFindView(commandBar, ^BOOL(NSView *view) { return DPIsKind(view, className); });
+    if (!commandBar) return nil;
+    if (!DPParts) DPParts = [NSMapTable weakToStrongObjectsMapTable];
+    NSMapTable *parts = [DPParts objectForKey:commandBar];
+    NSView *part = [parts objectForKey:@((uintptr_t)className)];
+    if (part && [part isDescendantOf:commandBar]) return part;
+    part = DPFindView(commandBar, ^BOOL(NSView *view) { return DPIsKind(view, className); });
+    if (!part) return nil;
+    if (!parts) [DPParts setObject:parts = [NSMapTable strongToWeakObjectsMapTable] forKey:commandBar];
+    [parts setObject:part forKey:@((uintptr_t)className)];
+    return part;
 }
 
 BOOL DPChatLocked(NSView *view) {
     return DPFindView(view, ^BOOL(NSView *v) { return [v.accessibilityLabel hasSuffix:@"only available when you have chat usage"]; }) != nil;
 }
 
+// Layout and mouse-move hit tests ask this many times a second, and the answer only changes when Dia labels a button.
+static char DPLockedKey;
+
+static BOOL DPChatLockedCached(NSView *toolbar) {
+    NSNumber *locked = DPGet(toolbar, &DPLockedKey);
+    if (!locked) DPSet(toolbar, &DPLockedKey, locked = @(DPChatLocked(toolbar)));
+    return locked.boolValue;
+}
+
+void DPForgetChatLocked(NSView *toolbar) {
+    if (toolbar) DPSet(toolbar, &DPLockedKey, nil);
+}
+
 // Dia labels the buttons a moment after the bar shows, so until then the last label decides.
 static NSString *const DPChatLockedKey = @"commandBarChatLocked";
 
-static NSUserDefaults *DPCommandBarDefaults(void) {
-    static NSUserDefaults *defaults;
-    if (!defaults) defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
-    return defaults;
-}
-
 void DPRememberChatLocked(BOOL locked) {
-    if ([DPCommandBarDefaults() boolForKey:DPChatLockedKey] != locked) [DPCommandBarDefaults() setBool:locked forKey:DPChatLockedKey];
+    if ([DPSettingsDefaults() boolForKey:DPChatLockedKey] != locked) [DPSettingsDefaults() setBool:locked forKey:DPChatLockedKey];
 }
 
 static BOOL DPCompacts(NSView *toolbar) {
     return DPCompactWithChat.on || DPChatLocked(toolbar);
 }
 
-// The chat composer uses the same views and must not compact, in the sidebar or Dia's floating window.
 static BOOL DPOnCommandBarSurface(NSView *view) {
     for (; view; view = view.superview)
         if ((DPIsKind(view, DPDiaPopover) && !DPIsFloatingChat(view)) || DPIsKind(view, DPDiaNewTabPage) || DPIsKind(view, "DPCommandBarOverlay")) return YES;
@@ -33,9 +51,10 @@ static BOOL DPOnCommandBarSurface(NSView *view) {
 }
 
 NSView *DPCompactToolbar(NSView *commandBar) {
+    if (!DPCompactCommandBar.on) return nil;
     NSView *toolbar = DPCommandBarPart(commandBar, DPDiaCommandBarToolbar);
-    BOOL compacts = toolbar && (DPCompacts(toolbar) || [DPCommandBarDefaults() boolForKey:DPChatLockedKey]);
-    return DPCompactCommandBar.on && compacts && DPOnCommandBarSurface(commandBar) ? toolbar : nil;
+    BOOL compacts = toolbar && (DPCompactWithChat.on || [DPSettingsDefaults() boolForKey:DPChatLockedKey] || DPChatLockedCached(toolbar));
+    return compacts && DPOnCommandBarSurface(commandBar) ? toolbar : nil;
 }
 
 NSView *DPGoButton(NSView *toolbar) {
@@ -54,7 +73,17 @@ void DPSetTrim(NSView *container, CGFloat trim) {
 }
 
 void DPApplyCompactCommandBar(DPPatch *patch) {
-    for (NSView *commandBar in DPFindViews(DPDiaCommandBar)) commandBar.needsLayout = YES;
+    Class barCls = objc_getClass(DPDiaCommandBar);
+    if (!barCls) return;
+    for (NSWindow *window in NSApp.windows)
+        DPFindView(window.contentView.superview ?: window.contentView, ^BOOL(NSView *view) {
+            if ([view isKindOfClass:barCls]) {
+                view.needsLayout = YES;
+                DPForgetChatLocked(DPCommandBarPart(view, DPDiaCommandBarToolbar));
+                DPCommandBarPart(view, DPDiaCommandBarInput).needsLayout = YES;
+            }
+            return NO;
+        });
 }
 
 static NSString *DPVerifyCompactCommandBar(DPPatch *patch) {

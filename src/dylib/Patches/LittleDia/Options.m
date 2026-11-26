@@ -1,19 +1,20 @@
 #import "LittleDia.h"
-#import "Patches/Peek/Peek.h"
 
-static NSString *const DPWidthKey = @"littleDiaWidth", *const DPHeightKey = @"littleDiaHeight";
+static NSString *const DPWidthKey = @"littleDiaWidth", *const DPHeightKey = @"littleDiaHeight", *const DPFrameKey = @"littleDiaFrame";
 
-static NSUserDefaults *DPSettings(void) {
-    static NSUserDefaults *settings;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ settings = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; });
-    return settings;
+static double DPSavedSize(NSString *key, double fallback, double low, double high) {
+    double value = [DPSettingsDefaults() doubleForKey:key];
+    return value > 0 ? MIN(MAX(value, low), high) : fallback;
 }
 
-NSSize DPLittleDiaSize(void) {
-    NSNumber *width = [DPSettings() objectForKey:DPWidthKey], *height = [DPSettings() objectForKey:DPHeightKey];
-    return NSMakeSize(width ? width.doubleValue : 1180, height ? height.doubleValue : 860);
+NSSize DPLittleDiaSize(void) { return NSMakeSize(DPSavedSize(DPWidthKey, 1180, 480, 2000), DPSavedSize(DPHeightKey, 860, 360, 1400)); }
+
+NSRect DPLittleDiaSavedFrame(void) {
+    NSString *saved = [DPSettingsDefaults() stringForKey:DPFrameKey];
+    return saved ? NSRectFromString(saved) : NSZeroRect;
 }
+
+void DPSaveLittleDiaFrame(NSRect frame) { [DPSettingsDefaults() setObject:NSStringFromRect(frame) forKey:DPFrameKey]; }
 
 @interface DPSizeRow : NSStackView <NSTextFieldDelegate>
 @property (nonatomic, copy) NSString *key;
@@ -27,7 +28,8 @@ NSSize DPLittleDiaSize(void) {
     double value = round(MIN(MAX(control.doubleValue, self.slider.minValue), self.slider.maxValue));
     self.slider.doubleValue = value;
     self.field.doubleValue = value;
-    [DPSettings() setDouble:value forKey:self.key];
+    [DPSettingsDefaults() setDouble:value forKey:self.key];
+    [DPSettingsDefaults() removeObjectForKey:DPFrameKey];
 }
 
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
@@ -76,24 +78,39 @@ NSArray<NSView *> *DPLittleDiaRows(void) {
 
 extern DPPatch DPLittleDiaEscape;
 
-// Peek's own monitor takes Escape too and may run first or second, so this one stands aside while a Peek is open.
+static BOOL DPHasCommandBarOverlay(NSWindow *window) {
+    for (NSView *sub in window.contentView.subviews)
+        if (DPIsKind(sub, "DPCommandBarOverlay") && !sub.isHidden) return YES;
+    return NO;
+}
+
+static BOOL DPHasPeekCard(NSWindow *window) {
+    return DPFindView(window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, "DPPeekCard") && !view.isHiddenOrHasHiddenAncestor; }) != nil;
+}
+
+// Peek's and CommandBar's monitors take Escape too and may run first or second, so stand aside while either or a sheet is open.
 static BOOL DPEscapeCloses(NSEvent *event) {
-    NSWindow *window = event.window;
+    if (!DPLittleDia.on || !DPLittleDiaEscape.on || event.keyCode != 53 || event.isARepeat) return NO;
     NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagOption | NSEventModifierFlagControl);
-    if (!DPLittleDia.on || !DPLittleDiaEscape.on || event.keyCode != 53 || mods || event.isARepeat || !window.isKeyWindow) return NO;
-    if (!DPIsLittleDiaWindow(window) || (window.styleMask & NSWindowStyleMaskFullScreen) || DPPeekCardIn(window)) return NO;
-    if ([window.firstResponder isKindOfClass:NSText.class] && [(NSText *)window.firstResponder isFieldEditor]) return NO;
-    NSResponder<NSTextInputClient> *typing = (id)window.firstResponder;
-    if ([typing conformsToProtocol:@protocol(NSTextInputClient)] && typing.hasMarkedText) return NO;
+    NSWindow *window = event.window;
+    if (mods || !window.isKeyWindow || window.attachedSheet || !DPIsLittleDiaWindow(window) || (window.styleMask & NSWindowStyleMaskFullScreen) || DPHasPeekCard(window) || DPHasCommandBarOverlay(window)) return NO;
+    NSResponder *responder = window.firstResponder;
+    if ([responder isKindOfClass:NSText.class] && [(NSText *)responder isFieldEditor]) return NO;
+    if ([responder conformsToProtocol:@protocol(NSTextInputClient)] && [(id<NSTextInputClient>)responder hasMarkedText]) return NO;
     [window performClose:nil];
     return YES;
 }
 
-static void DPInstallEscape(void) {
-    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+static id gEscapeMonitor;
+
+void DPSyncLittleDiaEscape(void) {
+    DPSyncMonitor(&gEscapeMonitor, DPLittleDia.on && DPLittleDiaEscape.on, NSEventMaskKeyDown, ^NSEvent *(NSEvent *event) {
         return DPEscapeCloses(event) ? nil : event;
-    }];
+    });
 }
+
+static void DPApplyEscape(DPPatch *patch) { DPSyncLittleDiaEscape(); }
+static void DPInstallEscape(void) { DPSyncLittleDiaEscape(); }
 
 DP_PATCH(DPLittleDiaEscape) {
     .key = @"littleDiaEscapeCloses",
@@ -105,4 +122,28 @@ DP_PATCH(DPLittleDiaEscape) {
     .tint = @"systemMintColor",
     .requires = @"littleDia",
     .install = DPInstallEscape,
+    .apply = DPApplyEscape,
+};
+
+DP_PATCH(DPLittleDiaFollowRules) {
+    .key = @"littleDiaFollowRules",
+    .order = 104,
+    .title = @"Follow Link Rules",
+    .detail = @"Hands links from other apps to Dia untouched, so its Link Rules pick the profile and they open as tabs, not in Little Dia. "
+              @"Right-clicking a link and choosing Open Link in Little Dia still works.",
+    .symbol = @"signpost.right.and.left",
+    .tint = @"systemMintColor",
+    .requires = @"littleDia",
+};
+
+DP_PATCH(DPLittleDiaRemember) {
+    .key = @"littleDiaRemember",
+    .experimental = YES,
+    .order = 104,
+    .title = @"Remember Size and Position",
+    .detail = @"Opens Little Dia where and how big you last left it, not centred at the Window Width and Height. Changing either of those forgets it. "
+              @"If that spot isn’t on a screen, it opens centred.",
+    .symbol = @"arrow.up.left.and.arrow.down.right",
+    .tint = @"systemMintColor",
+    .requires = @"littleDia",
 };

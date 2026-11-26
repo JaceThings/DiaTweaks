@@ -5,8 +5,22 @@ NSString *DPTestTexture = @"grain";
 NSString *DPChoice(DPPatch *patch) { return DPTestTexture; }
 void DPSetChoice(DPPatch *patch, NSString *choice) { DPTestTexture = choice; }
 
+// An absolute path keeps the plist in a scratch folder: a short domain lands in ~/Library/Preferences and cfprefsd rewrites it after removal.
+#import "watchdog.h"
+
 static NSString *DPTestDomain(void) {
-    return [NSString stringWithFormat:@"com.diapatches.grain-test.%d", getpid()];
+    static NSString *suite;
+    if (!suite) {
+        char *dir = mkdtemp(strdup([NSTemporaryDirectory() stringByAppendingPathComponent:@"grain-test.XXXXXX"].fileSystemRepresentation));
+        suite = [@(dir) stringByAppendingPathComponent:@"com.diapatches"];
+        free(dir);
+    }
+    return suite;
+}
+
+static void DPCleanTestDomain(void) {
+    [NSUserDefaults.standardUserDefaults removePersistentDomainForName:DPTestDomain()];
+    [NSFileManager.defaultManager removeItemAtPath:DPTestDomain().stringByDeletingLastPathComponent error:nil];
 }
 
 @interface NSUserDefaults (DPGrainFixture)
@@ -18,12 +32,19 @@ static NSString *DPTestDomain(void) {
 }
 @end
 
+static id DPControl(NSView *row, Class cls) {
+    return DPFindView(row, ^BOOL(NSView *view) { return [view isKindOfClass:cls]; });
+}
+
 int main(void) { @autoreleasepool {
+    unsetenv("DIATWEAKS_DOMAIN");
     [NSApplication sharedApplication];
     DPSidebarGrain.key = @"sidebarGrain";
     DPSidebarGrain.choice = @"sidebarGrainMaterial";
     method_exchangeImplementations(class_getInstanceMethod(NSUserDefaults.class, @selector(initWithSuiteName:)),
         class_getInstanceMethod(NSUserDefaults.class, @selector(dp_grainTestSuite:)));
+    DPOnTestCleanup(DPCleanTestDomain);
+    DPArmTestWatchdog(30);
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     [defaults removePersistentDomainForName:DPTestDomain()];
     DPTestTextureHosts();
@@ -41,7 +62,6 @@ int main(void) { @autoreleasepool {
                     double full = DPTestTextureContrast(appearance, texture, 100, softness.doubleValue, scale.doubleValue);
                     renders += 3;
                     assert(none < .00001 && half > 0 && full > half * 1.7 && full < half * 2.3);
-                    // Full is clearly visible on every texture, at every softness and scale.
                     assert(full > .03);
                     if (![texture isEqual:@"fine"]) { loudest = MAX(loudest, full); quietest = MIN(quietest, full); }
                 }
@@ -57,6 +77,9 @@ int main(void) { @autoreleasepool {
             assert(CGImageGetWidth(DPGrainAppearanceTile(texture, YES, YES, scale.integerValue)) == side * (size_t)scale.integerValue / 100);
         }
     }
+    CGImageRef scale150 = DPGrainAppearanceTile(@"sand", NO, NO, 150);
+    CGImageRef scale200 = DPGrainAppearanceTile(@"sand", NO, NO, 200);
+    assert(DPGrainAppearanceTile(@"sand", NO, NO, 150) == scale150 && DPGrainAppearanceTile(@"sand", NO, NO, 200) == scale200);
     [defaults setInteger:61 forKey:@"sidebarGrainAmount"];
     [defaults setInteger:23 forKey:@"sidebarGrainSoftness"];
     [defaults setInteger:170 forKey:@"sidebarGrainScale"];
@@ -75,16 +98,13 @@ int main(void) { @autoreleasepool {
     NSArray<NSView *> *rows = DPGrainRows();
     assert(rows.count == 4 && DPGrainTextureMenu().numberOfItems == 6);
     NSInteger shown[] = {61, 23, 170};
-    for (NSUInteger i = 0; i < 3; i++) {
-        NSSlider *slider = (id)DPFindView(rows[i], ^BOOL(NSView *view) { return [view isKindOfClass:NSSlider.class]; });
-        assert(slider.integerValue == shown[i]);
-    }
-    NSSlider *scale = (id)DPFindView(rows[2], ^BOOL(NSView *view) { return [view isKindOfClass:NSSlider.class]; });
+    for (NSUInteger i = 0; i < 3; i++) assert(((NSSlider *)DPControl(rows[i], NSSlider.class)).integerValue == shown[i]);
+    NSSlider *scale = DPControl(rows[2], NSSlider.class);
     assert(scale.minValue == 50 && scale.maxValue == 300);
     scale.integerValue = 220;
     [scale sendAction:scale.action to:scale.target];
     assert(DPGrainScale(nil) == 220);
-    NSButton *reset = (id)DPFindView(rows[3], ^BOOL(NSView *view) { return [view isKindOfClass:NSButton.class]; });
+    NSButton *reset = DPControl(rows[3], NSButton.class);
     DPTestTexture = @"tweed";
     [reset performClick:nil];
     assert(DPGrainAmount(nil) == 50 && DPGrainSoftness(nil) == 0 && DPGrainScale(nil) == 100 && scale.integerValue == 100);
@@ -93,7 +113,6 @@ int main(void) { @autoreleasepool {
     [defaults removeObjectForKey:@"sidebarGrainSoftness"];
     [defaults setInteger:130 forKey:@"sidebarGrainScale"];
     DPTestTexture = @"sand";
-    // A profile with nothing of its own uses the global values; its own values win, one by one, and only for it.
     assert(!DPGrainHasOverrides(@"A") && DPGrainShown(@"A") && DPGrainAmount(@"A") == 50 && DPGrainScale(@"A") == 130);
     DPGrainSave(@"sidebarGrainAmount", @80, @"A");
     DPGrainSave(@"sidebarGrainMaterial", @"tweed", @"A");
@@ -115,9 +134,8 @@ int main(void) { @autoreleasepool {
     [defaults removeObjectForKey:@"sidebarGrainProfiles"];
     DPGrainSave(@"sidebarGrainAmount", @80, @"A");
     DPGrainSave(@"sidebarGrainAmount", @10, @"B");
-    // The sliders edit the profile they're pointed at, and reset clears only that one.
     DPGrainRowsFor(rows, @"A", nil);
-    NSSlider *amount = (id)DPFindView(rows[0], ^BOOL(NSView *view) { return [view isKindOfClass:NSSlider.class]; });
+    NSSlider *amount = DPControl(rows[0], NSSlider.class);
     assert(amount.integerValue == 80);
     amount.integerValue = 65;
     [amount sendAction:amount.action to:amount.target];
@@ -127,6 +145,5 @@ int main(void) { @autoreleasepool {
     assert(DPGrainScale(nil) == 130 && [defaults objectForKey:@"sidebarGrainScale"]);
     DPGrainRowsFor(rows, nil, nil);
     assert(amount.integerValue == 30);
-    [defaults removePersistentDomainForName:DPTestDomain()];
     printf("PASS: %lu light/dark renders; six textures at equal contrast across amount, softness and scale; native active-window hooks; settings rows; defaults/reset; saved settings; per-profile fallback, overrides and reset\n", renders);
 } }

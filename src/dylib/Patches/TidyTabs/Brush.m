@@ -43,11 +43,11 @@ BOOL DPTidyIsBusy(void) { return DPBrushesBusy; }
 void DPTidySetBusy(BOOL busy) {
     DPBrushesBusy = busy;
     for (DPTidyBrush *brush in DPTidyBrushes()) [brush showBusy];
-    for (NSView *list in DPFindViews(DPDiaTabList)) {
+    for (NSView *list in DPTidyTrackedLists()) {
         DPTidyRowIn(list, NO).needsLayout = YES;
         NSView *separator = DPTidySeparatorIn(list);
         if (separator) DPPlaceSeparatorBrush(separator);
-        if (!busy) [[DPTidyHover forList:list] track];
+        if (!busy && DPTidyTabs.on) [[DPTidyHover forList:list] track];
     }
 }
 
@@ -89,7 +89,9 @@ void DPTidySetBusy(BOOL busy) {
     [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
         if (self.plain) self.contentTintColor = self.hovered ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor;
         else self.contentTintColor = self.hovered ? NSColor.labelColor : NSColor.secondaryLabelColor;
-        self.layer.backgroundColor = self.hovered && !self.plain ? NSColor.quaternaryLabelColor.CGColor : NSColor.clearColor.CGColor;
+        DPWithoutAnimation(^{
+            self.layer.backgroundColor = self.hovered && !self.plain ? NSColor.quaternaryLabelColor.CGColor : NSColor.clearColor.CGColor;
+        });
     }];
 }
 

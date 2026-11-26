@@ -2,7 +2,7 @@
 
 static const CGFloat DPTidyRowHeight = 24;
 static NSHashTable<NSView *> *DPTidyLists;
-static char DPScrollFrameKey;
+static char DPScrollFrameKey, DPActiveKey, DPTrackedKey;
 
 NSScrollView *DPTidyListScroll(NSView *list) {
     for (NSView *sub in list.subviews) if ([sub isKindOfClass:NSScrollView.class]) return (NSScrollView *)sub;
@@ -11,9 +11,19 @@ NSScrollView *DPTidyListScroll(NSView *list) {
 
 static void DPTabList_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPTabList_layout, self);
-    [DPTidyLists addObject:self];
-    DPTidyHover *hover = DPTidyTabs.on ? [DPTidyHover attachToList:self] : [DPTidyHover forList:self];
-    CGFloat progress = DPTidyTabs.on ? hover.progress : 0;
+    if (!DPGet(self, &DPTrackedKey)) {
+        DPSet(self, &DPTrackedKey, @YES);
+        [DPTidyLists addObject:self];
+    }
+    BOOL on = DPTidyTabs.on;
+    if (on) {
+        if (!DPGet(self, &DPActiveKey)) DPSet(self, &DPActiveKey, @YES);
+    } else {
+        if (!DPGet(self, &DPActiveKey)) return;
+        [[DPTidyHover forList:self] detach];
+        DPSet(self, &DPActiveKey, nil);
+    }
+    CGFloat progress = on ? [DPTidyHover attachToList:self].progress : 0;
     NSView *separator = DPTidySeparatorIn(self);
     if (separator) DPPlaceSeparatorBrush(separator);
     CGFloat inset = separator ? 0 : round(DPTidyRowHeight * progress);
@@ -23,16 +33,24 @@ static void DPTabList_layout(NSView *self, SEL _cmd) {
     inset = MIN(inset, NSHeight(laidOut));
     frame.size.height -= inset;
     if (self.isFlipped) frame.origin.y += inset;
-    DPOverride(scroll, &DPScrollFrameKey, @(laidOut), @(frame));
-    if (!NSEqualRects(scroll.frame, frame)) scroll.frame = frame;
+    BOOL adjusted = NSEqualRects(scroll.frame, frame);
+    if (!adjusted && DPMayAdjust(scroll)) {
+        scroll.frame = frame;
+        adjusted = YES;
+    }
+    if (inset > 0 && adjusted) DPOverride(scroll, &DPScrollFrameKey, @(laidOut), @(frame));
+    else if (DPGet(scroll, &DPScrollFrameKey)) DPSet(scroll, &DPScrollFrameKey, nil);
 
     DPTidyRowView *row = DPTidyRowIn(self, inset > 0);
     if (!row) return;
+    if (!on) return [row removeFromSuperview];
     CGFloat y = self.isFlipped ? NSMinY(laidOut) : NSMaxY(laidOut) - inset;
     row.frame = NSMakeRect(NSMinX(laidOut), y, NSWidth(laidOut), inset);
     row.alphaValue = progress;
     row.hidden = inset < 1;
 }
+
+NSArray<NSView *> *DPTidyTrackedLists(void) { return DPTidyLists.allObjects ?: @[]; }
 
 NSRect DPTidyHoverZone(NSView *list) {
     NSScrollView *scroll = DPTidyListScroll(list);

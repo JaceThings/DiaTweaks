@@ -1,21 +1,25 @@
 #import "StdPatch/StdPatch.h"
+#import <objc/message.h>
 #import "Patches/CompactTabRows/CompactTabRows.h"
 
 extern DPPatch DPCollapsePinned;
 
 static NSString *const DPCollapsedKey = @"collapsedPinned";
 static const CGFloat DPRowHeight = 37, DPHeaderHeight = 28, DPRowInset = 15, DPTitleInset = 36, DPChevronInset = 11, DPGap = 8;
-static NSUserDefaults *DPCollapseDefaults;
-static BOOL DPRaw;
-static char DPHeaderKey;
+static char DPHeaderKey, DPShiftedKey, DPLastShiftKey;
 
-static NSString *DPSpaceOf(NSView *list) {
-    NSView *tabList = list;
-    while (tabList && !DPIsKind(tabList, DPDiaTabList)) tabList = tabList.superview;
-    return [DPSwiftValue(DPSwiftValue(DPSwiftValue(tabList, @"viewModel"), @"delegate"), @"spaceID") description];
+static NSView *DPTabListAbove(NSView *view) {
+    static Class tabList;
+    if (!tabList) tabList = objc_getClass(DPDiaTabList);
+    while (view && ![view isKindOfClass:tabList]) view = view.superview;
+    return view;
 }
 
-static BOOL DPIsCollapsed(NSString *space) { return space && [[DPCollapseDefaults arrayForKey:DPCollapsedKey] containsObject:space]; }
+static NSString *DPSpaceOf(NSView *list) {
+    return [DPSwiftValue(DPSwiftValue(DPSwiftValue(DPTabListAbove(list), @"viewModel"), @"delegate"), @"spaceID") description];
+}
+
+static BOOL DPIsCollapsed(NSString *space) { return space && [[DPSettingsDefaults() arrayForKey:DPCollapsedKey] containsObject:space]; }
 
 static NSImage *DPSmallSymbol(NSString *name) {
     NSImageSymbolConfiguration *small = [NSImageSymbolConfiguration configurationWithPointSize:10 weight:NSFontWeightSemibold];
@@ -42,6 +46,7 @@ static void DPFold(NSString *space, BOOL collapsed);
     self.wantsLayer = YES;
     self.pin = [NSImageView imageViewWithImage:DPSmallSymbol(@"pin.fill")];
     self.chevron = [NSImageView new];
+    self.chevron.wantsLayer = YES;
     self.title = [NSTextField labelWithString:@"Pinned"];
     self.title.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     self.line = [CALayer layer];
@@ -63,7 +68,7 @@ static void DPFold(NSString *space, BOOL collapsed);
         NSColor *ink = self.hovered ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor;
         self.pin.contentTintColor = self.chevron.contentTintColor = ink;
         self.title.textColor = ink;
-        self.line.backgroundColor = NSColor.separatorColor.CGColor;
+        DPWithoutAnimation(^{ self.line.backgroundColor = NSColor.separatorColor.CGColor; });
     }];
     self.accessibilityValue = self.collapsed ? @0 : @1;
 }
@@ -77,18 +82,32 @@ static void DPFold(NSString *space, BOOL collapsed);
     self.title.frame = NSMakeRect(DPTitleInset - 2, middle - round(NSHeight(self.title.frame) / 2), NSWidth(self.title.frame), NSHeight(self.title.frame));
     self.chevron.frame = NSMakeRect(NSMaxX(bounds) - DPChevronInset - 12, middle - 6, 12, 12);
     CGFloat left = NSMaxX(self.title.frame) + DPGap, right = NSMinX(self.chevron.frame) - DPGap;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.line.frame = NSMakeRect(left, middle - 0.5, MAX(0, right - left), 1);
-    [CATransaction commit];
+    DPWithoutAnimation(^{ self.line.frame = NSMakeRect(left, middle - 0.5, MAX(0, right - left), 1); });
     [self restyle];
+}
+
+// A folder's chevron turns rather than swapping, on a spring that settles in about 0.17 s; the header is flipped, so +π/2 turns clockwise.
+- (void)turnChevronFrom:(CGFloat)angle {
+    CALayer *layer = self.chevron.layer;
+    if (!layer || !self.window || self.hiddenOrHasHiddenAncestor) return;
+    CGFloat x = NSWidth(self.chevron.bounds) * (0.5 - layer.anchorPoint.x), y = NSHeight(self.chevron.bounds) * (0.5 - layer.anchorPoint.y);
+    CASpringAnimation *turn = [CASpringAnimation animationWithKeyPath:@"transform"];
+    turn.mass = 1;
+    turn.stiffness = 1366;
+    turn.damping = 62;
+    turn.fromValue = [NSValue valueWithCATransform3D:CATransform3DTranslate(CATransform3DRotate(CATransform3DMakeTranslation(x, y, 0), angle, 0, 0, 1), -x, -y, 0)];
+    turn.toValue = [NSValue valueWithCATransform3D:CATransform3DIdentity];
+    turn.duration = turn.settlingDuration;
+    [layer addAnimation:turn forKey:@"turn"];
 }
 
 - (void)setCollapsed:(BOOL)collapsed {
     if (_collapsed == collapsed && self.chevron.image) return;
+    BOOL turns = self.chevron.image != nil;
     _collapsed = collapsed;
     self.chevron.image = DPSmallSymbol(collapsed ? @"chevron.right" : @"chevron.down");
-    self.line.opacity = collapsed ? 0 : 1;
+    if (turns) [self turnChevronFrom:collapsed ? M_PI_2 : -M_PI_2];
+    DPWithoutAnimation(^{ self.line.opacity = collapsed ? 0 : 1; });
     [self restyle];
 }
 
@@ -102,38 +121,62 @@ static void DPFold(NSString *space, BOOL collapsed);
 - (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; [self restyle]; }
 @end
 
+static void DPHideHeader(DPPinnedHeader *header) {
+    header.shown = NO;
+    header.hidden = YES;
+}
+
+typedef NSCollectionViewLayoutAttributes *(*DPItemIMP)(id, SEL, NSIndexPath *);
+
+static DPItemIMP DPDiaItemIMP(void) {
+    static DPItemIMP item;
+    if (!item) item = (DPItemIMP)DPDiaIMP(objc_getClass(DPDiaTabListLayout), @selector(layoutAttributesForItemAtIndexPath:));
+    return item;
+}
+
+// Other patches move Dia's cached rows too, so a row carries only the Pinned shift it was given.
+static NSNumber *DPAppliedShift(NSCollectionViewLayoutAttributes *attributes) { return attributes ? DPGet(attributes, &DPShiftedKey) : nil; }
+
+static void DPMarkShift(NSCollectionViewLayoutAttributes *attributes, CGFloat shift) { DPSet(attributes, &DPShiftedKey, @(shift)); }
+
+static NSRect DPDiaFrame(NSCollectionViewLayoutAttributes *attributes) {
+    NSRect frame = attributes.frame;
+    frame.origin.y -= DPAppliedShift(attributes).doubleValue;
+    return frame;
+}
+
 static void DPMeasure(NSCollectionViewLayout *layout) {
     NSCollectionView *list = layout.collectionView;
-    if (!DPIsKind(list, DPDiaTabListCollection)) return;
     DPPinnedHeader *header = DPGet(list, &DPHeaderKey);
+    if (!DPCollapsePinned.on) {
+        DPHideHeader(header);
+        header.springSince = nil;
+        return;
+    }
+    if (!DPIsKind(list, DPDiaTabListCollection)) return;
     NSInteger rows = list.numberOfSections ? [list numberOfItemsInSection:0] - 1 : 0;
-    BOOL shown = DPCollapsePinned.on && rows > 0;
+    BOOL shown = rows > 0;
     NSRect first = NSZeroRect, line = NSZeroRect;
     CGFloat row = DPRowHeight;
     if (shown) {
-        DPRaw = YES;
-        first = [layout layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]].frame;
-        line = [layout layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:rows inSection:0]].frame;
-        NSCountedSet<NSNumber *> *heights = [NSCountedSet set];
-        for (NSCollectionViewLayoutAttributes *a in [layout layoutAttributesForElementsInRect:NSMakeRect(-1e5, -1e5, 2e5, 1e7)])
-            if (a.representedElementCategory == NSCollectionElementCategoryItem && NSHeight(a.frame) >= 20) [heights addObject:@(round(NSHeight(a.frame) * 2) / 2)];
-        NSNumber *common = nil;
-        for (NSNumber *each in heights) if (!common || [heights countForObject:each] > [heights countForObject:common]) common = each;
-        if (common) row = common.doubleValue;
-        DPRaw = NO;
+        // Dia's own IMPs, so frozen or parked rows never feed shifted frames back into header.top.
+        SEL itemSel = @selector(layoutAttributesForItemAtIndexPath:), elementsSel = @selector(layoutAttributesForElementsInRect:);
+        DPItemIMP rawItem = DPDiaItemIMP();
+        NSArray *(*rawElements)(id, SEL, NSRect) = (void *)DPDiaIMP(objc_getClass(DPDiaTabListLayout), elementsSel);
+        first = rawItem ? DPDiaFrame(rawItem(layout, itemSel, [NSIndexPath indexPathForItem:0 inSection:0])) : NSZeroRect;
+        line = rawItem ? DPDiaFrame(rawItem(layout, itemSel, [NSIndexPath indexPathForItem:rows inSection:0])) : NSZeroRect;
+        CGFloat common = rawElements ? DPModalItemHeight(rawElements(layout, elementsSel, NSMakeRect(-1e5, -1e5, 2e5, 1e7)), 20) : 0;
+        if (common) row = common;
         shown = NSHeight(line) > 0 && NSHeight(line) < 20;
     }
-    if (!shown) {
-        header.shown = NO;
-        header.hidden = YES;
-        return;
-    }
+    if (!shown) return DPHideHeader(header);
     if (!header) {
         header = [DPPinnedHeader new];
         DPSet(list, &DPHeaderKey, header);
     }
     if (header.superview != list) [list addSubview:header];
-    header.space = header.space ?: DPSpaceOf(list);
+    NSString *space = DPSpaceOf(list);
+    if (space) header.space = space;
     header.collapsed = DPIsCollapsed(header.space);
     header.shown = YES;
     header.hidden = NO;
@@ -147,7 +190,8 @@ static void DPMeasure(NSCollectionViewLayout *layout) {
 }
 
 static DPPinnedHeader *DPShownHeader(NSCollectionViewLayout *layout) {
-    DPPinnedHeader *header = DPRaw ? nil : DPGet(layout.collectionView, &DPHeaderKey);
+    if (!DPCollapsePinned.on) return nil;
+    DPPinnedHeader *header = DPGet(layout.collectionView, &DPHeaderKey);
     return header.shown ? header : nil;
 }
 
@@ -155,23 +199,78 @@ static CGFloat DPShift(DPPinnedHeader *header, BOOL pinned) {
     return pinned || !header.collapsed ? DPHeaderHeight : DPHeaderHeight - (header.end - header.top);
 }
 
+static NSCollectionViewLayoutAttributes *DPDiaItem(NSCollectionViewLayout *layout, NSIndexPath *path) {
+    DPItemIMP item = DPDiaItemIMP();
+    return item ? item(layout, @selector(layoutAttributesForItemAtIndexPath:), path) : nil;
+}
+
+// Dia can rebuild its cache without our hooks.
+static BOOL DPIsAligned(NSCollectionViewLayout *layout) { return DPAppliedShift(DPDiaItem(layout, [NSIndexPath indexPathForItem:0 inSection:0])) != nil; }
+
+static void DPNudgeOverflow(NSCollectionView *list) {
+    NSView *tabList = DPTabListAbove(list);
+    SEL scrolled = NSSelectorFromString(@"scrollViewDidScroll");
+    if (!tabList || ![tabList respondsToSelector:scrolled]) return;
+    __weak NSView *weak = tabList;
+    dispatch_async(dispatch_get_main_queue(), ^{ if (weak) ((void (*)(id, SEL))objc_msgSend)(weak, scrolled); });
+}
+
+// Dia reads its cached rows directly rather than through our hooks, so the cache moves with the list, as Compact Tab Rows does.
+// Rows Dia kept from the last layout move only by what the Pinned line changed since.
+static NSNumber *DPAlign(NSCollectionViewLayout *layout) {
+    DPPinnedHeader *header = DPShownHeader(layout);
+    double *height = DPIvar(layout, "contentHeight");
+    if (!header || !height) return nil;
+    NSCollectionView *list = layout.collectionView;
+    NSNumber *was = DPGet(layout, &DPLastShiftKey);
+    CGFloat now = DPShift(header, NO), before = DPIsAligned(layout) ? (was ? was.doubleValue : now) : 0;
+    DPItemIMP item = DPDiaItemIMP();
+    for (NSInteger section = 0; section < list.numberOfSections; section++)
+        for (NSInteger row = 0, count = [list numberOfItemsInSection:section]; row < count; row++) {
+            NSCollectionViewLayoutAttributes *attributes = item ? item(layout, @selector(layoutAttributesForItemAtIndexPath:), [NSIndexPath indexPathForItem:row inSection:section]) : nil;
+            NSNumber *applied = DPAppliedShift(attributes);
+            CGFloat shift = DPShift(header, section == 0 && row < header.rows);
+            if (!attributes || [applied isEqual:@(shift)]) continue;
+            attributes.frame = NSOffsetRect(attributes.frame, 0, shift - applied.doubleValue);
+            DPMarkShift(attributes, shift);
+        }
+    *height = MAX(0, *height + now - before);
+    return @(now);
+}
+
 static NSCollectionViewLayoutAttributes *DPMoved(DPPinnedHeader *header, NSCollectionViewLayoutAttributes *attributes) {
     if (!attributes) return nil;
     BOOL pinned = attributes.indexPath.section == 0 && attributes.indexPath.item < header.rows;
+    CGFloat shift = DPShift(header, pinned), applied = DPAppliedShift(attributes).doubleValue;
     attributes = [attributes copy];
-    NSRect frame = attributes.frame;
-    frame.origin.y += DPShift(header, pinned);
+    attributes.frame = NSOffsetRect(attributes.frame, 0, shift - applied);
+    DPMarkShift(attributes, shift);
     if (pinned && header.collapsed) {
         attributes.alpha = 0;
         attributes.hidden = !header.folding;
     }
-    attributes.frame = frame;
     return attributes;
+}
+
+static void DPForgetShifts(NSCollectionViewLayout *layout) {
+    NSCollectionView *list = layout.collectionView;
+    for (NSInteger section = 0; section < list.numberOfSections; section++)
+        for (NSInteger row = 0, count = [list numberOfItemsInSection:section]; row < count; row++) {
+            NSCollectionViewLayoutAttributes *attributes = DPDiaItem(layout, [NSIndexPath indexPathForItem:row inSection:section]);
+            if (attributes) DPSet(attributes, &DPShiftedKey, nil);
+        }
 }
 
 static void DPLayout_prepare(NSCollectionViewLayout *self, SEL _cmd) {
     DPCallOriginal(DPLayout_prepare, self);
+    NSNumber *was = DPGet(self, &DPLastShiftKey);
+    if (!DPCollapsePinned.on && !was) return;
     DPMeasure(self);
+    NSNumber *now = DPAlign(self);
+    if (!DPCollapsePinned.on) DPForgetShifts(self);
+    DPSet(self, &DPLastShiftKey, now);
+    // Dia judged the active tab against the rows before the shift, and judges again only when something moves.
+    if ((was || now) && ![was isEqual:now]) DPNudgeOverflow(self.collectionView);
 }
 
 static NSCollectionViewLayoutAttributes *DPLayout_item(NSCollectionViewLayout *self, SEL _cmd, NSIndexPath *path) {
@@ -183,7 +282,7 @@ static NSCollectionViewLayoutAttributes *DPLayout_item(NSCollectionViewLayout *s
 static NSArray *DPLayout_elements(NSCollectionViewLayout *self, SEL _cmd, NSRect rect) {
     DPPinnedHeader *header = DPShownHeader(self);
     if (!header) return DPCallOriginal(DPLayout_elements, self, rect);
-    CGFloat reach = header.end - header.top + DPHeaderHeight;
+    CGFloat reach = DPIsAligned(self) ? 0 : header.end - header.top + DPHeaderHeight;
     NSMutableArray *moved = [NSMutableArray array];
     for (NSCollectionViewLayoutAttributes *attributes in DPCallOriginal(DPLayout_elements, self, NSInsetRect(rect, 0, -reach))) {
         NSCollectionViewLayoutAttributes *each = DPMoved(header, attributes);
@@ -196,11 +295,12 @@ static NSArray *DPLayout_elements(NSCollectionViewLayout *self, SEL _cmd, NSRect
 static NSSize DPLayout_size(NSCollectionViewLayout *self, SEL _cmd) {
     DPPinnedHeader *header = DPShownHeader(self);
     NSSize size = DPCallOriginal(DPLayout_size, self);
-    if (header) size.height += DPShift(header, NO);
+    if (header && !DPIsAligned(self)) size.height += DPShift(header, NO);
     return size;
 }
 
 static NSView *DPList_hitTest(NSView *self, SEL _cmd, NSPoint point) {
+    if (!DPCollapsePinned.on) return DPCallOriginal(DPList_hitTest, self, point);
     DPPinnedHeader *header = DPGet(self, &DPHeaderKey);
     if (header.shown && !header.hidden && NSPointInRect([self convertPoint:point fromView:self.superview], header.frame)) return header;
     return DPCallOriginal(DPList_hitTest, self, point);
@@ -247,12 +347,24 @@ static void DPSpringOpen(NSView *tabList, id<NSDraggingInfo> info) {
 static char DPRefusedKey;
 
 static NSDragOperation DPTabList_entered(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    if (!DPCollapsePinned.on) {
+        if (DPGet(self, &DPRefusedKey)) DPSet(self, &DPRefusedKey, nil);
+        return DPCallOriginal(DPTabList_entered, self, info);
+    }
     id<NSDraggingInfo> dia = DPDiaDragOf(self, info);
     DPSet(self, &DPRefusedKey, dia ? nil : @YES);
-    return dia ? DPCallOriginal(DPTabList_entered, self, dia) : NSDragOperationNone;
+    if (!dia) return NSDragOperationNone;
+    NSDragOperation operation = DPCallOriginal(DPTabList_entered, self, dia);
+    DPPlaceDraggedTab();
+    return operation;
 }
 
 static NSDragOperation DPTabList_updated(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    if (!DPCollapsePinned.on) {
+        if (!DPGet(self, &DPRefusedKey)) return DPCallOriginal(DPTabList_updated, self, info);
+        DPSet(self, &DPRefusedKey, nil);
+        return [(id<NSDraggingDestination>)self draggingEntered:info];
+    }
     DPSpringOpen(self, info);
     id<NSDraggingInfo> dia = DPDiaDragOf(self, info);
     BOOL refused = [DPGet(self, &DPRefusedKey) boolValue];
@@ -262,28 +374,48 @@ static NSDragOperation DPTabList_updated(NSView *self, SEL _cmd, id<NSDraggingIn
         return NSDragOperationNone;
     }
     if (refused) return [(id<NSDraggingDestination>)self draggingEntered:info];
-    return DPCallOriginal(DPTabList_updated, self, dia);
+    NSDragOperation operation = DPCallOriginal(DPTabList_updated, self, dia);
+    DPPlaceDraggedTab();
+    return operation;
+}
+
+static void DPTabList_exited(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    BOOL refused = [DPGet(self, &DPRefusedKey) boolValue];
+    if (refused) DPSet(self, &DPRefusedKey, nil);
+    if (DPCollapsePinned.on) [DPGet(DPListIn(self), &DPHeaderKey) setSpringSince:nil];
+    if (!refused) DPCallOriginal(DPTabList_exited, self, info);
+    DPClearDraggedTab();
 }
 
 static BOOL DPTabList_prepare(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    if (DPGet(self, &DPRefusedKey)) DPSet(self, &DPRefusedKey, nil);
+    if (!DPCollapsePinned.on) return DPCallOriginal(DPTabList_prepare, self, info);
     id<NSDraggingInfo> dia = DPDiaDragOf(self, info);
-    return dia && DPCallOriginal(DPTabList_prepare, self, dia);
+    BOOL ok = dia && DPCallOriginal(DPTabList_prepare, self, dia);
+    DPClearDraggedTab();
+    return ok;
 }
 
 static BOOL DPTabList_perform(NSView *self, SEL _cmd, id<NSDraggingInfo> info) {
+    if (DPGet(self, &DPRefusedKey)) DPSet(self, &DPRefusedKey, nil);
+    if (!DPCollapsePinned.on) return DPCallOriginal(DPTabList_perform, self, info);
     id<NSDraggingInfo> dia = DPDiaDragOf(self, info);
-    return dia && DPCallOriginal(DPTabList_perform, self, dia);
+    BOOL ok = dia && DPCallOriginal(DPTabList_perform, self, dia);
+    DPClearDraggedTab();
+    return ok;
 }
 
 static void DPTabList_backgroundDoubleClick(NSView *self, SEL _cmd, NSGestureRecognizer *click) {
-    DPPinnedHeader *header = DPGet(DPListIn(self), &DPHeaderKey);
-    if (header.shown && !header.hidden && NSPointInRect([click locationInView:header.superview], header.frame)) return;
+    if (DPCollapsePinned.on) {
+        DPPinnedHeader *header = DPGet(DPListIn(self), &DPHeaderKey);
+        if (header.shown && !header.hidden && NSPointInRect([click locationInView:header.superview], header.frame)) return;
+    }
     DPCallOriginal(DPTabList_backgroundDoubleClick, self, click);
 }
 
 static NSArray<NSCollectionView *> *DPListsOf(NSString *space) {
     return (NSArray<NSCollectionView *> *)[DPFindViews(DPDiaTabListCollection) filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSView *list, id _) {
-        return !space || [[DPGet(list, &DPHeaderKey) space] isEqual:space];
+        return [[DPGet(list, &DPHeaderKey) space] isEqual:space];
     }]];
 }
 
@@ -296,10 +428,10 @@ static void DPFold(NSString *space, BOOL collapsed) {
         [list.collectionViewLayout invalidateLayout];
         [list layoutSubtreeIfNeeded];
     }
-    NSMutableArray *folded = [[DPCollapseDefaults arrayForKey:DPCollapsedKey] ?: @[] mutableCopy];
+    NSMutableArray *folded = [[DPSettingsDefaults() arrayForKey:DPCollapsedKey] ?: @[] mutableCopy];
     [folded removeObject:space];
     if (collapsed) [folded addObject:space];
-    [DPCollapseDefaults setObject:folded forKey:DPCollapsedKey];
+    [DPSettingsDefaults() setObject:folded forKey:DPCollapsedKey];
     for (NSCollectionView *list in lists)
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = 0.25;
@@ -312,9 +444,14 @@ static void DPFold(NSString *space, BOOL collapsed) {
 }
 
 static void DPApplyCollapsePinned(DPPatch *patch) {
-    for (NSCollectionView *list in DPListsOf(nil)) [list.collectionViewLayout invalidateLayout];
-    if (!patch->on)
-        for (NSView *list in DPFindViews(DPDiaTabListCollection)) [(NSView *)DPGet(list, &DPHeaderKey) setHidden:YES];
+    for (NSCollectionView *list in DPEveryView(DPDiaTabListCollection)) {
+        [list.collectionViewLayout invalidateLayout];
+        if (!patch->on) {
+            DPPinnedHeader *header = DPGet(list, &DPHeaderKey);
+            DPHideHeader(header);
+            header.springSince = nil;
+        }
+    }
 }
 
 static NSString *DPVerifyCollapsePinned(DPPatch *patch) {
@@ -327,12 +464,13 @@ static NSString *DPVerifyCollapsePinned(DPPatch *patch) {
         if (!showing) return @"the Pinned header is missing";
         NSRect first = [list.collectionViewLayout layoutAttributesForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]].frame;
         if (!header.collapsed && NSMinY(first) < NSMaxY(header.frame) - 0.5) return @"a pinned row is under the Pinned header";
+        NSCollectionViewLayoutAttributes *line = DPDiaItem(list.collectionViewLayout, [NSIndexPath indexPathForItem:header.rows inSection:0]);
+        if (line && DPIsAligned(list.collectionViewLayout) && fabs(NSMinY(line.frame) - (header.end + DPShift(header, NO))) > 0.5) return @"Dia's own rows aren't where the list shows them";
     }
     return nil;
 }
 
 static void DPInstallCollapsePinned(void) {
-    DPCollapseDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"];
     DPHook(DPDiaTabListLayout, @selector(prepareLayout), (IMP)DPLayout_prepare);
     DPHook(DPDiaTabListLayout, @selector(layoutAttributesForItemAtIndexPath:), (IMP)DPLayout_item);
     DPHook(DPDiaTabListLayout, @selector(layoutAttributesForElementsInRect:), (IMP)DPLayout_elements);
@@ -340,12 +478,12 @@ static void DPInstallCollapsePinned(void) {
     DPHook(DPDiaTabListCollection, @selector(hitTest:), (IMP)DPList_hitTest);
     DPHook(DPDiaTabList, @selector(draggingEntered:), (IMP)DPTabList_entered);
     DPHook(DPDiaTabList, @selector(draggingUpdated:), (IMP)DPTabList_updated);
+    DPHook(DPDiaTabList, @selector(draggingExited:), (IMP)DPTabList_exited);
     DPHook(DPDiaTabList, @selector(prepareForDragOperation:), (IMP)DPTabList_prepare);
     DPHook(DPDiaTabList, @selector(performDragOperation:), (IMP)DPTabList_perform);
     DPHook(DPDiaTabList, @selector(handleBackgroundDoubleClick:), (IMP)DPTabList_backgroundDoubleClick);
-    // A minimized window misses a fold made in another window of its profile, so lay it out again on return.
     [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidDeminiaturizeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-        if (DPCollapsePinned.on) for (NSCollectionView *list in DPListsOf(nil)) [list.collectionViewLayout invalidateLayout];
+        if (DPCollapsePinned.on) for (NSCollectionView *list in DPFindViews(DPDiaTabListCollection)) [list.collectionViewLayout invalidateLayout];
     }];
 }
 
@@ -357,6 +495,7 @@ DP_PATCH(DPCollapsePinned) {
     .symbol = @"pin.fill",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
+    .group = @"pinnedTabs",
     .classes = DPClasses(DPDiaTabListCollection, DPDiaTabListLayout),
     .install = DPInstallCollapsePinned,
     .apply = DPApplyCollapsePinned,

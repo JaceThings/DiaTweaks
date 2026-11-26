@@ -14,19 +14,29 @@ static NSEdgeInsets DPGaps(NSView *superview, NSRect frame) {
     return NSEdgeInsetsMake(superview.isFlipped ? low : high, NSMinX(frame) - NSMinX(bounds), superview.isFlipped ? high : low, NSMaxX(bounds) - NSMaxX(frame));
 }
 
-static NSRect DPEdgeToEdgeFrame(NSView *view, NSRect frame) {
-    CGFloat inset = DPEdgeToEdge.progress * DPWindowPadding;
+static BOOL DPIsPadding(CGFloat gap) { return fabs(gap - DPWindowPadding) < 0.5; }
+
+BOOL DPWindowFullScreen(NSWindow *window) {
+    return window && (window.styleMask & NSWindowStyleMaskFullScreen);
+}
+
+CGFloat DPEdgeToEdgeAmount(NSView *view) {
+    if (DPFullScreenOnly.progress <= 0 || DPWindowFullScreen(view.window)) return DPEdgeToEdge.progress;
+    return DPEdgeToEdge.progress * (1 - DPFullScreenOnly.progress);
+}
+
+static NSRect DPEdgeToEdgeFrame(NSView *view, NSRect frame, CGFloat amount) {
+    CGFloat inset = amount * DPWindowPadding;
     NSView *superview = view.superview;
     if (inset == 0 || !superview || DPChatCard(view)) return frame;
     NSEdgeInsets gaps = DPGaps(superview, frame);
-    BOOL (^isPadding)(CGFloat) = ^BOOL(CGFloat gap) { return fabs(gap - DPWindowPadding) < 0.5; };
-    if (isPadding(gaps.left)) frame.origin.x -= inset, frame.size.width += inset;
-    if (isPadding(gaps.right)) frame.size.width += inset;
-    if (isPadding(gaps.top)) {
+    if (DPIsPadding(gaps.left)) frame.origin.x -= inset, frame.size.width += inset;
+    if (DPIsPadding(gaps.right)) frame.size.width += inset;
+    if (DPIsPadding(gaps.top)) {
         frame.size.height += inset;
         if (superview.isFlipped) frame.origin.y -= inset;
     }
-    if (isPadding(gaps.bottom)) {
+    if (DPIsPadding(gaps.bottom)) {
         frame.size.height += inset;
         if (!superview.isFlipped) frame.origin.y -= inset;
     }
@@ -41,8 +51,11 @@ CGFloat DPBaseCornerRadius(NSView *container) {
 static void DPSetCornerRadius(NSView *container, CGFloat inset) {
     CGFloat *radius = DPIvar(container, "cornerRadius");
     if (!radius) return;
-    CGFloat base = DPBaseCornerRadius(container), target = MAX(0, base + inset + DPWindowCornerGrowth(container.window));
-    DPOverride(container, &DPRadiusKey, @(base), @(target));
+    CGFloat growth = DPWindowCornerGrowth(container.window);
+    if (inset == 0 && growth == 0 && !DPGet(container, &DPRadiusKey)) return;
+    CGFloat base = DPBaseCornerRadius(container), target = MAX(0, base + inset + growth);
+    if (target != base) DPOverride(container, &DPRadiusKey, @(base), @(target));
+    else if (DPGet(container, &DPRadiusKey)) DPSet(container, &DPRadiusKey, nil);
     if (*radius == target) return;
     *radius = target;
     container.needsLayout = YES;
@@ -52,10 +65,7 @@ void DPAnimateLayer(NSView *container, CALayer *layer, NSString *key, id value) 
     NSArray *animation = DPGet(container, &DPAnimationKey);
     CFTimeInterval remaining = [animation.firstObject doubleValue] - CACurrentMediaTime();
     id from = [layer.presentationLayer valueForKey:key];
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    [layer setValue:value forKey:key];
-    [CATransaction commit];
+    DPWithoutAnimation(^{ [layer setValue:value forKey:key]; });
     if (remaining <= 0 || !from || [from isEqual:value]) return;
     CABasicAnimation *move = [CABasicAnimation animationWithKeyPath:key];
     move.fromValue = from;
@@ -66,21 +76,32 @@ void DPAnimateLayer(NSView *container, CALayer *layer, NSString *key, id value) 
 }
 
 static void DPContainer_setFrame(NSView *self, SEL _cmd, NSRect frame) {
-    NSAnimationContext *context = NSAnimationContext.currentContext;
-    if (context.allowsImplicitAnimation || CATransaction.animationDuration > 0) {
-        CFTimeInterval duration = context.duration ?: CATransaction.animationDuration;
-        CAMediaTimingFunction *timing = context.timingFunction ?: [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionDefault];
-        DPSet(self, &DPAnimationKey, @[ @(CACurrentMediaTime() + duration), timing ]);
+    BOOL active = DPEdgeToEdgeActive();
+    if (active) {
+        NSAnimationContext *context = NSAnimationContext.currentContext;
+        if (context.allowsImplicitAnimation || CATransaction.animationDuration > 0) {
+            CFTimeInterval duration = context.duration ?: CATransaction.animationDuration;
+            CAMediaTimingFunction *timing = context.timingFunction ?: [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionDefault];
+            DPSet(self, &DPAnimationKey, @[ @(CACurrentMediaTime() + duration), timing ]);
+        }
+    } else if (DPGet(self, &DPAnimationKey)) {
+        DPSet(self, &DPAnimationKey, nil);
     }
-    DPSet(self, &DPRequestedFrameKey, @(frame));
-    [DPContainers addObject:self];
-    NSRect adjusted = DPMayAdjust(self) ? DPEdgeToEdgeFrame(self, frame) : frame;
-    DPSetCornerRadius(self, NSEqualRects(adjusted, frame) ? 0 : DPEdgeToEdge.progress * DPWindowPadding);
+    // Only a live override needs Dia's frame kept: otherwise this is one NSValue and one associated write per frame set.
+    BOOL recording = active || DPGet(self, &DPRequestedFrameKey) || DPGet(self, &DPAnimationKey);
+    if (recording) {
+        DPSet(self, &DPRequestedFrameKey, @(frame));
+        [DPContainers addObject:self];
+    }
+    CGFloat amount = active && DPMayAdjust(self) ? DPEdgeToEdgeAmount(self) : 0;
+    NSRect adjusted = amount > 0 ? DPEdgeToEdgeFrame(self, frame, amount) : frame;
+    if (recording) DPSetCornerRadius(self, NSEqualRects(adjusted, frame) ? 0 : amount * DPWindowPadding);
     DPCallOriginal(DPContainer_setFrame, self, adjusted);
 }
 
-static void DPRelayoutContainers(void) {
-    for (NSView *container in DPContainers) {
+void DPRelayoutContainers(void) {
+    // Setting a frame re-enters the hook, which adds to DPContainers, so walk a snapshot.
+    for (NSView *container in DPContainers.allObjects) {
         NSValue *requested = DPRequestedFrame(container);
         if (requested) container.frame = requested.rectValue;
         container.needsLayout = container.needsDisplay = YES;
@@ -93,12 +114,15 @@ static NSString *DPVerifyEdgeToEdge(DPPatch *patch) {
     if (!containers.count) return @"no web content found";
     for (NSView *container in containers) {
         NSValue *requested = DPRequestedFrame(container);
-        if (!requested) return @"never saw Dia place the web content";
+        if (!requested) {
+            if (patch->on) return @"never saw Dia place the web content";
+            continue;
+        }
         CALayer *layer = DPRoundedContent(container).layer;
         BOOL square = patch->on && DPFullScreen(container);
         if (layer && (DPCornersRound(layer, YES) == square || (!DPBesideSidebar(container) && DPCornersRound(layer, NO) == square)))
             return square ? @"corners stay round in full screen" : @"corners are square out of full screen";
-        if (!patch->on || DPChatCard(container)) {
+        if (!patch->on || DPEdgeToEdgeAmount(container) == 0 || DPChatCard(container)) {
             if (!NSEqualRects(container.frame, requested.rectValue)) return @"web content isn't where Dia put it";
             continue;
         }

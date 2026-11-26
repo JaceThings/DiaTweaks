@@ -38,8 +38,15 @@ static char DPLineKey;
 - (BOOL)wantsUpdateLayer { return YES; }
 
 - (void)updateLayer {
-    self.fill.backgroundColor = [NSColor.controlAccentColor CGColor];
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        DPWithoutAnimation(^{ self.fill.backgroundColor = [NSColor.controlAccentColor CGColor]; });
+    }];
     [self draw];
+}
+
+- (void)viewDidChangeBackingProperties {
+    [super viewDidChangeBackingProperties];
+    self.needsLayout = YES;
 }
 
 - (NSView *)hitTest:(NSPoint)point { return nil; }
@@ -50,14 +57,13 @@ static char DPLineKey;
 
 - (void)layout {
     [super layout];
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    self.fill.frame = self.fillFrame;
-    self.glow.frame = self.bounds;
-    self.glow.mask.frame = self.glow.bounds;
-    self.glow.contentsScale = self.window.backingScaleFactor ?: 2;
-    self.glow.drawableSize = CGSizeMake(NSWidth(self.bounds) * self.glow.contentsScale, NSHeight(self.bounds) * self.glow.contentsScale);
-    [CATransaction commit];
+    DPWithoutAnimation(^{
+        self.fill.frame = self.fillFrame;
+        self.glow.frame = self.bounds;
+        self.glow.mask.frame = self.glow.bounds;
+        self.glow.contentsScale = self.window.backingScaleFactor ?: 2;
+        self.glow.drawableSize = CGSizeMake(NSWidth(self.bounds) * self.glow.contentsScale, NSHeight(self.bounds) * self.glow.contentsScale);
+    });
     [self draw];
 }
 
@@ -70,12 +76,15 @@ static char DPLineKey;
 }
 
 - (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
     [self.frames invalidate];
     self.frames = nil;
     if (!self.window || !self.glow) return;
     __weak DPProgressLineView *weakSelf = self;
     self.frames = [NSTimer timerWithTimeInterval:1.0 / 60 repeats:YES block:^(NSTimer *timer) {
         DPProgressLineView *me = weakSelf;
+        if (!me) return [timer invalidate];
+        if (me.window.isMiniaturized || me.hiddenOrHasHiddenAncestor) return;
         me.shown += (me.fraction - me.shown) * 0.15;
         [me draw];
     }];
@@ -90,7 +99,8 @@ static char DPLineKey;
 
 - (void)placeIn:(NSView *)pane {
     CGFloat height = self.height;
-    self.frame = NSMakeRect(0, pane.isFlipped ? 0 : NSHeight(pane.bounds) - height, NSWidth(pane.bounds), height);
+    NSRect frame = NSMakeRect(0, pane.isFlipped ? 0 : NSHeight(pane.bounds) - height, NSWidth(pane.bounds), height);
+    if (!NSEqualRects(self.frame, frame)) self.frame = frame;
     self.autoresizingMask = NSViewWidthSizable | (pane.isFlipped ? NSViewMaxYMargin : NSViewMinYMargin);
     if (self.superview != pane || pane.subviews.lastObject != self) [pane addSubview:self positioned:NSWindowAbove relativeTo:nil];
 }
@@ -105,11 +115,10 @@ void DPShowProgressLine(NSView *pane, CGFloat fraction) {
     DPProgressLineView *line = DPGet(pane, &DPLineKey);
     if (!line) DPSet(pane, &DPLineKey, line = [DPProgressLineView new]);
     if (!DPLineIn(pane) || line.finishing) {
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        line.finishing = NO;
-        line.fraction = 0;
-        [CATransaction commit];
+        DPWithoutAnimation(^{
+            line.finishing = NO;
+            line.fraction = 0;
+        });
         line.alphaValue = 1;
     }
     [line placeIn:pane];

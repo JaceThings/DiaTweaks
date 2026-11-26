@@ -17,9 +17,11 @@ Each patch is one folder in `src/dylib/Patches/`, built on StdPatch: `src/dylib/
 
 - `make patch NAME=HideFooButton` creates `Patches/HideFooButton/HideFooButton.m` with a `DP_PATCH` in it. That registers it: its row in Settings, its saved switch, its place in `make test` and its entry in `build/patches.json`, the list `diatweaks` shows, come from the fields, and `.order` sets where it's listed.
 - Find what to change with the developer tools. Turn them on with `defaults write com.diapatches devTools -bool YES`, relaunch Dia, and use **Help → DiaPatches: Copy View Tree** for the front window's views with their classes, frames and accessibility labels.
+- Chasing a layout loop or a view that won't stop resizing? Quit Dia and open it with `DIAPATCH_LAYOUT_LOOPS=1 /Applications/Dia.app/Contents/MacOS/Dia`. It writes the views that lay out over and over to `layout-loops.txt` next to `DiaPatches.dylib`. It's off otherwise, devTools or not, because it slows every view down, and the file is deleted the next time Dia opens without it.
 - Hiding a button only takes a `.hides` function, such as `DPHasLabel(view, @"Recent tabs")` or `DPIsKind(view, DPDiaLibraryButton)`. StdPatch hides it wherever Dia shows it, and checks it in `make test`.
 - Anything else hooks Dia in `.install` with `DPHook`, and calls through with `DPCallOriginal`. Dia's class names go in `StdPatch/Dia.h`.
 - `.apply` applies a toggle at once. Without it the patch animates: `progress` eases between 0 and 1 while `.relayout` runs each frame.
+- `.relaunch` says the tweak only changes when Dia opens, like a launch flag or an extension: pausing or resuming it finishes at the next launch, and `diatweaks pause` names it.
 - `.section` is its group in Settings. `.requires` and `.disabledBy` take another patch's key; a patch that requires another is listed as an option on that one's page instead of in a section.
 - List the Dia classes it relies on in `.classes`. On a Dia version without one of them, the patch stays off and Settings shows it as unavailable.
 - Give it a `.verify` that looks at Dia's views and returns `nil` when they match `on`, or a few words saying what's wrong. Find the views with `DPFindViews`, not through your own hooks, so a hook that never ran shows up as a failure.

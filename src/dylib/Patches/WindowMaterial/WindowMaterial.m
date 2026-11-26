@@ -1,7 +1,10 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPWindowMaterial, DPTranslucentSidebar;
-static char DPHiddenKey, DPDiaHiddenKey, DPMaterialKey, DPGlassKey, DPOpaqueKey;
+static char DPHiddenKey, DPDiaHiddenKey, DPMaterialKey, DPGlassKey, DPOpaqueKey, DPAppliedKey, DPPendingMaterialKey;
+// Weak, since Dia drops tint views without telling us; `count` keeps zeroed entries, `anyObject` doesn't.
+static NSHashTable<NSView *> *DPAppliedTintViews;
+static NSHashTable *DPHidingClasses;
 
 static NSString *const DPMaterials[] = {
     [NSVisualEffectMaterialSidebar] = @"Sidebar",
@@ -22,7 +25,12 @@ static NSString *const DPGlasses[] = {
     @"Sidebar", @"Abutted Sidebar", @"Inspector", @"Control", @"Loupe", @"Slider", @"Camera", @"Cartouche Popover",
 };
 
-static Class DPGlassEffectView(void) { return NSClassFromString(@"NSGlassEffectView"); }
+static Class DPGlassEffectView(void) {
+    static Class cls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cls = NSClassFromString(@"NSGlassEffectView"); });
+    return cls;
+}
 
 static NSMenu *DPMaterialChoices(void) {
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Material"];
@@ -43,15 +51,30 @@ static NSString *DPWindowMaterialChoice(void) {
 }
 
 static void DPView_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
+    if (![DPGet(self, &DPHiddenKey) boolValue]) return DPCallOriginal(DPView_setHidden, self, hidden);
     DPSet(self, &DPDiaHiddenKey, @(hidden));
-    DPCallOriginal(DPView_setHidden, self, hidden || [DPGet(self, &DPHiddenKey) boolValue]);
+    DPCallOriginal(DPView_setHidden, self, YES);
 }
 
 static void DPHide(NSView *view, BOOL hide) {
-    if (!DPGet(view, &DPDiaHiddenKey)) DPSet(view, &DPDiaHiddenKey, @(view.hidden));
-    DPHookClass(view.class, @selector(setHidden:), (IMP)DPView_setHidden);
-    DPSet(view, &DPHiddenKey, @(hide));
-    view.hidden = [DPGet(view, &DPDiaHiddenKey) boolValue];
+    if (!view) return;
+    if (!hide && !DPGet(view, &DPHiddenKey)) return;
+    if (hide) {
+        if ([DPGet(view, &DPHiddenKey) boolValue] && view.hidden) return;
+        BOOL dia = DPGet(view, &DPDiaHiddenKey) ? [DPGet(view, &DPDiaHiddenKey) boolValue] : view.hidden;
+        if (!DPHidingClasses) DPHidingClasses = [NSHashTable hashTableWithOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsObjectPointerPersonality];
+        if (![DPHidingClasses containsObject:view.class]) {
+            [DPHidingClasses addObject:view.class];
+            DPHookClass(view.class, @selector(setHidden:), (IMP)DPView_setHidden);
+        }
+        DPSet(view, &DPHiddenKey, @YES);
+        view.hidden = dia;
+    } else {
+        BOOL dia = [DPGet(view, &DPDiaHiddenKey) boolValue];
+        DPSet(view, &DPHiddenKey, nil);
+        DPSet(view, &DPDiaHiddenKey, nil);
+        view.hidden = dia;
+    }
 }
 
 static void DPCollectEffects(NSView *view, NSMutableArray<NSVisualEffectView *> *effects) {
@@ -78,11 +101,16 @@ static NSVisualEffectMaterial DPWindowBackgroundMaterial(NSWindow *window) {
     return effect ? ((NSVisualEffectView *)effect).material : NSVisualEffectMaterialUnderWindowBackground;
 }
 
-static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
+static void DPApplyMaterialBody(NSView *tint, BOOL floating) {
     NSView *content = tint.superview;
     if (!content) return;
     NSString *choice = DPWindowMaterial.on ? DPWindowMaterialChoice() : nil;
     BOOL translucent = choice || (floating && DPTranslucentSidebar.on), glass = [choice hasPrefix:@"glass."];
+    BOOL applied = DPGet(tint, &DPAppliedKey) != nil;
+    if (!translucent && !applied) return;
+    if (translucent) [(DPAppliedTintViews ?: (DPAppliedTintViews = [NSHashTable weakObjectsHashTable])) addObject:tint];
+    else [DPAppliedTintViews removeObject:tint];
+    DPSet(tint, &DPAppliedKey, translucent ? @YES : nil);
     NSInteger value = choice.pathExtension.integerValue;
 
     NSMutableArray<NSView *> *backgrounds = [NSMutableArray array];
@@ -95,38 +123,75 @@ static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
     NSMutableArray<NSVisualEffectView *> *effects = [NSMutableArray array];
     for (NSView *view in backgrounds) DPCollectEffects(view, effects);
     NSVisualEffectBlendingMode blending = floating ? NSVisualEffectBlendingModeWithinWindow : NSVisualEffectBlendingModeBehindWindow;
+    BOOL restoring = !translucent || glass;
     for (NSVisualEffectView *effect in effects) {
+        if (restoring && !DPGet(effect, &DPMaterialKey)) continue;
         NSArray *dia = DPDiaValue(effect, &DPMaterialKey, @[ @(effect.material), @(effect.blendingMode), @(effect.state) ]);
-        NSArray *ours = translucent && !glass ? @[ @(choice ? value : DPWindowBackgroundMaterial(tint.window)), @(blending), @(NSVisualEffectStateActive) ] : dia;
-        DPOverride(effect, &DPMaterialKey, dia, ours);
-        effect.material = [ours[0] integerValue];
-        effect.blendingMode = [ours[1] integerValue];
-        effect.state = [ours[2] integerValue];
+        if (restoring) {
+            DPSet(effect, &DPMaterialKey, nil);
+            NSVisualEffectMaterial diaMat = [dia[0] integerValue];
+            NSVisualEffectBlendingMode diaBlend = [dia[1] integerValue];
+            NSVisualEffectState diaState = [dia[2] integerValue];
+            if (effect.material != diaMat) effect.material = diaMat;
+            if (effect.blendingMode != diaBlend) effect.blendingMode = diaBlend;
+            if (effect.state != diaState) effect.state = diaState;
+            continue;
+        }
+        NSVisualEffectMaterial wantMat = choice ? value : DPWindowBackgroundMaterial(tint.window);
+        if (effect.material != wantMat) effect.material = wantMat;
+        if (effect.blendingMode != blending) effect.blendingMode = blending;
+        if (effect.state != NSVisualEffectStateActive) effect.state = NSVisualEffectStateActive;
+        // Record AppKit's accepted values (e.g. Sidebar clamps WithinWindow to BehindWindow) so restore recognizes them.
+        DPOverride(effect, &DPMaterialKey, dia, @[ @(effect.material), @(effect.blendingMode), @(effect.state) ]);
     }
     DPHide(DPWashIn(tint), translucent);
     for (NSView *view in backgrounds) DPHide(view, glass);
 
     // A drawn glass view ignores a new variant.
-    if (glassView && (!glass || [[glassView valueForKey:@"_variant"] integerValue] != value)) {
+    id currentVariant = glassView ? DPValueForKey(glassView, @"_variant") : nil;
+    if (glassView && (!glass || (currentVariant && [currentVariant integerValue] != value))) {
         [glassView removeFromSuperview];
         DPSet(content, &DPGlassKey, glassView = nil);
     }
     if (glass && !glassView) {
         glassView = [[DPGlassEffectView() alloc] initWithFrame:content.bounds];
         glassView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        [glassView setValue:@(content.layer.cornerRadius) forKey:@"cornerRadius"];
+        DPSetValueForKey(glassView, @"cornerRadius", @(content.layer.cornerRadius));
         [content addSubview:glassView positioned:NSWindowBelow relativeTo:nil];
         DPSet(content, &DPGlassKey, glassView);
-        [glassView setValue:@(value) forKey:@"_variant"];
+        DPSetValueForKey(glassView, @"_variant", @(value));
+    } else if (glassView) {
+        id currentRadius = DPValueForKey(glassView, @"cornerRadius");
+        if (currentRadius && [currentRadius doubleValue] != content.layer.cornerRadius)
+            DPSetValueForKey(glassView, @"cornerRadius", @(content.layer.cornerRadius));
     }
     if (floating) return;
 
     NSWindow *window = tint.window;
-    NSArray *dia = DPDiaValue(window, &DPOpaqueKey, @[ @(window.opaque), window.backgroundColor ]);
+    if (!window) return;
+    if (!translucent && !DPGet(window, &DPOpaqueKey)) return;
+    id currentBG = window.backgroundColor ?: NSNull.null;
+    NSArray *dia = DPDiaValue(window, &DPOpaqueKey, @[ @(window.opaque), currentBG ]);
     NSArray *ours = translucent ? @[ @NO, NSColor.clearColor ] : dia;
-    DPOverride(window, &DPOpaqueKey, dia, ours);
+    if (translucent) DPOverride(window, &DPOpaqueKey, dia, ours);
+    else DPSet(window, &DPOpaqueKey, nil);
     if (window.opaque != [ours[0] boolValue]) window.opaque = [ours[0] boolValue];
-    if (![window.backgroundColor isEqual:ours[1]]) window.backgroundColor = ours[1];
+    NSColor *targetBG = ours[1] == NSNull.null ? nil : ours[1];
+    if (window.backgroundColor != targetBG && ![window.backgroundColor isEqual:targetBG]) window.backgroundColor = targetBG;
+}
+
+// The tile repaints on every resize frame, so remember what the last pass saw: a repaint only has new work when
+// the choice, the glass or what Dia put around the tint changed.
+static id DPMaterialState(NSView *tint, BOOL floating) {
+    NSView *content = tint.superview;
+    return @[ DPWindowMaterial.on ? DPWindowMaterialChoice() : @"", @(floating), @(DPTranslucentSidebar.on),
+              @(content.subviews.count), @(content.superview.subviews.count), @(DPGet(content, &DPGlassKey) != nil),
+              @(content.layer.cornerRadius) ];
+}
+
+static void DPApplyMaterialUnder(NSView *tint, BOOL floating) {
+    DPApplyMaterialBody(tint, floating);
+    if (DPGet(tint, &DPAppliedKey)) DPSet(tint, &DPAppliedKey, DPMaterialState(tint, floating));
 }
 
 static NSArray<NSView *> *DPWindowFrames(void) {
@@ -138,25 +203,49 @@ static NSArray<NSView *> *DPWindowFrames(void) {
 // A hidden tint stops laying out, the theme frame doesn't.
 static void DPWindowFrame_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPWindowFrame_layout, self);
-    DPApplyMaterialUnder(DPTintIn(self), NO);
+    if (!DPWindowMaterial.on && !DPAppliedTintViews.anyObject) return;
+    NSView *tint = DPTintIn(self);
+    if (DPWindowMaterial.on || DPGet(tint, &DPAppliedKey)) DPApplyMaterialUnder(tint, NO);
 }
 
 static void DPFloatingSidebar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPFloatingSidebar_layout, self);
-    DPApplyMaterialUnder(DPTintIn(self), YES);
+    if (!DPWindowMaterial.on && !DPTranslucentSidebar.on && !DPAppliedTintViews.anyObject) return;
+    NSView *tint = DPTintIn(self);
+    if (DPWindowMaterial.on || DPTranslucentSidebar.on || DPGet(tint, &DPAppliedKey)) DPApplyMaterialUnder(tint, YES);
 }
 
 static void DPBackgroundTile_updateLayer(NSView *self, SEL _cmd) {
     DPCallOriginal(DPBackgroundTile_updateLayer, self);
+    if (!DPWindowMaterial.on && !DPTranslucentSidebar.on) return;
     for (NSView *host = self.superview; host; host = host.superview) {
         NSView *tint = DPTintIn(host);
-        if (tint) return DPApplyMaterialUnder(tint, DPIsKind(host, DPDiaFloatingSidebar));
+        if (!tint) continue;
+        BOOL floating = DPIsKind(host, DPDiaFloatingSidebar);
+        if ([DPGet(tint, &DPAppliedKey) isEqual:DPMaterialState(tint, floating)]) return;
+        if ([DPGet(tint, &DPPendingMaterialKey) boolValue]) return;
+        DPSet(tint, &DPPendingMaterialKey, @YES);
+        __weak NSView *weakTint = tint;
+        // Defer subview and window mutations out of AppKit's updateLayer display pass.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSView *strongTint = weakTint;
+            if (!strongTint) return;
+            DPSet(strongTint, &DPPendingMaterialKey, nil);
+            DPApplyMaterialUnder(strongTint, floating);
+        });
+        return;
     }
 }
 
 void DPApplyWindowMaterial(DPPatch *patch) {
     for (NSView *frame in DPWindowFrames()) DPApplyMaterialUnder(DPTintIn(frame), NO);
-    for (NSView *sidebar in DPFindViews(DPDiaFloatingSidebar)) DPApplyMaterialUnder(DPTintIn(sidebar), YES);
+    Class floatingCls = objc_getClass(DPDiaFloatingSidebar);
+    if (!floatingCls) return;
+    for (NSWindow *window in NSApp.windows)
+        DPFindView(window.contentView, ^BOOL(NSView *view) {
+            if ([view isKindOfClass:floatingCls]) DPApplyMaterialUnder(DPTintIn(view), YES);
+            return NO;
+        });
 }
 
 NSString *DPVerifyWindowMaterial(DPPatch *patch) {
@@ -186,16 +275,17 @@ static void DPInstallWindowMaterial(void) {
 
 DP_PATCH(DPWindowMaterial) {
     .key = @"windowMaterial",
-    .order = 99,
+    .order = 84,
     .title = @"Window Material",
     .detail = @"Show a material or Liquid Glass behind the tabs and sidebar, still tinted with the profile’s color.",
     .symbol = @"circle.on.app.liquid.glass.fill square.2.layers.3d.top.filled",
-    .tint = @"systemBrownColor",
-    .section = @"Window",
+    .tint = @"systemTealColor",
+    .section = @"Sidebar & Tab Bar",
     .classes = DPClasses(DPDiaWindowFrame, DPDiaWindowTint, DPDiaWindowBackgroundTile, DPDiaFloatingSidebar),
     .choice = @"windowMaterialChoice",
     .defaultChoice = @"glass.17",
     .choices = DPMaterialChoices,
+    .installLate = YES,
     .install = DPInstallWindowMaterial,
     .apply = DPApplyWindowMaterial,
     .verify = DPVerifyWindowMaterial,

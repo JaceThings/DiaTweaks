@@ -8,16 +8,25 @@ static void DPInstallLittleDia(void) {
     DPInstallLittleDiaExtension();
     DPInstallLittleDiaRoute();
     DPInstallLittleDiaWindows();
+    DPInstallLittleDiaOver();
     DPInstallLittleDiaLinkMenu();
     DPInstallLittleDiaNewWindow();
     DPInstallLittleDiaShortcuts();
 }
 
 static void DPApplyLittleDia(DPPatch *patch) {
+    if (!patch->on) {
+        DPHideLittleDiaLauncher();
+        DPUncoverAllLittleDia();
+        DPRestoreLittleDiaStack();
+    }
+    DPSyncLittleDiaOver();
+    DPSyncLittleDiaEscape();
     DPRefreshLittleDiaWindows();
     DPRefreshLittleDiaNewWindow();
     if (patch->on && !gLoadedOn) DPWriteLittleDiaExtension(YES);
-    if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch) || DPLittleDiaExtensionProblem()) return;  // the self-test flips patches without saving
+    // Self-tests flip patches without saving, so skip the relaunch prompt for them.
+    if (!patch->on || gLoadedOn || patch->on != DPSavedOn(patch) || DPLittleDiaExtensionProblem()) return;
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Relaunch Dia to use Little Dia";
     alert.informativeText = @"Until then, links from other apps keep opening in a tab.";
@@ -48,7 +57,10 @@ DP_PATCH(DPLittleDia) {
     .symbol = @"macwindow.on.rectangle rectangle.on.rectangle",
     .tint = @"systemMintColor",
     .classes = DPClasses(DPDiaOpenURLEvents, DPDiaPopupWindow, DPDiaPopupBar, DPDiaPopupTitle),
+    .settings = DPSettingList({DPSettingNumber, @"littleDiaWidth", .defaultNumber = 1180, .min = 480, .max = 2000},
+                              {DPSettingNumber, @"littleDiaHeight", .defaultNumber = 860, .min = 360, .max = 1400}),
     .rows = DPLittleDiaRows,
+    .relaunch = YES,
     .install = DPInstallLittleDia,
     .apply = DPApplyLittleDia,
     .verify = DPVerifyLittleDia,

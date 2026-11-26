@@ -4,28 +4,28 @@
 extern DPPatch DPWindowCorners;
 static const CGFloat DPCornerReach = 26, DPMaxRadius = 26;
 static NSString *const DPRadiusSetting = @"windowCornerRadius";
-static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey;
-#define DPCornerBars (@[ @DPDiaTabStrip, @DPDiaSidebarHeader, @DPDiaSidebarFooter ])
+static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey, DPBarTouchedKey;
+static const char *const DPCornerBars[] = {DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter};
+#define DPCornerBarCount (sizeof DPCornerBars / sizeof *DPCornerBars)
 
-static CGFloat DPCornerRadius(NSWindow *window) { return ((CGFloat (*)(id, SEL))objc_msgSend)(window, @selector(_cornerRadius)); }
-static CGFloat DPDiaRadius(id object, CGFloat current) { return [DPDiaValue(object, &DPRadiusKey, @(current)) doubleValue]; }
-
-static NSUserDefaults *DPSettings(void) {
-    static NSUserDefaults *settings;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ settings = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; });
-    return settings;
+static BOOL DPCanRound(NSWindow *window) {
+    return [window respondsToSelector:@selector(_cornerRadius)] && [window respondsToSelector:@selector(_setCornerRadius:)];
 }
 
+static CGFloat DPCornerRadius(NSWindow *window) {
+    return DPCanRound(window) ? ((CGFloat (*)(id, SEL))objc_msgSend)(window, @selector(_cornerRadius)) : 0;
+}
+static CGFloat DPDiaRadius(id object, CGFloat current) { return [DPDiaValue(object, &DPRadiusKey, @(current)) doubleValue]; }
+
 static CGFloat DPRadius(void) {
-    id saved = [DPSettings() objectForKey:DPRadiusSetting];
+    id saved = [DPSettingsDefaults() objectForKey:DPRadiusSetting];
     return saved ? MIN(MAX([saved doubleValue], 0), DPMaxRadius) : DPMaxRadius;
 }
 
 static BOOL DPInFullScreen(NSWindow *window) { return (window.styleMask & NSWindowStyleMaskFullScreen) != 0; }
 
 CGFloat DPWindowCornerGrowth(NSWindow *window) {
-    if (!DPWindowCorners.on || !DPIsKind(window, DPDiaWindow) || DPInFullScreen(window)) return 0;
+    if (!DPWindowCorners.on || !DPIsKind(window, DPDiaWindow) || DPInFullScreen(window) || !DPCanRound(window)) return 0;
     return DPRadius() - DPDiaRadius(window, DPCornerRadius(window));
 }
 
@@ -33,9 +33,11 @@ CGFloat DPWindowCornerGrowth(NSWindow *window) {
 static CGFloat DPWindowTarget(NSWindow *window, CGFloat dia) { return DPWindowCorners.on && !DPInFullScreen(window) ? MAX(1, DPRadius()) : dia; }
 
 static void DPRoundWindow(NSWindow *window) {
+    if (!DPCanRound(window)) return;
     CGFloat current = DPCornerRadius(window), dia = DPDiaRadius(window, current);
     CGFloat target = DPWindowTarget(window, dia);
-    DPOverride(window, &DPRadiusKey, @(dia), @(target));
+    if (DPWindowCorners.on && !DPInFullScreen(window)) DPOverride(window, &DPRadiusKey, @(dia), @(target));
+    else if (DPGet(window, &DPRadiusKey)) DPSet(window, &DPRadiusKey, nil);
     if (current == target) return;
     ((void (*)(id, SEL, CGFloat))objc_msgSend)(window, @selector(_setCornerRadius:), target);
     // macOS 26.7 has no _updateWindowCornerMask, so its older _cornerMaskChanged redraws the mask there.
@@ -48,7 +50,8 @@ static void DPRoundLayers(CALayer *layer, CGFloat growth) {
     CGFloat dia = DPDiaRadius(layer, layer.cornerRadius);
     if (dia >= 10) {
         CGFloat target = MAX(0, MIN(dia + growth, MAX(dia, MIN(CGRectGetWidth(layer.bounds), CGRectGetHeight(layer.bounds)) / 2)));
-        DPOverride(layer, &DPRadiusKey, @(dia), @(target));
+        if (target != dia) DPOverride(layer, &DPRadiusKey, @(dia), @(target));
+        else if (DPGet(layer, &DPRadiusKey)) DPSet(layer, &DPRadiusKey, nil);
         if (layer.cornerRadius != target) layer.cornerRadius = target;
     }
     for (CALayer *sublayer in layer.sublayers) DPRoundLayers(sublayer, growth);
@@ -58,22 +61,31 @@ static void DPRoundCornerItems(NSView *root) {
     NSView *frame = root.window.contentView.superview;
     if (!frame) return;
     CGFloat growth = DPWindowCornerGrowth(root.window);
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    DPFindView(root, ^BOOL(NSView *view) {
-        if (view == root || view.layer.cornerRadius < 10) return NO;
-        NSRect rect = [view convertRect:view.bounds toView:frame], bounds = frame.bounds;
-        BOOL side = NSMinX(rect) < DPCornerReach || NSMaxX(rect) > NSMaxX(bounds) - DPCornerReach;
-        BOOL end = NSMinY(rect) < DPCornerReach || NSMaxY(rect) > NSMaxY(bounds) - DPCornerReach;
-        DPRoundLayers(view.layer, side && end ? growth : 0);
-        return NO;
+    if (growth == 0 && !DPGet(root, &DPBarTouchedKey)) return;
+    DPSet(root, &DPBarTouchedKey, growth != 0 ? @YES : nil);
+    DPWithoutAnimation(^{
+        DPFindView(root, ^BOOL(NSView *view) {
+            if (view == root || DPDiaRadius(view.layer, view.layer.cornerRadius) < 10) return NO;
+            NSRect rect = [view convertRect:view.bounds toView:frame], bounds = frame.bounds;
+            BOOL side = NSMinX(rect) < DPCornerReach || NSMaxX(rect) > NSMaxX(bounds) - DPCornerReach;
+            BOOL end = NSMinY(rect) < DPCornerReach || NSMaxY(rect) > NSMaxY(bounds) - DPCornerReach;
+            DPRoundLayers(view.layer, side && end ? growth : 0);
+            return NO;
+        });
     });
-    [CATransaction commit];
 }
 
 static CGPathRef DPScaledPath(id owner, char *key, CGPathRef current, CGSize size, CGFloat base, CGFloat scale) {
     CGRect box = CGPathGetBoundingBox(current);
     if (!current || fabs(box.size.width - size.width) > 1 || fabs(box.size.height - size.height) > 1) return NULL;
+    if (scale == 1) {
+        NSArray *saved = DPGet(owner, key);
+        if (!saved) return NULL;
+        CGPathRef dia = (__bridge CGPathRef)saved[0];
+        BOOL match = [saved[1] isEqual:(__bridge id)current];
+        DPSet(owner, key, nil);
+        return match && !CGPathEqualToPath(dia, current) ? (CGPathRef)CFAutorelease(CGPathCreateCopy(dia)) : NULL;
+    }
     id dia = DPDiaValue(owner, key, (__bridge id)current);
     if (dia == (__bridge id)current) dia = CFBridgingRelease(CGPathCreateCopy(current));
     CGPathRef path = DPReshapeCorners((__bridge CGPathRef)dia, base * 1.6, scale, scale);
@@ -82,11 +94,14 @@ static CGPathRef DPScaledPath(id owner, char *key, CGPathRef current, CGSize siz
 }
 
 static void DPRoundFloatingLayers(CALayer *layer, CGSize size, CGFloat base, CGFloat growth) {
-    if (fabs(layer.bounds.size.width - size.width) < 1 && fabs(layer.bounds.size.height - size.height) < 1 && layer.cornerRadius > 0) {
+    if (fabs(layer.bounds.size.width - size.width) < 1 && fabs(layer.bounds.size.height - size.height) < 1) {
         CGFloat dia = DPDiaRadius(layer, layer.cornerRadius);
-        CGFloat target = MAX(0, dia + growth);
-        DPOverride(layer, &DPRadiusKey, @(dia), @(target));
-        if (layer.cornerRadius != target) layer.cornerRadius = target;
+        if (dia > 0) {
+            CGFloat target = MAX(0, dia + growth);
+            if (target != dia) DPOverride(layer, &DPRadiusKey, @(dia), @(target));
+            else if (DPGet(layer, &DPRadiusKey)) DPSet(layer, &DPRadiusKey, nil);
+            if (layer.cornerRadius != target) layer.cornerRadius = target;
+        }
     }
     CGFloat scale = MAX(0, base + growth) / base;
     CAShapeLayer *shape = [layer isKindOfClass:CAShapeLayer.class] ? (CAShapeLayer *)layer : nil;
@@ -98,13 +113,15 @@ static void DPRoundFloatingLayers(CALayer *layer, CGSize size, CGFloat base, CGF
     for (CALayer *sublayer in layer.sublayers) DPRoundFloatingLayers(sublayer, size, base, growth);
 }
 
-// Dia also rounds the floating sidebar outside layout, so its corner radius is watched.
 static void DPRoundFloatingSidebar(NSView *self);
+
+static char DPFloatingCornerKVOContext;
 
 // The watch holds the layer, so it can't go before the observer does.
 @interface DPFloatingCornerWatch : NSObject
 @property (nonatomic, weak) NSView *sidebar;
 @property (nonatomic, strong) CALayer *layer;
+- (void)detach;
 @end
 
 @implementation DPFloatingCornerWatch
@@ -112,17 +129,26 @@ static void DPRoundFloatingSidebar(NSView *self);
     if ((self = [super init])) {
         self.sidebar = sidebar;
         self.layer = sidebar.layer;
-        [self.layer addObserver:self forKeyPath:@"cornerRadius" options:0 context:NULL];
+        if (self.layer) [self.layer addObserver:self forKeyPath:@"cornerRadius" options:0 context:&DPFloatingCornerKVOContext];
     }
     return self;
 }
 
-- (void)dealloc { [_layer removeObserver:self forKeyPath:@"cornerRadius"]; }
+- (void)detach {
+    CALayer *layer = _layer;
+    _layer = nil;
+    if (layer) [layer removeObserver:self forKeyPath:@"cornerRadius" context:&DPFloatingCornerKVOContext];
+}
+
+- (void)dealloc { [self detach]; }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(CALayer *)layer change:(NSDictionary *)change context:(void *)context {
+    if (context != &DPFloatingCornerKVOContext) return [super observeValueForKeyPath:keyPath ofObject:layer change:change context:context];
+    __weak DPFloatingCornerWatch *weak = self;
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSView *sidebar = self.sidebar;
-        if (sidebar.layer == layer) DPRoundFloatingSidebar(sidebar);
+        DPFloatingCornerWatch *watch = weak;
+        NSView *sidebar = watch.sidebar;
+        if (watch.layer == layer && sidebar.layer == layer) DPRoundFloatingSidebar(sidebar);
     });
 }
 @end
@@ -132,26 +158,27 @@ static char DPWatchedKey;
 static void DPRoundFloatingSidebar(NSView *self) {
     DPFloatingCornerWatch *watch = DPGet(self, &DPWatchedKey);
     if (!DPWindowCorners.on || !self.layer) {
-        if (watch) DPSet(self, &DPWatchedKey, nil);
+        if (watch) {
+            [watch detach];
+            DPSet(self, &DPWatchedKey, nil);
+        }
     } else if (watch.layer != self.layer) {
+        [watch detach];
         DPSet(self, &DPWatchedKey, [[DPFloatingCornerWatch alloc] initWithSidebar:self]);
     }
     CGFloat base = DPDiaRadius(self.layer, self.layer.cornerRadius);
     if (base <= 0) return;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    DPRoundFloatingLayers(self.layer, self.bounds.size, base, DPWindowCornerGrowth(self.window));
-    [CATransaction commit];
+    DPWithoutAnimation(^{ DPRoundFloatingLayers(self.layer, self.bounds.size, base, DPWindowCornerGrowth(self.window)); });
 }
 
 static void DPFloatingSidebar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPFloatingSidebar_layout, self);
-    DPRoundFloatingSidebar(self);
+    if (DPWindowCorners.on || DPGet(self, &DPWatchedKey)) DPRoundFloatingSidebar(self);
 }
 
 static void DPBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPBar_layout, self);
-    DPRoundCornerItems(self);
+    if (DPWindowCorners.on || DPGet(self, &DPBarTouchedKey)) DPRoundCornerItems(self);
 }
 
 static void DPLayer_addAnimation(CALayer *self, SEL _cmd, CAAnimation *animation, NSString *key) {
@@ -166,15 +193,16 @@ static void DPLayer_setShadowPath(CALayer *self, SEL _cmd, CGPathRef path) {
     DPCallOriginal(DPLayer_setShadowPath, self, DPWindowCorners.on ? DPReshapeSetPath(self, YES, path) : path);
 }
 
-// Dia tiles the blurred background around the page. Rounder corners expose the seams, which flash as the sidebar slides.
+// Rounder corners expose Dia's tiled background seams as the sidebar slides.
 static void DPBackgroundTile_setFrame(NSView *self, SEL _cmd, NSRect frame) {
+    if (!DPWindowCorners.on) return DPCallOriginal(DPBackgroundTile_setFrame, self, frame);
     NSView *background = self.superview;
-    BOOL whole = DPWindowCorners.on && DPIsKind(background, DPDiaWindowBackground);
-    DPCallOriginal(DPBackgroundTile_setFrame, self, whole ? background.bounds : frame);
+    DPCallOriginal(DPBackgroundTile_setFrame, self, DPIsKind(background, DPDiaWindowBackground) ? background.bounds : frame);
 }
 
 static void DPNavigationBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPNavigationBar_layout, self);
+    if (!DPWindowCorners.on && !DPEdgeToEdge.on) return;
     NSView *container = self;
     while (container && !DPIsKind(container, DPDiaContentContainer)) container = container.superview;
     if (container) DPRoundCornerControls(container);
@@ -182,23 +210,44 @@ static void DPNavigationBar_layout(NSView *self, SEL _cmd) {
 
 static void DPWindow_becomeKey(NSWindow *self, SEL _cmd) {
     DPCallOriginal(DPWindow_becomeKey, self);
-    DPRoundWindow(self);
+    if (DPWindowCorners.on || DPGet(self, &DPRadiusKey)) DPRoundWindow(self);
+}
+
+// Every layer in Dia pays for these hooks, so they wait until the tweak is first on.
+static void DPHookLayers(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        DPHookClass(CALayer.class, @selector(addAnimation:forKey:), (IMP)DPLayer_addAnimation);
+        DPHookClass(CALayer.class, @selector(setShadowPath:), (IMP)DPLayer_setShadowPath);
+        DPHookClass(CAShapeLayer.class, @selector(setPath:), (IMP)DPShapeLayer_setPath);
+    });
 }
 
 static void DPApplyWindowCorners(DPPatch *patch) {
-    for (NSWindow *window in NSApp.windows) if (DPIsKind(window, DPDiaWindow)) DPRoundWindow(window);
-    for (NSString *bar in DPCornerBars) for (NSView *view in DPFindViews(bar.UTF8String)) DPRoundCornerItems(view);
-    for (NSView *view in DPFindViews(DPDiaFloatingSidebar)) view.needsLayout = YES;
-    for (NSView *background in DPFindViews(DPDiaWindowBackground)) {
-        background.needsLayout = YES;
-        for (NSView *tile in background.subviews) tile.frame = tile.frame;
+    if (patch->on) DPHookLayers();
+    Class floatingCls = objc_getClass(DPDiaFloatingSidebar), bgCls = objc_getClass(DPDiaWindowBackground);
+    for (NSWindow *window in NSApp.windows) {
+        if (DPIsKind(window, DPDiaWindow)) DPRoundWindow(window);
+        DPFindView(window.contentView, ^BOOL(NSView *view) {
+            for (size_t i = 0; i < DPCornerBarCount; i++)
+                if (DPIsKind(view, DPCornerBars[i])) DPRoundCornerItems(view);
+            if (floatingCls && [view isKindOfClass:floatingCls]) {
+                if (DPWindowCorners.on || DPGet(view, &DPWatchedKey)) DPRoundFloatingSidebar(view);
+                view.needsLayout = YES;
+            }
+            if (bgCls && [view isKindOfClass:bgCls]) {
+                view.needsLayout = YES;
+                for (NSView *tile in view.subviews) tile.frame = tile.frame;
+            }
+            return NO;
+        });
     }
     DPEdgeToEdge.relayout();
 }
 
 static NSString *DPVerifyWindowCorners(DPPatch *patch) {
     for (NSWindow *window in NSApp.windows) {
-        if (!DPIsKind(window, DPDiaWindow) || !window.isVisible) continue;
+        if (!DPIsKind(window, DPDiaWindow) || !window.isVisible || !DPCanRound(window)) continue;
         CGFloat radius = DPCornerRadius(window);
         if (radius != DPWindowTarget(window, DPDiaRadius(window, radius)))
             return patch->on ? @"window corners aren't the chosen radius" : @"window corners keep the chosen radius";
@@ -211,18 +260,26 @@ static NSString *DPVerifyWindowCorners(DPPatch *patch) {
 @property NSTextField *field;
 @end
 
+static double DPArrowStep(SEL command) {
+    if (command == @selector(moveUp:)) return 1;
+    if (command == @selector(moveDown:)) return -1;
+    if (command == @selector(moveUpAndModifySelection:)) return 10;
+    if (command == @selector(moveDownAndModifySelection:)) return -10;
+    return 0;
+}
+
 @implementation DPRadiusRow
 - (void)tune:(NSControl *)control {
     double radius = round(MIN(MAX(control.doubleValue, 0), DPMaxRadius));
     self.slider.doubleValue = self.field.doubleValue = radius;
-    [DPSettings() setDouble:radius forKey:DPRadiusSetting];
+    [DPSettingsDefaults() setDouble:radius forKey:DPRadiusSetting];
     if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners);
 }
 
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
-    NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
+    double step = DPArrowStep(command);
     if (!step) return NO;
-    self.field.doubleValue = textView.string.doubleValue + step.doubleValue;
+    self.field.doubleValue = textView.string.doubleValue + step;
     [self tune:self.field];
     [textView selectAll:nil];
     return YES;
@@ -258,10 +315,8 @@ static void DPInstallWindowCorners(void) {
     DPHook(DPDiaFloatingSidebar, @selector(layout), (IMP)DPFloatingSidebar_layout);
     DPHook(DPDiaWindowBackgroundTile, @selector(setFrame:), (IMP)DPBackgroundTile_setFrame);
     DPHook(DPDiaToolbar, @selector(layout), (IMP)DPNavigationBar_layout);
-    DPHookClass(CALayer.class, @selector(addAnimation:forKey:), (IMP)DPLayer_addAnimation);
-    DPHookClass(CALayer.class, @selector(setShadowPath:), (IMP)DPLayer_setShadowPath);
-    DPHookClass(CAShapeLayer.class, @selector(setPath:), (IMP)DPShapeLayer_setPath);
-    for (NSString *bar in DPCornerBars) DPHook(bar.UTF8String, @selector(layout), (IMP)DPBar_layout);
+    if (DPWindowCorners.on) DPHookLayers();
+    for (size_t i = 0; i < DPCornerBarCount; i++) DPHook(DPCornerBars[i], @selector(layout), (IMP)DPBar_layout);
     // AppKit flips the style mask just after each will, and a screen-sized window doesn't lay out.
     NSArray<NSNotificationName> *names = @[NSWindowWillEnterFullScreenNotification, NSWindowDidEnterFullScreenNotification,
                                            NSWindowWillExitFullScreenNotification, NSWindowDidExitFullScreenNotification];
@@ -269,7 +324,7 @@ static void DPInstallWindowCorners(void) {
         [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *_) {
             dispatch_async(dispatch_get_main_queue(), ^{ if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners); });
         }];
-    DPOnLaunch(^{ DPApplyWindowCorners(&DPWindowCorners); });
+    DPOnLaunch(^{ if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners); });
 }
 
 DP_PATCH(DPWindowCorners) {
@@ -281,6 +336,7 @@ DP_PATCH(DPWindowCorners) {
     .tint = @"systemBrownColor",
     .section = @"Window",
     .classes = DPClasses(DPDiaWindow, DPDiaToolbar, DPDiaFloatingSidebar, DPDiaWindowBackgroundTile, DPDiaWindowBackground, DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter),
+    .settings = DPSettingList({DPSettingNumber, @"windowCornerRadius", .defaultNumber = 26, .min = 0, .max = 26}),
     .rows = DPWindowCornersRows,
     .install = DPInstallWindowCorners,
     .apply = DPApplyWindowCorners,

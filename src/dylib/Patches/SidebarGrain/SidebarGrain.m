@@ -10,25 +10,36 @@ static void DPGrainStripDidLayout(NSViewController *self, SEL _cmd) {
     DPTrackGrainHost(self.view);
 }
 
+static void DPQueueSidebarGrainRefresh(BOOL settings) {
+    static BOOL scheduled, reload;
+    reload |= settings;
+    if (scheduled) return;
+    scheduled = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL all = reload;
+        scheduled = reload = NO;
+        if (!DPSidebarGrain.on) return;
+        if (all) DPRefreshSidebarGrain();
+        else DPRefreshSidebarGrainFrames();
+    });
+}
+
 static void DPGrainSwitcherItemDidUpdate(NSView *self, SEL _cmd) {
     DPCallOriginal(DPGrainSwitcherItemDidUpdate, self);
-    if ([DPSwiftValue(self, @"isSelected") boolValue]) DPRefreshSidebarGrain();
+    if (DPSidebarGrain.on && [DPSwiftValue(self, @"isSelected") boolValue]) DPQueueSidebarGrainRefresh(YES);
 }
 
 static void DPGrainDotDidLayout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPGrainDotDidLayout, self);
-    DPRefreshSidebarGrain();
+    if (DPSidebarGrain.on) DPQueueSidebarGrainRefresh(NO);
 }
 
 static void DPGrainDotDidUpdate(NSView *self, SEL _cmd) {
     DPCallOriginal(DPGrainDotDidUpdate, self);
-    if ([DPSwiftValue(self, @"isSelected") boolValue]) DPRefreshSidebarGrain();
+    if (DPSidebarGrain.on && [DPSwiftValue(self, @"isSelected") boolValue]) DPQueueSidebarGrainRefresh(YES);
 }
 
 static void DPInstallSidebarGrain(void) {
-    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskRightMouseDown handler:^NSEvent *(NSEvent *event) {
-        return DPGrainRightClick(event);
-    }];
     DPHook(DPDiaSidebarController, @selector(viewDidLayout), (IMP)DPGrainSidebarDidLayout);
     DPHook(DPDiaTabStripController, @selector(viewDidLayout), (IMP)DPGrainStripDidLayout);
     DPHook(DPDiaSpaceSwitcherItem, @selector(updateLayer), (IMP)DPGrainSwitcherItemDidUpdate);
@@ -36,7 +47,18 @@ static void DPInstallSidebarGrain(void) {
     DPHook(DPDiaPageIndicatorDot, @selector(updateLayer), (IMP)DPGrainDotDidUpdate);
 }
 
-static void DPApplySidebarGrain(DPPatch *patch) { DPRefreshSidebarGrain(); }
+static void DPApplySidebarGrain(DPPatch *patch) {
+    static id monitor;
+    if (patch->on && !monitor) {
+        monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskRightMouseDown handler:^NSEvent *(NSEvent *event) {
+            return DPGrainRightClick(event);
+        }];
+    } else if (!patch->on && monitor) {
+        [NSEvent removeMonitor:monitor];
+        monitor = nil;
+    }
+    DPRefreshSidebarGrain();
+}
 
 DP_PATCH(DPSidebarGrain) {
     .key = @"sidebarGrain",

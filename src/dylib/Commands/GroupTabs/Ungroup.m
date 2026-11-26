@@ -1,7 +1,7 @@
 #import "GroupTabs.h"
 #import <objc/message.h>
 
-static const NSInteger DPContentVisible = 2;  // content::Visibility: hidden, occluded, visible.
+static const NSInteger DPContentVisible = 2;  // content::Visibility::VISIBLE
 
 static long long DPVisibleSession(id browser) {
     long long found = 0;
@@ -18,15 +18,15 @@ static long long DPVisibleSession(id browser) {
 
 static id DPScriptWindow(NSWindow *window) {
     if (!window) return nil;
-    for (id scripted in DPMsg(NSApp.delegate, @selector(appleScriptWindows)))
-        if ([[scripted valueForKey:@"windowId"] isEqual:window.identifier]) return scripted;
+    for (id scripted in DPAppleScriptWindows())
+        if ([DPValueForKey(scripted, @"windowId") isEqual:window.identifier]) return scripted;
     return nil;
 }
 
 long long DPActiveSession(id browser) {
     long long sid = DPVisibleSession(browser);
     if (sid > 0) return sid;
-    id active = [DPScriptWindow(DPBrowserWindow(browser)) valueForKey:@"activeTab"];
+    id active = DPValueForKey(DPScriptWindow(DPBrowserWindow(browser)), @"activeTab");
     NSString *url = [active respondsToSelector:@selector(URL)] ? DPText(DPMsg(active, @selector(URL))) : nil;
     if (!url.length) return 0;
     long long found = 0;
@@ -73,19 +73,10 @@ static void DPUngroupSiteGroups(NSArray<NSDictionary *> *(^choose)(NSArray<NSDic
     if (![delegate respondsToSelector:@selector(browser:getAllTabGroupsWithCompletion:)]
         || ![delegate respondsToSelector:@selector(browser:removeTabsFromGroupWithSessionIds:completion:)])
         return;
-    void (*ask)(id, SEL, id, void (^)(NSArray *)) = (void *)objc_msgSend;
-    ask(delegate, @selector(browser:getAllTabGroupsWithCompletion:), browser, ^(NSArray *groups) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (![groups isKindOfClass:NSArray.class]) return;
-            NSArray<NSDictionary *> *ops = choose(DPSiteGroups(groups, browser));
-            NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
-            for (NSDictionary *op in ops) [ids addObjectsFromArray:op[@"ids"]];
-            if (!ids.count) return;
-            void (*ungroup)(id, SEL, id, NSArray *, void (^)(id)) = (void *)objc_msgSend;
-            ungroup(delegate, @selector(browser:removeTabsFromGroupWithSessionIds:completion:), browser, ids, ^(id _) {
-                dispatch_async(dispatch_get_main_queue(), ^{ DPOfferRegroup(delegate, browser, ops); });
-            });
-        });
+    DPLoadTabGroups(delegate, browser, ^(NSArray *groups) {
+        NSArray<NSDictionary *> *ops = choose(DPSiteGroups(groups, browser));
+        NSArray *ids = [ops valueForKeyPath:@"@unionOfArrays.ids"];
+        if (ids.count) DPRemoveFromGroups(delegate, browser, ids, ^{ DPOfferRegroup(delegate, browser, ops); });
     });
 }
 

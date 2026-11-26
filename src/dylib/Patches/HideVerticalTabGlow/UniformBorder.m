@@ -12,7 +12,8 @@ static NSArray *DPUniformColors(NSArray *colors) {
     if (!colors.count) return colors;
     NSArray *sorted = [colors sortedArrayUsingComparator:^NSComparisonResult(id a, id b) {
         CGFloat x = CGColorGetAlpha((__bridge CGColorRef)a), y = CGColorGetAlpha((__bridge CGColorRef)b);
-        return x < y ? NSOrderedAscending : x > y ? NSOrderedDescending : NSOrderedSame;
+        if (x == y) return NSOrderedSame;
+        return x < y ? NSOrderedAscending : NSOrderedDescending;
     }];
     NSMutableArray *flat = [NSMutableArray new];
     for (NSUInteger i = 0; i < colors.count; i++) [flat addObject:sorted[colors.count / 2]];
@@ -25,8 +26,7 @@ static void DPSetColors(CAGradientLayer *border, id colors) {
     if (![DPColorsOf(border) isEqual:colors]) border.colors = colors == NSNull.null ? nil : colors;
 }
 
-static void DPRestoreTabBorder(NSView *shape) {
-    CAGradientLayer *border = DPBorderIn(shape);
+static void DPRestoreTabBorder(CAGradientLayer *border) {
     if (!DPGet(border, &DPColorsKey)) return;
     id dia = DPDiaValue(border, &DPColorsKey, DPColorsOf(border));
     DPSet(border, &DPColorsKey, nil);
@@ -36,7 +36,7 @@ static void DPRestoreTabBorder(NSView *shape) {
 void DPStyleUniformTabBorder(NSView *shape) {
     CAGradientLayer *border = DPBorderIn(shape);
     if (!border) return;
-    if (!DPHideVerticalTabGlow.on || !DPIsVerticalTab(shape)) return DPRestoreTabBorder(shape);
+    if (!DPHideVerticalTabGlow.on || !DPIsVerticalTab(shape)) return DPRestoreTabBorder(border);
     id dia = DPDiaValue(border, &DPColorsKey, DPColorsOf(border));
     id ours = dia == NSNull.null ? dia : DPUniformColors(dia);
     DPOverride(border, &DPColorsKey, dia, ours);

@@ -11,7 +11,7 @@ static NSString *DPVerifyPullRequestRepo(DPPatch *patch) {
         NSDictionary *pr = DPPullRequestOf(view);
         if (!pr) continue;
         NSString *text = ((NSTextField *)view).stringValue;
-        if (patch->on && [text hasPrefix:pr[@"author"]]) return @"a pull request still shows its author";
+        if (patch->on && ![text hasPrefix:pr[@"repo"]] && [text hasPrefix:pr[@"author"]]) return @"a pull request still shows its author";
         if (!patch->on && [text hasPrefix:pr[@"repo"]]) return @"a pull request still shows its repository";
     }
     if (patch->on) return nil;
@@ -30,7 +30,7 @@ DP_PATCH(DPPullRequestRepo) {
     .key = @"pullRequestRepo",
     .order = 79,
     .title = @"Show Repo on Pull Requests",
-    .detail = @"In GitHub live folders, show each pull request's repository, number and state under its title instead of the author, with the review status on a line below (beside it with tabs at the top).",
+    .detail = @"In GitHub live folders, show each pull request’s repository, number and state under its title instead of the author, with the review status on a line below (beside it with tabs at the top).",
     .symbol = @"arrow.triangle.pull",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",

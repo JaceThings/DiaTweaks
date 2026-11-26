@@ -8,9 +8,10 @@ static void DPCard_orderWindow(NSWindow *self, SEL _cmd, NSWindowOrderingMode pl
 }
 
 static NSArray<NSWindow *> *DPOpenCards(void) {
-    return [NSApp.windows filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSWindow *window, id _) {
-        return window.visible && DPIsKind(window, DPDiaPinnedTabCard);
-    }]];
+    NSMutableArray<NSWindow *> *cards = [NSMutableArray new];
+    for (NSWindow *window in NSApp.windows)
+        if (window.visible && DPIsKind(window, DPDiaPinnedTabCard)) [cards addObject:window];
+    return cards;
 }
 
 static void DPApplyHidePinnedTabCard(DPPatch *patch) {
@@ -29,10 +30,11 @@ DP_PATCH(DPHidePinnedTabCard) {
     .key = @"hidePinnedTabCard",
     .order = 83,
     .title = @"Hide Pinned Tab Card",
-    .detail = @"Stop the card with a pinned tab's title and buttons from showing when you point at the tab.",
+    .detail = @"Stop the card with a pinned tab’s title and buttons from showing when you point at the tab.",
     .symbol = @"pin.slash.fill pin.fill",
     .tint = @"systemTealColor",
     .section = @"Sidebar & Tab Bar",
+    .group = @"pinnedTabs",
     .classes = DPClasses(DPDiaPinnedTabCard),
     .install = DPInstallHidePinnedTabCard,
     .apply = DPApplyHidePinnedTabCard,

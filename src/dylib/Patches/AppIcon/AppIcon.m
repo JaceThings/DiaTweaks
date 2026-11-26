@@ -1,64 +1,85 @@
 #import "AppIcon.h"
 #import "Updates/Updates.h"
+#include <sys/stat.h>
 
-static NSUInteger DPSwitches;
+static BOOL DPBuilding, DPStale, DPBuilt, DPSwitching, DPSwitchAgain;
+static NSString *DPUnlinkable;
 
-static void DPAlertIconFailed(void) {
+static void DPAlert(NSString *message, NSString *detail) {
     NSAlert *alert = [NSAlert new];
-    alert.messageText = @"Couldn’t change Dia’s icon";
-    alert.informativeText = @"Dia keeps its current icon.";
+    alert.messageText = message;
+    alert.informativeText = detail;
     [alert runModal];
 }
 
 static NSString *DPLinkProblem(NSString *output) {
     for (NSString *line in [output componentsSeparatedByString:@"\n"]) {
-        NSString *kept = [line hasPrefix:@"warning: kept Dia's icon"] ? [line substringFromIndex:@"warning: ".length] : nil;
-        NSRange colon = [kept rangeOfString:@": "];
-        if (colon.length) return [kept substringFromIndex:NSMaxRange(colon)];
+        if (![line hasPrefix:@"warning: kept Dia's icon"]) continue;
+        NSRange colon = [line rangeOfString:@": " options:0 range:NSMakeRange(9, line.length - 9)];
+        if (colon.length) return [line substringFromIndex:NSMaxRange(colon)];
     }
     return nil;
 }
 
-static NSString *DPUnlinkable;
-
 static void DPAlertUnlinkable(void) {
-    NSAlert *alert = [NSAlert new];
-    alert.messageText = @"Couldn’t set up icon switching";
-    alert.informativeText = [NSString stringWithFormat:@"DiaTweaks couldn’t prepare this version of Dia: %@. Dia keeps its current icon, "
-                                                       @"and relaunching won’t change that. Updating or reinstalling DiaTweaks may fix it.", DPUnlinkable];
-    [alert runModal];
+    DPAlert(@"Couldn’t set up icon switching",
+            [NSString stringWithFormat:@"DiaTweaks couldn’t prepare this version of Dia: %@. Dia keeps its current icon, "
+                                       @"and relaunching won’t change that. Updating or reinstalling DiaTweaks may fix it.", DPUnlinkable]);
 }
 
-static void DPLinkCatalog(void) {
-    if (DPUnlinkable) return DPAlertUnlinkable();
+static BOOL DPCatalogLinked(void) {
+    if (![NSBundle.mainBundle.infoDictionary[@"CFBundleIconName"] isEqual:@"DiaChosenIcon"]) return NO;
+    struct stat info;
+    NSString *catalog = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/Resources/Assets.car"];
+    return lstat(catalog.fileSystemRepresentation, &info) == 0 && S_ISLNK(info.st_mode);
+}
+
+static void DPRebuildCatalog(void) {
+    if (DPUnlinkable && DPSavedOn(&DPAppIcon)) return DPAlertUnlinkable();
+    if (DPBuilding) return (void)(DPStale = YES);
+    DPBuilding = YES;
+    CFPreferencesAppSynchronize((__bridge CFStringRef)DPSettingsDomain());
     DPRunCLI(@[ @"build" ], ^(NSString *output) {
-        if (!output) return DPAlertIconFailed();
-        if ((DPUnlinkable = DPLinkProblem(output))) return DPAlertUnlinkable();
+        DPBuilding = NO;
+        DPBuilt = YES;
+        if (DPStale) return DPStale = NO, DPRebuildCatalog();
+        BOOL wantLinked = DPSavedOn(&DPAppIcon);
+        if (!output) {
+            if (wantLinked) DPAlert(@"Couldn’t change Dia’s icon", @"Dia keeps its current icon.");
+            return;
+        }
+        if (wantLinked && (DPUnlinkable = DPLinkProblem(output))) return DPAlertUnlinkable();
+        if (wantLinked == DPCatalogLinked()) return;
         NSAlert *alert = [NSAlert new];
-        alert.messageText = @"Relaunch Dia to change its icon";
-        alert.informativeText = @"Until then, Dia keeps its current icon.";
+        alert.messageText = wantLinked ? @"Relaunch Dia to change its icon" : @"Relaunch Dia to finish turning off App Icon";
+        alert.informativeText = wantLinked ? @"Until then, Dia keeps its current icon."
+                                           : @"Dia’s own icon is back in the Dock. Relaunching restores its sealed asset catalog.";
         [alert addButtonWithTitle:@"Relaunch"];
         [alert addButtonWithTitle:@"Later"];
         if ([alert runModal] == NSAlertFirstButtonReturn) DPHandOffAndQuit(@[ @"apply" ]);
     });
 }
 
-static BOOL DPCatalogLinked(void) {
-    return [NSBundle.mainBundle.infoDictionary[@"CFBundleIconName"] isEqual:@"DiaChosenIcon"];
+// One set-icon at a time: two in flight can finish out of order and leave the older choice on disk.
+static void DPSwitchIcon(DPPatch *patch) {
+    if (DPSwitching) return (void)(DPSwitchAgain = YES);
+    DPSwitching = YES;
+    CFPreferencesAppSynchronize((__bridge CFStringRef)DPSettingsDomain());
+    DPRunCLI(@[ @"set-icon" ], ^(NSString *output) {
+        DPSwitching = NO;
+        if (DPSwitchAgain) return DPSwitchAgain = NO, DPSwitchIcon(patch);
+        output ? DPDrawOwnTile() : DPAlert(@"Couldn’t change Dia’s icon", @"Dia keeps its current icon.");
+        if (patch->on == DPSavedOn(patch) && (!DPSavedOn(patch) || DPBuilt || DPBuilding)) DPRebuildCatalog();
+    });
 }
 
 static void DPApplyAppIcon(DPPatch *patch) {
     if (DPTesting) return;
-    if (!DPCatalogLinked()) {
-        if (patch->on) DPLinkCatalog();
-        return;
-    }
-    CFPreferencesAppSynchronize(CFSTR("com.diapatches"));
-    NSUInteger current = ++DPSwitches;
-    DPRunCLI(@[ @"set-icon" ], ^(NSString *output) {
-        if (current != DPSwitches) return;
-        output ? DPDrawOwnTile() : DPAlertIconFailed();
-    });
+    if (DPCatalogLinked()) return DPSwitchIcon(patch);
+    BOOL saved = DPSavedOn(patch);
+    // Pause turns patches off without saving: keep the bundle as built.
+    if (patch->on != saved) return;
+    if (saved || DPBuilt || DPBuilding) DPRebuildCatalog();
 }
 
 static BOOL DPWorkspace_setIcon(NSWorkspace *self, SEL _cmd, NSImage *image, NSString *path, NSWorkspaceIconCreationOptions options) {
@@ -69,7 +90,6 @@ static BOOL DPWorkspace_setIcon(NSWorkspace *self, SEL _cmd, NSImage *image, NSS
 static void DPInstallAppIcon(void) {
     DPHook("NSWorkspace", @selector(setIcon:forFile:options:), (IMP)DPWorkspace_setIcon);
     DPInstallDockTile();
-    // The Dock shows its cached icon after a relaunch, so draw the chosen one again.
     DPOnLaunch(^{ if ((DPAppIcon.on || DPOwnTileInDock()) && DPCatalogLinked()) DPDrawOwnTile(); });
 }
 
@@ -100,12 +120,12 @@ static NSMenu *DPAppIconChoices(void) {
 
 DP_PATCH(DPAppIcon) {
     .key = @"appIcon",
-    .order = 115,
+    .order = 99,
     .title = @"App Icon",
     .detail = @"Choose a different icon for Dia. It follows the icon style you choose in System Settings.",
     .symbol = @"app.badge.fill app.badge",
-    .tint = @"systemBrownColor",
-    .section = @"Window",
+    .tint = @"systemYellowColor",
+    .section = @"App",
     .choice = @"appIconChoice",
     .defaultChoice = @"AppIcon",
     .choices = DPAppIconChoices,

@@ -13,7 +13,8 @@ static BOOL DPIsDigitShortcut(NSMenuItem *item, NSEventModifierFlags mods) {
 
 static NSMenuItem *DPFindItem(NSMenu *menu, BOOL (^match)(NSMenuItem *item)) {
     for (NSMenuItem *item in menu.itemArray) {
-        NSMenuItem *found = match(item) ? item : item.submenu ? DPFindItem(item.submenu, match) : nil;
+        if (match(item)) return item;
+        NSMenuItem *found = DPFindItem(item.submenu, match);
         if (found) return found;
     }
     return nil;
@@ -48,7 +49,7 @@ static void DPApplyProfileShortcuts(DPPatch *patch) {
     });
 }
 
-// AZERTY types digits only with ⇧, so ⌘⇧& is the menu's ⌘1; Arabic and Thai keys with no digit use the ⌘ layer's.
+// AZERTY requires ⇧ for digits; Arabic/Thai fall back to event.characters.
 static NSString *DPCommandDigit(NSEvent *event) {
     NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagShift);
     BOOL shifted = mods == (NSEventModifierFlagCommand | NSEventModifierFlagShift) && !(event.modifierFlags & NSEventModifierFlagNumericPad);
@@ -65,13 +66,16 @@ static NSMenuItem *DPProfileItem(NSString *digit) {
 }
 
 static void DPApplication_sendEvent(NSApplication *self, SEL _cmd, NSEvent *event) {
-    // A recording field must see the key first.
-    NSString *digit = DPProfileShortcuts.on && event.type == NSEventTypeKeyDown && !DPShortcutRecording() ? DPCommandDigit(event) : nil;
+    if (!DPProfileShortcuts.on || event.type != NSEventTypeKeyDown || DPShortcutRecording())
+        return DPCallOriginal(DPApplication_sendEvent, self, event);
+    NSString *digit = DPCommandDigit(event);
     NSMenuItem *item = digit ? DPProfileItem(digit) : nil;
-    // Performing an item doesn't validate it, so update first; update can rebuild the items, so look it up again.
+    if (!item) return DPCallOriginal(DPApplication_sendEvent, self, event);
+    // Updating validates the item but may rebuild the menu, so look it up again.
     [item.menu update];
-    if (item) item = DPProfileItem(digit);
-    if (!item.enabled || item.hiddenOrHasHiddenAncestor || !item.action) return DPCallOriginal(DPApplication_sendEvent, self, event);
+    item = DPProfileItem(digit);
+    if (!item.enabled || item.hiddenOrHasHiddenAncestor || !item.action)
+        return DPCallOriginal(DPApplication_sendEvent, self, event);
     [item.menu performActionForItemAtIndex:[item.menu indexOfItem:item]];
 }
 
@@ -82,7 +86,7 @@ static void DPInstallProfileShortcuts(void) {
         __block BOOL pending = NO;
         void (^changed)(NSNotification *) = ^(NSNotification *note) {
             if (!DPProfileShortcuts.on) return;
-            // Swap a rebuilt ⌃ item now: AppKit can match the next key before the re-apply below. A ⌘ item must wait for it.
+            // Swap rebuilt ⌃ items synchronously before AppKit matches the next key.
             NSMenu *menu = note.object;
             NSNumber *index = note.userInfo[@"NSMenuItemIndex"];
             NSMenuItem *item = [menu isKindOfClass:NSMenu.class] && index && index.integerValue >= 0 && index.integerValue < menu.numberOfItems ? [menu itemAtIndex:index.integerValue] : nil;
@@ -110,12 +114,12 @@ static NSString *DPVerifyProfileShortcuts(DPPatch *patch) {
 
 DP_PATCH(DPProfileShortcuts) {
     .key = @"profileShortcuts",
-    .order = 79,
+    .order = 85,
     .title = @"Switch Profiles with ⌘1–9",
-    .detail = @"Press ⌘ and a number to switch to that profile, like Arc's spaces. The sidebar's items move to ⌃ and a number.",
+    .detail = @"Press ⌘ and a number to switch to that profile, like Arc’s spaces. The sidebar’s items move to ⌃ and a number.",
     .symbol = @"command",
-    .tint = @"systemTealColor",
-    .section = @"Sidebar & Tab Bar",
+    .tint = @"systemRedColor",
+    .section = @"Profiles",
     .install = DPInstallProfileShortcuts,
     .apply = DPApplyProfileShortcuts,
     .verify = DPVerifyProfileShortcuts,

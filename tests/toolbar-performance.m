@@ -4,7 +4,12 @@
 - (void)reset;
 @end
 
-DPPatch DPHideToolbar, DPRevealToolbarOnHover;
+DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPShowToolbarWithTopTabs;
+BOOL DPBesideSidebar(NSView *view) { return NO; }
+static BOOL gLittleDiaOver;
+BOOL DPLittleDiaIsOver(NSWindow *window) { return gLittleDiaOver; }
+void DPRepaintTabs(NSWindow *window) {}
+BOOL DPToolbarHasPermissionRequest(DPToolbarHover *hover) { return NO; }
 static NSUInteger frameWrites, alphaWrites;
 @interface CountingView : NSView
 @end
@@ -25,6 +30,7 @@ static void checkGeometry(BOOL flipped, BOOL bookmarks) {
     NSView *marks = [[objc_getClass(DPDiaBookmarksBar) alloc] initWithFrame:NSMakeRect(0, flipped ? 50 : 725, 1000, 25)];
     NSView *page = [[NSView alloc] initWithFrame:NSMakeRect(0, pageY + (flipped && bookmarks ? 25 : 0), 1000, 750 - (bookmarks ? 25 : 0))];
     NSView *web = [[NSView alloc] initWithFrame:page.bounds];
+    web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [page addSubview:web]; [pane addSubview:bar]; if (bookmarks) [pane addSubview:marks]; [pane addSubview:page];
     NSRect original = page.frame;
     DPHideToolbar.on = YES; DPHideToolbar.progress = 1; DPApplyToolbar(pane);
@@ -41,7 +47,15 @@ static void checkGeometry(BOOL flipped, BOOL bookmarks) {
     NSCAssert(NSEqualRects(web.frame, page.bounds), @"web frame restores with the page");
     page.frame = NSMakeRect(original.origin.x, original.origin.y, 1100, original.size.height);
     DPApplyToolbar(pane);
-    NSCAssert(NSWidth(page.frame) == 1100 && NSWidth(web.frame) == 1100, @"a new Dia frame is still applied");
+    NSCAssert(NSWidth(page.frame) == 1100 && NSWidth(web.frame) == 1100, @"off leaves a new Dia frame alone");
+    gLittleDiaOver = YES;
+    DPApplyToolbar(pane);
+    NSCAssert(bar.alphaValue == 0 && (!bookmarks || marks.alphaValue == 0), @"Little Dia hides the bars with Hide Toolbar off");
+    gLittleDiaOver = NO;
+    DPApplyToolbar(pane);
+    NSCAssert(bar.alphaValue == 1 && (!bookmarks || marks.alphaValue == 1), @"both bars come back when Little Dia closes");
+    NSCAssert(NSEqualRects(page.frame, NSMakeRect(0, pageY + (flipped && bookmarks ? 25 : 0), 1100, 750 - (bookmarks ? 25 : 0))),
+              @"the page stays where Hide Toolbar off left it");
 }
 
 int main(void) {
@@ -69,18 +83,12 @@ int main(void) {
         frameWrites = alphaWrites = 0; start = CFAbsoluteTimeGetCurrent();
         for (NSUInteger i = 0; i < 10000; i++) { @autoreleasepool {
             hover.progress = (i % 31) / 30.0;
-#ifdef DP_OPTIMIZED
             DPApplyToolbarOpacity(hover);
-#else
-            DPApplyToolbar(pane);
-#endif
         } }
         printf("hover_ticks_ms=%.3f frame_writes=%lu alpha_writes=%lu\n", (CFAbsoluteTimeGetCurrent()-start)*1000,
                (unsigned long)frameWrites, (unsigned long)alphaWrites);
-#ifdef DP_OPTIMIZED
         NSCAssert(frameWrites == 0, @"hover does not change layout");
         NSCAssert(fabs(bar.alphaValue - hover.progress) < 0.0001, @"same fade equation");
-#endif
         DPHideToolbar.on = NO; DPHideToolbar.progress = 0; DPApplyToolbar(pane);
         NSCAssert(NSEqualRects(page.frame, NSMakeRect(0, 50, 1000, 750)), @"disable restores layout");
         NSCAssert(bar.alphaValue == 1, @"disable restores toolbar");

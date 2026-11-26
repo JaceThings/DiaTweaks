@@ -31,17 +31,17 @@ static void DPMorph(CAShapeLayer *shape, CGPathRef to, CGFloat width, void (^don
     group.animations = @[morph, thicken];
     group.duration = 0.3;
     group.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    [CATransaction setCompletionBlock:done];
-    shape.path = to;
-    shape.lineWidth = width;
-    [shape addAnimation:group forKey:@"morph"];
-    [CATransaction commit];
+    DPWithoutAnimation(^{
+        [CATransaction setCompletionBlock:done];
+        shape.path = to;
+        shape.lineWidth = width;
+        [shape addAnimation:group forKey:@"morph"];
+    });
 }
 
 void DPTidyWave(CALayer *host, CALayer *line, CGColorRef color, BOOL busy) {
     CALayer *box = DPWaveIn(host);
+    if (!busy && !box) return;
     CAShapeLayer *shape = box.sublayers.firstObject;
     NSRect frame = line.frame;
     [CATransaction begin];
@@ -88,11 +88,10 @@ void DPTidyWave(CALayer *host, CALayer *line, CGColorRef color, BOOL busy) {
         [CATransaction commit];
         box.name = [DPWaveName stringByAppendingString:@"-leaving"];
         DPMorph(shape, flat, DPLineWidth, ^{
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            if (!DPWaveIn(weakHost)) weakLine.opacity = 1;
-            [weakBox removeFromSuperlayer];
-            [CATransaction commit];
+            DPWithoutAnimation(^{
+                if (!DPWaveIn(weakHost)) weakLine.opacity = 1;
+                [weakBox removeFromSuperlayer];
+            });
         });
         CGPathRelease(flat);
         return;

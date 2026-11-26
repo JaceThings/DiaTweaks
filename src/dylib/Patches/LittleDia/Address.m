@@ -4,6 +4,7 @@
 @interface DPAddressView : NSView <NSTextFieldDelegate>
 @property (nonatomic, weak) NSView *title;
 @property (nonatomic) NSTextField *label, *field;
+@property (nonatomic, copy) NSString *shownHost, *shownRest;
 @property (nonatomic) BOOL hovered, beginning, ending;
 @property (nonatomic, copy) NSString *notice;
 @property (nonatomic) NSUInteger notices;
@@ -65,9 +66,16 @@
     return [title isKindOfClass:NSString.class] ? title : nil;
 }
 
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    [self refresh];
+}
+
 - (void)refresh {
     BOOL open = self.hovered || self.field;
-    self.layer.backgroundColor = open ? [NSColor.labelColor colorWithAlphaComponent:0.07].CGColor : nil;
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        DPWithoutAnimation(^{ self.layer.backgroundColor = open ? [NSColor.labelColor colorWithAlphaComponent:0.07].CGColor : nil; });
+    }];
     if (self.field) return;
     NSURL *url = self.url;
     NSString *host = url.host ?: @"", *rest = @"";
@@ -76,21 +84,28 @@
         NSTextView *shown = (NSTextView *)DPFindView(self.title, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextView.class]; });
         host = shown.string ?: @"";
     } else if (self.hovered) {
-        NSString *path = [url.path isEqual:@"/"] ? @"" : url.path ?: @"";
+        NSString *path = url.path ?: @"";
+        if ([path isEqual:@"/"]) path = @"";
         rest = url.query.length ? [NSString stringWithFormat:@"%@?%@", path, url.query] : path;
-    } else if (self.pageTitle.length && ![self.pageTitle isEqual:url.absoluteString]) {
-        rest = [@" / " stringByAppendingString:self.pageTitle];
+    } else {
+        NSString *pageTitle = self.pageTitle;
+        if (pageTitle.length && ![pageTitle isEqual:url.absoluteString]) rest = [@" / " stringByAppendingString:pageTitle];
     }
     if (self.notice) {
         host = self.notice;
         rest = @"";
     }
-    NSFont *font = [NSFont systemFontOfSize:13];
-    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] initWithString:host attributes:@{NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.labelColor}];
-    [text appendAttributedString:[[NSAttributedString alloc] initWithString:rest attributes:@{NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.secondaryLabelColor}]];
-    if (![self.label.attributedStringValue isEqual:text]) self.label.attributedStringValue = text;
+    if (![host isEqualToString:self.shownHost] || ![rest isEqualToString:self.shownRest]) {
+        self.shownHost = host;
+        self.shownRest = rest;
+        NSFont *font = [NSFont systemFontOfSize:13];
+        NSMutableAttributedString *text = [[NSMutableAttributedString alloc] initWithString:host attributes:@{NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.labelColor}];
+        [text appendAttributedString:[[NSAttributedString alloc] initWithString:rest attributes:@{NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.secondaryLabelColor}]];
+        self.label.attributedStringValue = text;
+    }
     CGFloat height = ceil(self.label.intrinsicContentSize.height);
-    self.label.frame = NSMakeRect(10, round((NSHeight(self.bounds) - height) / 2), MAX(0, NSWidth(self.bounds) - 20), height);
+    NSRect frame = NSMakeRect(10, round((NSHeight(self.bounds) - height) / 2), MAX(0, NSWidth(self.bounds) - 20), height);
+    if (!NSEqualRects(self.label.frame, frame)) self.label.frame = frame;
 }
 
 - (void)setFrameSize:(NSSize)size {
@@ -105,7 +120,8 @@
     }
     self.notice = nil;
     [self refresh];
-    NSString *shown = [self.url.absoluteString isEqual:@"about:blank"] ? @"" : self.url.absoluteString;
+    NSString *urlString = self.url.absoluteString;
+    NSString *shown = [urlString isEqual:@"about:blank"] ? @"" : urlString;
     NSTextField *field = [NSTextField textFieldWithString:shown ?: self.label.stringValue];
     field.bezeled = NO;
     field.drawsBackground = NO;
@@ -133,7 +149,8 @@
     [self.field removeFromSuperview];
     self.field = nil;
     self.label.hidden = NO;
-    NSView *page = DPFindView(self.window.contentView, ^BOOL(NSView *view) { return DPIsKind(view, "WebContentsHostView") && !view.isHiddenOrHasHiddenAncestor; });
+    Class hostClass = objc_getClass("WebContentsHostView");
+    NSView *page = hostClass ? DPFindView(self.window.contentView, ^BOOL(NSView *view) { return [view isKindOfClass:hostClass] && !view.isHiddenOrHasHiddenAncestor; }) : nil;
     [self.window makeFirstResponder:DPFindView(page, ^BOOL(NSView *view) { return view.acceptsFirstResponder; })];
     self.ending = NO;
     [self refresh];
@@ -172,10 +189,14 @@ static DPAddressView *DPAddressIn(NSWindow *window) {
 
 // Chromium focuses the new window's page a moment after it opens, which would end the typing.
 static void DPEditAddressSoon(NSWindow *window, int tries) {
+    if (!DPLittleDia.on || !window) return;
     DPAddressView *address = DPAddressIn(window);
     if (address && window.isKeyWindow) return [address begin];
+    __weak NSWindow *weak = window;
     if (tries > 0 && window.visible)
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPEditAddressSoon(window, tries - 1); });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (weak) DPEditAddressSoon(weak, tries - 1);
+        });
 }
 
 void DPEditLittleDiaAddress(NSWindow *window) {

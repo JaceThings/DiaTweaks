@@ -21,12 +21,14 @@ extern NSNotificationName const DPUpdatesDidChangeNotification;
 @property (nonatomic, readonly) BOOL checking;
 @property (nonatomic, readonly) NSString *checkProblem;
 - (void)check:(void (^)(void))done;
+// For launch and Home: nothing while paused or in Safe Mode, and at most one check a minute.
+- (void)checkAutomatically:(void (^)(void))done;
 - (BOOL)available:(NSString *)part;
 - (BOOL)staged:(NSString *)part;
 - (BOOL)downloading:(NSString *)part;
 - (BOOL)failed:(NSString *)part;
 - (NSString *)failure:(NSString *)part;
-- (double)progress:(NSString *)part;  // 0–1 while downloading, -1 while it's verified and patched.
+- (double)progress:(NSString *)part;
 - (void)download:(NSString *)part then:(void (^)(void))done;
 - (void)installAndRelaunch:(NSArray<NSString *> *)parts;
 
