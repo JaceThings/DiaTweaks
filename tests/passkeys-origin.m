@@ -191,7 +191,7 @@ static void *fakeCDPThread(void *ctx) {
     return NULL;
 }
 
-static FakeCDPState *runOpenOriginScenario(FakeSiteMode mode, NSString *origin, NSString *pagePath, BOOL *outLanded) {
+static FakeCDPState *runOpenOriginWithPreflightScenario(FakeSiteMode mode, NSString *origin, NSString *pagePath, DPOriginPreflightResult preflight, BOOL *outLanded) {
     int c2s[2], s2c[2];
     NSCAssert(pipe(c2s) == 0 && pipe(s2c) == 0, @"pipes");
 
@@ -206,7 +206,7 @@ static FakeCDPState *runOpenOriginScenario(FakeSiteMode mode, NSString *origin, 
     pthread_t th;
     NSCAssert(pthread_create(&th, NULL, fakeCDPThread, (__bridge void *)state) == 0, @"thread");
 
-    *outLanded = openOrigin(@"S1", origin, pagePath);
+    *outLanded = openOriginWithPreflight(@"S1", origin, pagePath, preflight);
 
     fclose(gToHelper);
     gToHelper = NULL;
@@ -214,6 +214,10 @@ static FakeCDPState *runOpenOriginScenario(FakeSiteMode mode, NSString *origin, 
     fclose(gFromHelper);
     gFromHelper = NULL;
     return state;
+}
+
+static FakeCDPState *runOpenOriginScenario(FakeSiteMode mode, NSString *origin, NSString *pagePath, BOOL *outLanded) {
+    return runOpenOriginWithPreflightScenario(mode, origin, pagePath, DPOriginPreflightNone, outLanded);
 }
 
 static void testOriginAndPathHelpers(void) {
@@ -314,6 +318,13 @@ int main(void) {
 
         FakeCDPState *s8 = runOpenOriginScenario(FakeSiteNormal, @"chrome://settings", nil, &landed);
         NSCAssert(!landed && s8.navigatedURLs.count == 0, @"non-http(s) origin rejected");
+
+        FakeCDPState *s9 = runOpenOriginWithPreflightScenario(FakeSiteNormal, @"https://webauthn.io", @"/login", DPOriginPreflightVerified, &landed);
+        NSCAssert(landed && [s9.navigatedURLs isEqual:@[ @"https://webauthn.io/" ]], @"verified preflight jumps straight to synthetic origin: %@", s9.navigatedURLs);
+        NSCAssert([s9.fulfilledURLs isEqual:@[ @"https://webauthn.io/" ]] && !s9.fetchEnabledAtEnd, @"verified preflight fulfills synthetically and cleans up Fetch");
+
+        FakeCDPState *s10 = runOpenOriginWithPreflightScenario(FakeSiteBrokenTLS, @"https://badssl.example", @"/login", DPOriginPreflightTLSError, &landed);
+        NSCAssert(!landed && s10.navigatedURLs.count == 0, @"TLS preflight failure rejects immediately without navigating");
 
         puts("PASS: passkeys origin navigation, Duo redirects, and synthetic fallback");
     }
