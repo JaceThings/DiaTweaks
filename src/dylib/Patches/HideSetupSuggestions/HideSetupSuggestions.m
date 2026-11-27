@@ -2,7 +2,7 @@
 
 extern DPPatch DPHideSetupSuggestions;
 
-static char DPHiddenRowsKey, DPRowCountKey, DPNotingKey, DPHidByUsKey, DPDiaHiddenKey;
+static char DPHiddenRowsKey, DPRowCountKey, DPNotingKey, DPHidByUsKey, DPDiaHiddenKey, DPRowKey;
 
 static NSSet<NSString *> *DPOnboardingTitles(void) {
     static NSSet<NSString *> *titles;
@@ -27,11 +27,11 @@ static BOOL DPIsSetupSuggestion(NSView *cell) {
     return title.length > 0 && [DPOnboardingTitles() containsObject:title];
 }
 
-// Rows we collapsed, so a row Dia reuses for a real suggestion is never left at zero height.
-static NSMutableIndexSet *DPHiddenRows(NSTableView *table) {
-    NSMutableIndexSet *rows = DPGet(table, &DPHiddenRowsKey);
+// Collapsed rows mapped weakly to their cell, so a row Dia reuses or replaces is never left at zero height.
+static NSMapTable<NSNumber *, NSView *> *DPHiddenRows(NSTableView *table) {
+    NSMapTable<NSNumber *, NSView *> *rows = DPGet(table, &DPHiddenRowsKey);
     if (rows && [DPGet(table, &DPRowCountKey) integerValue] == table.numberOfRows) return rows;
-    rows = [NSMutableIndexSet indexSet];
+    rows = [NSMapTable strongToWeakObjectsMapTable];
     DPSet(table, &DPHiddenRowsKey, rows);
     DPSet(table, &DPRowCountKey, @(table.numberOfRows));
     return rows;
@@ -52,53 +52,95 @@ static void DPNoteRows(NSTableView *table) {
     });
 }
 
+static BOOL DPIsCollapsedRow(NSTableView *table, NSInteger row) {
+    NSMapTable<NSNumber *, NSView *> *rows = DPHiddenRows(table);
+    NSView *cell = [rows objectForKey:@(row)];
+    // AppKit throws if heightOfRow: asks for a row view; rowForView: only walks existing views.
+    if (!cell || ![cell isDescendantOf:table] || [table rowForView:cell] != row || !DPIsSetupSuggestion(cell)) {
+        [rows removeObjectForKey:@(row)];
+        return NO;
+    }
+    return YES;
+}
+
+static NSTableView *DPTableOf(NSView *cell) {
+    for (NSView *up = cell.superview; up; up = up.superview)
+        if ([up isKindOfClass:NSTableView.class]) return (NSTableView *)up;
+    return nil;
+}
+
+static void DPRestoreHidden(NSView *cell) {
+    if (![DPGet(cell, &DPHidByUsKey) boolValue]) return;
+    BOOL diaHidden = [DPGet(cell, &DPDiaHiddenKey) boolValue];
+    DPSet(cell, &DPHidByUsKey, nil);
+    DPSet(cell, &DPDiaHiddenKey, nil);
+    cell.hidden = diaHidden;
+}
+
 static CGFloat DPSuggestions_heightOfRow(NSView *self, SEL _cmd, NSTableView *table, NSInteger row) {
     CGFloat height = DPCallOriginal(DPSuggestions_heightOfRow, self, table, row);
-    if (!DPHideSetupSuggestions.on) return height;
-    NSMutableIndexSet *rows = DPHiddenRows(table);
-    if (![rows containsIndex:row]) return height;
-    NSView *cell = [table viewAtColumn:0 row:row makeIfNecessary:NO];
-    if (cell && !DPIsSetupSuggestion(cell)) {
-        [rows removeIndex:row];
-        return height;
-    }
-    return 0;
+    // AppKit throws NSInternalInconsistencyException if heightOfRow: returns <= 0.
+    if (DPHideSetupSuggestions.on && DPIsCollapsedRow(table, row)) return 0.001;
+    return height;
 }
 
 static BOOL DPSuggestions_shouldSelectRow(NSView *self, SEL _cmd, NSTableView *table, NSInteger row) {
-    if (DPHideSetupSuggestions.on && [DPHiddenRows(table) containsIndex:row]) return NO;
+    if (DPHideSetupSuggestions.on && DPIsCollapsedRow(table, row)) return NO;
     return DPCallOriginal(DPSuggestions_shouldSelectRow, self, table, row);
 }
 
 static void DPSuggestionCell_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSuggestionCell_layout, self);
     BOOL hide = DPHideSetupSuggestions.on && DPIsSetupSuggestion(self);
-    BOOL ours = [DPGet(self, &DPHidByUsKey) boolValue];
     if (hide) {
-        if (!ours) {
+        if (![DPGet(self, &DPHidByUsKey) boolValue]) {
             DPSet(self, &DPDiaHiddenKey, @(self.hidden));
             DPSet(self, &DPHidByUsKey, @YES);
         }
         if (!self.hidden) self.hidden = YES;
-    } else if (ours) {
-        BOOL diaHidden = [DPGet(self, &DPDiaHiddenKey) boolValue];
-        DPSet(self, &DPHidByUsKey, nil);
-        DPSet(self, &DPDiaHiddenKey, nil);
-        self.hidden = diaHidden;
-    }
+    } else DPRestoreHidden(self);
     if (!hide && !DPHideSetupSuggestions.on) return;
-    NSTableView *table = nil;
-    for (NSView *up = self.superview; up && !table; up = up.superview)
-        if ([up isKindOfClass:NSTableView.class]) table = (NSTableView *)up;
+    NSTableView *table = DPTableOf(self);
     if (!table) return;
     if (!hide && !DPGet(table, &DPHiddenRowsKey)) return;
     NSInteger row = [table rowForView:self];
     if (row < 0) return;
-    NSMutableIndexSet *rows = DPHiddenRows(table);
-    if (hide == [rows containsIndex:row]) return;
-    if (hide) [rows addIndex:row];
-    else [rows removeIndex:row];
-    DPNoteRows(table);
+    NSMapTable<NSNumber *, NSView *> *rows = DPHiddenRows(table);
+    NSNumber *prevRow = DPGet(self, &DPRowKey);
+    BOOL note = NO;
+    if (prevRow && prevRow.integerValue != row && [rows objectForKey:prevRow] == self) {
+        [rows removeObjectForKey:prevRow];
+        note = YES;
+    }
+    if (hide) {
+        if ([rows objectForKey:@(row)] != self) {
+            [rows setObject:self forKey:@(row)];
+            note = YES;
+        }
+        DPSet(self, &DPRowKey, @(row));
+    } else {
+        DPSet(self, &DPRowKey, nil);
+        if ([rows objectForKey:@(row)]) {
+            [rows removeObjectForKey:@(row)];
+            note = YES;
+        }
+    }
+    if (note) DPNoteRows(table);
+}
+
+static void DPSuggestionCell_prepareForReuse(NSView *self, SEL _cmd) {
+    DPRestoreHidden(self);
+    NSNumber *prevRow = DPGet(self, &DPRowKey);
+    DPSet(self, &DPRowKey, nil);
+    if (prevRow) {
+        NSTableView *table = DPTableOf(self);
+        NSMapTable<NSNumber *, NSView *> *rows = table ? DPGet(table, &DPHiddenRowsKey) : nil;
+        if (rows && [rows objectForKey:prevRow] == self) {
+            [rows removeObjectForKey:prevRow];
+            DPNoteRows(table);
+        }
+    }
+    DPCallOriginal(DPSuggestionCell_prepareForReuse, self);
 }
 
 static void DPSuggestionsTable_reloadData(NSTableView *self, SEL _cmd) {
@@ -115,6 +157,7 @@ static void DPInstallHideSetupSuggestions(void) {
     DPHook(DPDiaCommandBarSuggestions, @selector(tableView:heightOfRow:), (IMP)DPSuggestions_heightOfRow);
     DPHook(DPDiaCommandBarSuggestions, @selector(tableView:shouldSelectRow:), (IMP)DPSuggestions_shouldSelectRow);
     DPHook(DPDiaSuggestionCell, @selector(layout), (IMP)DPSuggestionCell_layout);
+    DPHook(DPDiaSuggestionCell, @selector(prepareForReuse), (IMP)DPSuggestionCell_prepareForReuse);
     if (objc_getClass(DPDiaSuggestionsTable)) {
         DPHook(DPDiaSuggestionsTable, @selector(reloadData), (IMP)DPSuggestionsTable_reloadData);
         DPHook(DPDiaSuggestionsTable, @selector(reloadDataForRowIndexes:columnIndexes:), (IMP)DPSuggestionsTable_reloadRows);

@@ -1,4 +1,5 @@
 #import "StdPatch/Hide.h"
+#import "runloop.h"
 
 DPPatch *const *DPPatches;
 NSUInteger DPPatchCount;
@@ -88,6 +89,31 @@ BOOL DPTesting = YES;
 
 static BOOL isOuterHost(NSView *view) { return [view isKindOfClass:DPOuterHost.class]; }
 static BOOL isInnerButton(NSView *view) { return [view isKindOfClass:DPInnerButton.class]; }
+
+@interface DPRealSuggestionsDataSource : NSObject <NSTableViewDataSource>
+@property(nonatomic) NSMutableArray<NSString *> *titles;
+@property(nonatomic) NSMutableArray<_TtC15BoostCommandBar23SuggestionTableViewCell *> *cells;
+@end
+@implementation DPRealSuggestionsDataSource
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView { return (NSInteger)self.titles.count; }
+@end
+
+@interface DPRealSuggestionsDelegate : _TtC15BoostCommandBar15SuggestionsView
+@property(nonatomic) DPRealSuggestionsDataSource *source;
+@end
+@implementation DPRealSuggestionsDelegate
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)column row:(NSInteger)row {
+    _TtC15BoostCommandBar23SuggestionTableViewCell *cell = self.source.cells[row];
+    NSTextField *label = nil;
+    for (NSView *sub in cell.subviews)
+        if (DPIsKind(sub, DPDiaSuggestionTitle))
+            for (NSView *inner in sub.subviews)
+                if ([inner isKindOfClass:NSTextField.class]) label = (NSTextField *)inner;
+    if (label) label.stringValue = self.source.titles[row];
+    cell.needsLayout = YES;
+    return cell;
+}
+@end
 
 @interface DPTestWindow : NSWindow
 @end
@@ -216,7 +242,7 @@ int main(void) {
         layoutAll(cells);
         check("setup row hides when the tweak is on", onboarding.hidden);
         check("a real suggestion still shows", !real.hidden);
-        check("a setup row collapses to no height", [suggestions tableView:table heightOfRow:0] == 0);
+        check("a setup row collapses to minimal height", [suggestions tableView:table heightOfRow:0] < 0.01);
         check("a real suggestion keeps its height", [suggestions tableView:table heightOfRow:1] == 28);
         check("a setup row cannot be picked", ![suggestions tableView:table shouldSelectRow:0]);
         check("a real suggestion can still be picked", [suggestions tableView:table shouldSelectRow:1]);
@@ -232,7 +258,7 @@ int main(void) {
         DPHideSetupSuggestions.on = YES;
         DPHideSetupSuggestions.apply(&DPHideSetupSuggestions);
         layoutAll(cells);
-        check("setup row collapses again", [suggestions tableView:table heightOfRow:0] == 0);
+        check("setup row collapses again", [suggestions tableView:table heightOfRow:0] < 0.01);
         NSMutableArray<NSView *> *reused = [NSMutableArray array];
         for (NSString *title in @[ @"Some Page", @"Another Page", @"Third Page", @"Fourth Page", @"Fifth Page" ]) [reused addObject:makeCell(title)];
         table.rows = reused;
@@ -243,6 +269,78 @@ int main(void) {
 
         DPHideSetupSuggestions.on = NO;
         DPHideSetupSuggestions.apply(&DPHideSetupSuggestions);
+
+        // Exercise a real AppKit NSTableView: noteHeightOfRowsWithIndexesChanged: throws if heightOfRow: requests a row view.
+        DPRealSuggestionsDataSource *realDS = [DPRealSuggestionsDataSource new];
+        realDS.titles = [@[ @"Upgrade Chat", @"Some Page" ] mutableCopy];
+        realDS.cells = [@[ makeCell(@"Upgrade Chat"), makeCell(@"Some Page") ] mutableCopy];
+        DPRealSuggestionsDelegate *realSuggestions = [[DPRealSuggestionsDelegate alloc] initWithFrame:NSMakeRect(0, 0, 500, 200)];
+        realSuggestions.source = realDS;
+        NSTableView *realTable = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, 500, 200)];
+        [realTable addTableColumn:[[NSTableColumn alloc] initWithIdentifier:@"main"]];
+        realTable.usesAutomaticRowHeights = NO;
+        realTable.dataSource = realDS;
+        realTable.delegate = realSuggestions;
+        [realSuggestions addSubview:realTable];
+        [window.contentView addSubview:realSuggestions];
+
+        DPHideSetupSuggestions.on = YES;
+        [realTable reloadData];
+        [realTable layoutSubtreeIfNeeded];
+        [window layoutIfNeeded];
+        DPDrainMainQueue(0.05);
+        check("real NSTableView collapses setup suggestion without crashing",
+              DPPumpUntil(^BOOL {
+                  [realTable layoutSubtreeIfNeeded];
+                  return [realSuggestions tableView:realTable heightOfRow:0] < 0.01;
+              }));
+        check("real NSTableView keeps non-setup row height", [realSuggestions tableView:realTable heightOfRow:1] == 28);
+        check("real NSTableView hides setup cell", realDS.cells[0].hidden);
+
+        // Reuse row 0 in-place (same row count, no reloadData) to verify it uncollapses without calling viewAtColumn: in heightOfRow:.
+        realDS.titles[0] = @"Another Page";
+        [realTable reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:0] columnIndexes:[NSIndexSet indexSetWithIndex:0]];
+        [realTable layoutSubtreeIfNeeded];
+        [window layoutIfNeeded];
+        DPDrainMainQueue(0.05);
+        check("real NSTableView restores height when row 0 becomes a real suggestion",
+              DPPumpUntil(^BOOL {
+                  [realTable layoutSubtreeIfNeeded];
+                  return [realSuggestions tableView:realTable heightOfRow:0] == 28;
+              }));
+        check("real NSTableView shows reused row 0", !realDS.cells[0].hidden);
+
+        // Also test replacing row 0 via beginUpdates/endUpdates keeping row count constant.
+        realDS.titles[0] = @"Upgrade Chat";
+        [realTable reloadData];
+        [realTable layoutSubtreeIfNeeded];
+        [window layoutIfNeeded];
+        DPDrainMainQueue(0.05);
+        check("real NSTableView collapses setup row again",
+              DPPumpUntil(^BOOL {
+                  [realTable layoutSubtreeIfNeeded];
+                  return [realSuggestions tableView:realTable heightOfRow:0] < 0.01;
+              }));
+        [realTable beginUpdates];
+        [realDS.titles removeObjectAtIndex:0];
+        [realDS.cells removeObjectAtIndex:0];
+        [realTable removeRowsAtIndexes:[NSIndexSet indexSetWithIndex:0] withAnimation:NSTableViewAnimationEffectNone];
+        [realDS.titles addObject:@"Third Page"];
+        [realDS.cells addObject:makeCell(@"Third Page")];
+        [realTable insertRowsAtIndexes:[NSIndexSet indexSetWithIndex:1] withAnimation:NSTableViewAnimationEffectNone];
+        [realTable endUpdates];
+        [realTable layoutSubtreeIfNeeded];
+        [window layoutIfNeeded];
+        DPDrainMainQueue(0.05);
+        check("real NSTableView restores height after constant-count row replacement",
+              DPPumpUntil(^BOOL {
+                  [realTable layoutSubtreeIfNeeded];
+                  return [realSuggestions tableView:realTable heightOfRow:0] == 28;
+              }));
+
+        DPHideSetupSuggestions.on = NO;
+        DPHideSetupSuggestions.apply(&DPHideSetupSuggestions);
+        [realSuggestions removeFromSuperview];
 
         static DPPatch outer = { .key = @"outerTest", .hides = isOuterHost }, inner = { .key = @"innerTest", .hides = isInnerButton };
         DPPatch *nested[] = { &outer, &inner };
