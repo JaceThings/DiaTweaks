@@ -76,6 +76,8 @@ BOOL DPProgressColorSlots(NSUInteger slots[2]) { slots[0] = 4; slots[1] = 5; ret
 - (void)setFragmentBytes:(const void *)bytes length:(NSUInteger)length atIndex:(NSUInteger)index {}
 @end
 
+void DPPlaceNavigationButtons(NSWindow *window) {}
+
 #import "Patches/HideToolbar/HideToolbar.m"
 #import "Patches/HideToolbar/Layout.m"
 #import "Patches/HideToolbar/Hover.m"

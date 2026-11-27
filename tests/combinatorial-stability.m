@@ -107,6 +107,7 @@ void *swift_unknownObjectWeakLoadStrong(void *ref) {
 
 // HideToolbar helpers normally in PlainTab.m / LittleDia/Over.m
 void DPRepaintTabs(NSWindow *window) {}
+void DPPlaceNavigationButtons(NSWindow *window) {}
 BOOL DPLittleDiaIsOver(NSWindow *window) { return NO; }
 
 // GroupTabs command stubs (Menu.m + Tracking.m are real)

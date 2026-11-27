@@ -30,6 +30,7 @@ body:
         - Show Toolbar with Tabs at the Top
         - Keep Bookmarks Bar
         - Show Loading Progress
+        - Move Back, Forward and Reload to Sidebar
         - Hide Site Color in Tab Bar
         - Always Show Address Field
         - Search Engine Name in Chat Toggle
