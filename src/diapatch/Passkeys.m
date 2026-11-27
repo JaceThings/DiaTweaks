@@ -3,9 +3,16 @@
 #import <pthread.h>
 #import <sys/file.h>
 #import <sys/wait.h>
+#import <time.h>
 #import "LaunchServices.h"
 #import "Passkeys.h"
 #import "Disclaim.h"
+
+static double monotonicSeconds(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 
 static const int kSheetWidth = 480, kSheetHeight = 300;
 static const uint32_t kMaxMessageLength = 1024 * 1024;
@@ -139,25 +146,28 @@ static void *watchForCancel(void *_) {
 
 static NSArray<NSString *> *const kAccountStore = @[ @"global_key_value_store.db", @"global_key_value_store.db-wal", @"global_key_value_store.db-shm" ];
 
-static NSArray *modificationDates(NSString *folder) {
-    NSMutableArray *dates = [NSMutableArray array];
-    for (NSString *name in kAccountStore)
-        [dates addObject:[NSFileManager.defaultManager attributesOfItemAtPath:[folder stringByAppendingPathComponent:name] error:nil].fileModificationDate ?: NSNull.null];
-    return dates;
+static NSArray *fileSignatures(NSString *folder) {
+    NSMutableArray *sigs = [NSMutableArray array];
+    for (NSString *name in kAccountStore) {
+        NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:[folder stringByAppendingPathComponent:name] error:nil];
+        [sigs addObject:attrs ? @[ attrs.fileModificationDate ?: NSNull.null, @(attrs.fileSize) ] : NSNull.null];
+    }
+    return sigs;
 }
 
 // Dia may be writing its account store: copy until the files hold still.
 static void signInAsDia(NSString *userData) {
     NSFileManager *files = NSFileManager.defaultManager;
     NSString *dia = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
+    if ([fileSignatures(userData) isEqual:fileSignatures(dia)]) return;
     [files createDirectoryAtPath:userData withIntermediateDirectories:YES attributes:nil error:nil];
     for (int tries = 0; tries < 5; tries++) {
-        NSArray *before = modificationDates(dia);
+        NSArray *before = fileSignatures(dia);
         for (NSString *name in kAccountStore) {
             [files removeItemAtPath:[userData stringByAppendingPathComponent:name] error:nil];
             [files copyItemAtPath:[dia stringByAppendingPathComponent:name] toPath:[userData stringByAppendingPathComponent:name] error:nil];
         }
-        if ([modificationDates(dia) isEqual:before]) return;
+        if ([fileSignatures(dia) isEqual:before]) return;
     }
 }
 
@@ -231,8 +241,10 @@ static pid_t launchHelper(NSString *home, int toHelper[2], int fromHelper[2]) {
     NSString *size = [NSString stringWithFormat:@"--window-size=%@,%@", bounds[@"width"], bounds[@"height"]];
     NSString *position = [NSString stringWithFormat:@"--window-position=%@,%@", bounds[@"left"], bounds[@"top"]];
     // Disable sync so the helper's empty profile doesn't wipe the user's synced tabs, favorites, and extensions.
+    // Open about:blank with extensions and background services off so the helper reaches a tab faster.
     const char *argv[] = { app.fileSystemRepresentation, profile.UTF8String, size.UTF8String, position.UTF8String, "--remote-debugging-pipe", "--mute-audio",
-                           "-transientFeatureFlagOverrides", "sync-enabled=false", NULL };
+                           "--disable-extensions", "--disable-component-update", "--disable-background-networking",
+                           "-transientFeatureFlagOverrides", "sync-enabled=false", "about:blank", NULL };
 
     // adddup2 onto 3 and 4 would clobber a pipe end already sitting there.
     int childIn = toHelper[0] <= 4 ? fcntl(toHelper[0], F_DUPFD_CLOEXEC, 5) : toHelper[0];
@@ -262,7 +274,9 @@ static BOOL hasWindowOnScreen(pid_t pid) {
 typedef NS_ENUM(int, DPStartup) { DPStartupReady, DPStartupSignedOut, DPStartupFailed };
 
 static DPStartup waitForStartupTab(pid_t pid, int seconds, NSString **targetId, NSNumber **windowId) {
-    for (int tries = 0, tablessWindow = 0; tries < seconds * 4; tries++, usleep(250000)) {
+    double deadline = monotonicSeconds() + seconds;
+    double signedOutAt = 0;
+    for (; monotonicSeconds() < deadline; usleep(20000)) {
         NSDictionary *targets = send(@"Target.getTargets", nil, nil);
         if (!targets) return DPStartupFailed;
         for (NSDictionary *target in asArray(asDictionary(targets[@"result"])[@"targetInfos"])) {
@@ -275,8 +289,12 @@ static DPStartup waitForStartupTab(pid_t pid, int seconds, NSString **targetId, 
             *windowId = window[@"windowId"];
             return DPStartupReady;
         }
-        tablessWindow = hasWindowOnScreen(pid) ? tablessWindow + 1 : 0;
-        if (tablessWindow == 8) return DPStartupSignedOut;
+        if (hasWindowOnScreen(pid)) {
+            if (!signedOutAt) signedOutAt = monotonicSeconds() + 2.0;
+            else if (monotonicSeconds() >= signedOutAt) return DPStartupSignedOut;
+        } else {
+            signedOutAt = 0;
+        }
     }
     return DPStartupFailed;
 }
@@ -326,8 +344,113 @@ static BOOL isTLSError(NSString *errorText) {
 
 static NSString *navigationError(NSDictionary *navigation) { return asString(asDictionary(navigation[@"result"])[@"errorText"]); }
 
+typedef NS_ENUM(int, DPOriginPreflightResult) {
+    DPOriginPreflightNone,
+    DPOriginPreflightVerified,
+    DPOriginPreflightTLSError,
+};
+
+@interface DPOriginPreflight : NSObject <NSURLSessionDataDelegate>
+@property (nonatomic) dispatch_semaphore_t done;
+@property (nonatomic) dispatch_semaphore_t invalidated;
+@property (nonatomic) BOOL finished;
+@property (nonatomic) DPOriginPreflightResult result;
+@property (nonatomic, strong) NSURLSession *session;
+@property (nonatomic, strong) NSURLSessionDataTask *task;
+@end
+
+@implementation DPOriginPreflight
+- (instancetype)init {
+    if ((self = [super init])) {
+        _done = dispatch_semaphore_create(0);
+        _invalidated = dispatch_semaphore_create(0);
+    }
+    return self;
+}
+
+- (void)finishWith:(DPOriginPreflightResult)result task:(NSURLSessionTask *)task {
+    @synchronized(self) {
+        if (self.finished) return;
+        self.finished = YES;
+        self.result = result;
+    }
+    [task cancel];
+    [self.session invalidateAndCancel];
+    dispatch_semaphore_signal(self.done);
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+    willPerformHTTPRedirection:(NSHTTPURLResponse *)response
+                    newRequest:(NSURLRequest *)request
+             completionHandler:(void (^)(NSURLRequest *))completionHandler {
+    // A redirect from expectedOrigin proves valid TLS and reachability without following another host.
+    completionHandler(nil);
+    [self finishWith:DPOriginPreflightVerified task:task];
+}
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask
+    didReceiveResponse:(NSURLResponse *)response
+     completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
+    completionHandler(NSURLSessionResponseCancel);
+    [self finishWith:DPOriginPreflightVerified task:dataTask];
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    DPOriginPreflightResult res = DPOriginPreflightNone;
+    if ([error.domain isEqualToString:NSURLErrorDomain]) {
+        switch (error.code) {
+            case NSURLErrorSecureConnectionFailed:
+            case NSURLErrorServerCertificateHasBadDate:
+            case NSURLErrorServerCertificateUntrusted:
+            case NSURLErrorServerCertificateHasUnknownRoot:
+            case NSURLErrorServerCertificateNotYetValid:
+            case NSURLErrorClientCertificateRejected:
+            case NSURLErrorClientCertificateRequired:
+                res = DPOriginPreflightTLSError;
+                break;
+            default:
+                break;
+        }
+    }
+    [self finishWith:res task:task];
+}
+
+- (void)URLSession:(NSURLSession *)session didBecomeInvalidWithError:(NSError *)error {
+    dispatch_semaphore_signal(self.invalidated);
+}
+@end
+
+static DPOriginPreflight *startOriginPreflight(NSString *origin) {
+    NSString *expectedOrigin = originOfURL(origin);
+    if (!expectedOrigin || (![expectedOrigin hasPrefix:@"https://"] && ![expectedOrigin hasPrefix:@"http://"])) return nil;
+    NSURL *url = [NSURL URLWithString:[expectedOrigin stringByAppendingString:@"/robots.txt"]];
+    if (!url) return nil;
+    DPOriginPreflight *pf = [DPOriginPreflight new];
+    NSURLSessionConfiguration *cfg = NSURLSessionConfiguration.ephemeralSessionConfiguration;
+    cfg.timeoutIntervalForRequest = 3.0;
+    cfg.timeoutIntervalForResource = 3.0;
+    cfg.URLCache = nil;
+    cfg.HTTPCookieStorage = nil;
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:cfg delegate:pf delegateQueue:nil];
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:3.0];
+    req.HTTPMethod = @"HEAD";
+    pf.session = session;
+    pf.task = [session dataTaskWithRequest:req];
+    [pf.task resume];
+    return pf;
+}
+
+static DPOriginPreflightResult waitForOriginPreflight(DPOriginPreflight *pf, double maxWaitSeconds) {
+    if (!pf) return DPOriginPreflightNone;
+    dispatch_time_t limit = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(maxWaitSeconds * NSEC_PER_SEC));
+    if (dispatch_semaphore_wait(pf.done, limit) != 0) [pf finishWith:DPOriginPreflightNone task:pf.task];
+    dispatch_semaphore_wait(pf.invalidated, dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC));
+    return pf.result;
+}
+
 static BOOL atOrigin(NSString *session, NSString *origin, void (^onEvent)(NSDictionary *event)) {
-    for (int tries = 0; tries < 50; tries++, usleep(100000)) {
+    double deadline = monotonicSeconds() + 5.0;
+    for (; monotonicSeconds() < deadline; usleep(10000)) {
         NSArray *state = evaluateWithEvents(session, @"[location.origin, document.readyState]", onEvent);
         if (!state) {
             if (!gFromHelper || feof(gFromHelper)) return NO;
@@ -340,17 +463,19 @@ static BOOL atOrigin(NSString *session, NSString *origin, void (^onEvent)(NSDict
     return NO;
 }
 
-static BOOL openOrigin(NSString *session, NSString *origin, NSString *pagePath) {
+static BOOL openOriginWithPreflight(NSString *session, NSString *origin, NSString *pagePath, DPOriginPreflightResult preflight) {
     NSString *expectedOrigin = originOfURL(origin);
     if (!expectedOrigin || (![expectedOrigin hasPrefix:@"https://"] && ![expectedOrigin hasPrefix:@"http://"])) return NO;
+    if (preflight == DPOriginPreflightTLSError) return NO;
 
+    BOOL fastSynthetic = (preflight == DPOriginPreflightVerified);
     send(@"Page.setBypassCSP", @{ @"enabled" : @YES }, session);
-    send(@"Emulation.setScriptExecutionDisabled", @{ @"value" : @YES }, session);
+    if (!fastSynthetic) send(@"Emulation.setScriptExecutionDisabled", @{ @"value" : @YES }, session);
     send(@"Fetch.enable", @{ @"patterns" : @[ @{ @"urlPattern" : @"*", @"requestStage" : @"Request" } ] }, session);
 
     __block BOOL sawCrossOriginRedirect = NO;
     __block BOOL sawServerResponse = NO;
-    __block BOOL synthetic = NO;
+    __block BOOL synthetic = fastSynthetic;
     NSMutableSet<NSString *> *originRequestIds = [NSMutableSet set];
     NSRange schemeEnd = [expectedOrigin rangeOfString:@"://"];
     NSString *site = schemeEnd.location != NSNotFound ? [expectedOrigin substringFromIndex:NSMaxRange(schemeEnd)] : expectedOrigin;
@@ -387,23 +512,25 @@ static BOOL openOrigin(NSString *session, NSString *origin, NSString *pagePath) 
 
     BOOL landed = NO;
     BOOL sawTLSError = NO;
-    for (NSString *path in candidatePaths(pagePath)) {
-        NSDictionary *nav = sendWithEvents(@"Page.navigate", @{ @"url" : [expectedOrigin stringByAppendingString:path] }, session, onEvent);
-        if (!nav) break;
-        NSString *errorText = navigationError(nav);
-        if (isTLSError(errorText)) {
-            sawTLSError = YES;
-            break;
-        }
-        if (!errorText.length || [errorText isEqualToString:@"net::ERR_HTTP_RESPONSE_CODE_FAILURE"])
-            sawServerResponse = YES;
-        if (!errorText.length && atOrigin(session, expectedOrigin, onEvent)) {
-            landed = YES;
-            break;
+    if (!fastSynthetic) {
+        for (NSString *path in candidatePaths(pagePath)) {
+            NSDictionary *nav = sendWithEvents(@"Page.navigate", @{ @"url" : [expectedOrigin stringByAppendingString:path] }, session, onEvent);
+            if (!nav) break;
+            NSString *errorText = navigationError(nav);
+            if (isTLSError(errorText)) {
+                sawTLSError = YES;
+                break;
+            }
+            if (!errorText.length || [errorText isEqualToString:@"net::ERR_HTTP_RESPONSE_CODE_FAILURE"])
+                sawServerResponse = YES;
+            if (!errorText.length && atOrigin(session, expectedOrigin, onEvent)) {
+                landed = YES;
+                break;
+            }
         }
     }
 
-    if (!landed && !sawTLSError && (sawCrossOriginRedirect || sawServerResponse)) {
+    if (!landed && !sawTLSError && (fastSynthetic || sawCrossOriginRedirect || sawServerResponse)) {
         synthetic = YES;
         NSDictionary *nav = sendWithEvents(@"Page.navigate", @{ @"url" : [expectedOrigin stringByAppendingString:@"/"] }, session, onEvent);
         if (nav && !navigationError(nav).length) landed = atOrigin(session, expectedOrigin, onEvent);
@@ -414,7 +541,7 @@ static BOOL openOrigin(NSString *session, NSString *origin, NSString *pagePath) 
                                                @"DiaTweaks opened this window to reach Apple Passwords. It closes by itself."), onEvent);
 
     send(@"Fetch.disable", nil, session);
-    send(@"Emulation.setScriptExecutionDisabled", @{ @"value" : @NO }, session);
+    if (!fastSynthetic) send(@"Emulation.setScriptExecutionDisabled", @{ @"value" : @NO }, session);
     return landed;
 }
 
@@ -429,6 +556,7 @@ static void tellDia(NSString *what, pid_t helper) {
 static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, NSString *path, id options) {
     if (![kind isKindOfClass:NSString.class] || ![origin isKindOfClass:NSString.class] || ![options isKindOfClass:NSDictionary.class])
         return failure(@"Invalid passkey request.");
+    DPOriginPreflight *preflight = startOriginPreflight(origin);
     NSString *targetId;
     NSNumber *windowId;
     DPStartup startup = waitForStartupTab(pid, 60, &targetId, &windowId);
@@ -436,16 +564,25 @@ static NSDictionary *runInHelper(pid_t pid, NSString *kind, NSString *origin, NS
         tellDia(@"signIn", pid);
         startup = waitForStartupTab(pid, 600, &targetId, &windowId);
     }
-    if (startup != DPStartupReady || !targetId || !windowId) return failure(@"The passkey copy of Dia didn't open.");
+    if (startup != DPStartupReady || !targetId || !windowId) {
+        waitForOriginPreflight(preflight, 0);
+        return failure(@"The passkey copy of Dia didn't open.");
+    }
 
     send(@"Browser.setWindowBounds", @{ @"windowId" : windowId, @"bounds" : sheetBounds() }, nil);
     NSDictionary *attached = send(@"Target.attachToTarget", @{ @"targetId" : targetId, @"flatten" : @YES }, nil);
     NSString *session = asString(asDictionary(attached[@"result"])[@"sessionId"]);
-    if (!session) return failure(@"Couldn't connect to the passkey copy of Dia.");
-    if (!openOrigin(session, origin, path)) return failure(@"Couldn't open the site in the passkey copy of Dia.");
+    if (!session) {
+        waitForOriginPreflight(preflight, 0);
+        return failure(@"Couldn't connect to the passkey copy of Dia.");
+    }
+    DPOriginPreflightResult pfResult = waitForOriginPreflight(preflight, 0.5);
+    if (!openOriginWithPreflight(session, origin, path, pfResult))
+        return failure(@"Couldn't open the site in the passkey copy of Dia.");
     tellDia(@"show", pid);
     // WebAuthn refuses an unfocused page, and focus comes once Dia has brought the copy forward.
-    for (int tries = 0; tries < 30; tries++, usleep(100000))
+    double focusDeadline = monotonicSeconds() + 3.0;
+    for (; monotonicSeconds() < focusDeadline; usleep(10000))
         if ([evaluate(session, @"document.hasFocus()") boolValue]) break;
 
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{ @"kind" : kind, @"options" : options } options:0 error:nil];
